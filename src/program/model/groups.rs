@@ -24,7 +24,6 @@ pub struct Group<'a> {
 impl Group<'_> {
     /// Whether the group begins folded.
     #[must_use]
-    #[allow(dead_code)] // The topic of the page says it.
     pub fn folded_at_first(&self) -> bool {
         matches!(self.kind, StateKind::Backlog | StateKind::Triage)
     }

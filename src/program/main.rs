@@ -17,9 +17,16 @@
 //!   state/    the key and the files kept between runs; knows nothing of the page
 //!   text/     the issues as text for a terminal that shows no views; knows nothing of the page
 
+mod api;
 mod command_line;
+mod icons;
 mod linear;
 mod model;
+#[cfg(test)]
+mod page_shots;
+#[cfg(test)]
+mod page_tests;
+mod session;
 mod state;
 mod text;
 
@@ -30,7 +37,8 @@ use pencere::{EndedBy, NoViewReason, Options, Outcome};
 
 use command_line::Asked;
 use linear::transport::{Curl, DEFAULT_URL};
-use linear::{Error, Scope};
+use linear::{Error, Scope, Transport};
+use session::{REFRESH_EVERY, Session};
 use state::Paths;
 use state::credentials;
 use text::summary::Summary;
@@ -99,20 +107,38 @@ fn print_summary(note: Option<&str>) -> u8 {
     }
 }
 
-/// What `serve` is given: the app, its name, and the text for a terminal that shows no views, whose
-/// status goes to `fallen_back`.
-fn options(fallen_back: &Arc<Mutex<Option<u8>>>) -> Options {
-    let options = Options::new()
+/// What `serve` is given: the app, its name and icons, the calls and the topic of `api/`, and the
+/// text for a terminal that shows no views, whose status goes to `fallen_back`.
+fn options(session: &Arc<Session>, fallen_back: &Arc<Mutex<Option<u8>>>) -> Options {
+    let mut options = Options::new()
         .app(pencere::app!())
         .program("linearpen")
         // What a terminal writes above the view.
         .title("Linear");
+    for icon in icons::all() {
+        options = options.icon(icon);
+    }
+    let options = api::serve(options, session);
     let status = Arc::clone(fallen_back);
     options.fallback(move |why| {
         // A pipe is a script's: it is given the text alone.
         let note = (why.reason != NoViewReason::NoTty).then_some(NO_VIEWS);
         *status.lock().unwrap_or_else(PoisonError::into_inner) = Some(print_summary(note));
     })
+}
+
+/// The session of a run: Linear is asked with `curl`, at the address the environment gives (for the
+/// tests) or Linear's own.
+fn session() -> Arc<Session> {
+    let transport: Arc<dyn Transport> = Arc::new(Curl::new(
+        lookup("LINEARPEN_API_URL").unwrap_or_else(|| DEFAULT_URL.to_owned()),
+    ));
+    Arc::new(Session::new(
+        transport,
+        Paths::resolve(&lookup),
+        lookup("LINEAR_API_KEY").as_deref(),
+        REFRESH_EVERY,
+    ))
 }
 
 fn main() -> ExitCode {
@@ -131,7 +157,8 @@ fn main() -> ExitCode {
         return ExitCode::from(print_summary(None));
     }
     let fallen_back = Arc::new(Mutex::new(None));
-    let status = match pencere::serve(options(&fallen_back)) {
+    let session = session();
+    let status = match pencere::serve(options(&session, &fallen_back)) {
         // The terminal took the client down: what it said is the one trace of why, so it is left
         // under the prompt rather than lost with the view.
         Ok(Outcome::Closed(closed)) if closed.by == EndedBy::Error => {

@@ -32,7 +32,6 @@ impl StateKind {
 
     /// The name Linear gives the kind, and the page is told.
     #[must_use]
-    #[allow(dead_code)] // The topic of the page says it.
     pub fn name(self) -> &'static str {
         match self {
             Self::Triage => "triage",
@@ -90,7 +89,6 @@ impl Priority {
     }
 
     #[must_use]
-    #[allow(dead_code)] // The topic of the page says it.
     pub fn name(self) -> &'static str {
         match self {
             Self::None => "none",

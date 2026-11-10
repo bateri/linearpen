@@ -19,9 +19,11 @@
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::OnceLock;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use serde_json::Value;
 use tempfile::TempDir;
 
 /// The program the tests run.
@@ -32,6 +34,45 @@ pub fn program() -> &'static str {
 /// The directory of the stand-in commands.
 pub fn stand_in_bin() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("test/stand-in/bin")
+}
+
+/// The stand-in terminal (`pencere-fake-host`), checked once: the one `FAKE_HOST` names, or the one
+/// `make fake-host` builds in `.cache/pencere`. Nothing is skipped: a stand-in that is not there, or
+/// one too old to show a whole result, fails the run and says which, since a gate that passes because
+/// it did not look proves nothing.
+pub fn host() -> &'static Path {
+    static HOST: OnceLock<PathBuf> = OnceLock::new();
+    HOST.get_or_init(|| {
+        // A path from here (the package, where Cargo runs the tests), since the stand-in is started
+        // in the directory of each test.
+        let host = match std::env::var_os("FAKE_HOST") {
+            Some(path) if !path.is_empty() => {
+                std::path::absolute(&path).unwrap_or_else(|_| PathBuf::from(path))
+            }
+            _ => Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join(".cache/pencere/target/debug/pencere-fake-host"),
+        };
+        assert!(
+            host.is_file(),
+            "the tests cannot run: pencere-fake-host is not built ({}): make fake-host, or FAKE_HOST=<a stand-in built in a pencere checkout>",
+            host.display()
+        );
+        let help = Command::new(&host)
+            .arg("--help")
+            .output()
+            .unwrap_or_else(|why| panic!("{} cannot be run: {why}", host.display()));
+        let said = format!(
+            "{}{}",
+            String::from_utf8_lossy(&help.stdout),
+            String::from_utf8_lossy(&help.stderr)
+        );
+        assert!(
+            said.contains("--subscribe") && said.contains("PENCERE_FAKE_GIST"),
+            "the tests cannot run: pencere-fake-host is too old ({})",
+            host.display()
+        );
+        host
+    })
 }
 
 /// A key that is not one: what the tests give where a key is needed.
@@ -192,5 +233,184 @@ impl Home {
             });
         }
         calls
+    }
+}
+
+/// What the page asks of the program, and how the pane ends.
+pub struct Script {
+    calls: Vec<(String, Value)>,
+    then: Vec<String>,
+    limit: u64,
+    env: Vec<(String, String)>,
+    args: Vec<String>,
+    host_args: Vec<String>,
+}
+
+impl Script {
+    /// The page makes no calls; then ⌃C is typed; linearpen is run with no arguments.
+    pub fn new() -> Self {
+        Self {
+            calls: Vec::new(),
+            then: vec!["--then".to_owned(), "interrupt".to_owned()],
+            limit: 25,
+            env: Vec::new(),
+            args: Vec::new(),
+            host_args: Vec::new(),
+        }
+    }
+
+    /// The page calls `method` with `params`, after the answer to the call before.
+    pub fn call(mut self, method: &str, params: Value) -> Self {
+        self.calls.push((method.to_owned(), params));
+        self
+    }
+
+    /// What happens when the page has its answers (the stand-in's `--then` and the like).
+    pub fn then(mut self, then: &[&str]) -> Self {
+        self.then = then.iter().map(|word| (*word).to_owned()).collect();
+        self
+    }
+
+    /// How long the stand-in lets the program run, in seconds.
+    pub fn limit(mut self, seconds: u64) -> Self {
+        self.limit = seconds;
+        self
+    }
+
+    /// A variable of the environment the program is run in (on top of the home's).
+    pub fn env(mut self, name: &str, value: &str) -> Self {
+        self.env.push((name.to_owned(), value.to_owned()));
+        self
+    }
+
+    /// More of the stand-in's options (`--subscribe issues`).
+    pub fn host_args(mut self, args: &[&str]) -> Self {
+        self.host_args = args.iter().map(|arg| (*arg).to_owned()).collect();
+        self
+    }
+}
+
+/// What the page heard in answer to a call.
+#[derive(Debug, Clone)]
+pub enum Answer {
+    Result(Value),
+    Error {
+        code: String,
+        message: Option<String>,
+    },
+}
+
+impl Answer {
+    /// The result of a call that was answered with one.
+    pub fn result(&self) -> &Value {
+        match self {
+            Self::Result(value) => value,
+            Self::Error { code, message } => panic!("an error, {code}: {message:?}"),
+        }
+    }
+
+    /// Whether the call failed with `code`.
+    pub fn failed(&self, code: &str) -> bool {
+        matches!(self, Self::Error { code: said, .. } if said == code)
+    }
+
+    /// The words of an error.
+    pub fn message(&self) -> &str {
+        match self {
+            Self::Error {
+                message: Some(message),
+                ..
+            } => message,
+            other => panic!("no words: {other:?}"),
+        }
+    }
+}
+
+/// The answers the page heard, in order, in the stand-in's record.
+pub fn answers(log: &str) -> Vec<Answer> {
+    let mut found = Vec::new();
+    for line in log.lines() {
+        let Some(rest) = line.strip_prefix("view: <- response id=") else {
+            continue;
+        };
+        let Some((_, said)) = rest.split_once(' ') else {
+            continue;
+        };
+        if let Some(result) = said.strip_prefix("result=") {
+            found.push(Answer::Result(
+                serde_json::from_str(result).expect("a whole result"),
+            ));
+        } else if let Some(error) = said.strip_prefix("error code=") {
+            let (code, message) = match error.split_once(" message=") {
+                Some((code, message)) => (
+                    code.to_owned(),
+                    Some(serde_json::from_str(message).expect("words that are a JSON string")),
+                ),
+                None => (error.to_owned(), None),
+            };
+            found.push(Answer::Error { code, message });
+        }
+    }
+    found
+}
+
+/// The values the page heard pushed, in order.
+pub fn pushes(log: &str) -> Vec<Value> {
+    log.lines()
+        .filter_map(|line| line.strip_prefix("view: <- push id="))
+        .filter_map(|rest| rest.split_once(" value="))
+        .map(|(_, value)| serde_json::from_str(value).expect("a whole value"))
+        .collect()
+}
+
+impl Home {
+    /// The stand-in terminal, ready to run the pane of `script`, in the environment of the tests.
+    pub fn host_command(&self, script: &Script) -> Command {
+        let mut command = self.command(host());
+        command.env("PENCERE_FAKE_GIST", "100000000").args([
+            "--size",
+            "100x30",
+            "--limit",
+            &script.limit.to_string(),
+        ]);
+        command.args(&script.host_args);
+        for (method, params) in &script.calls {
+            command.args(["--call", &format!("{method}={params}")]);
+        }
+        command
+            .args(&script.then)
+            .arg("--")
+            .arg(program())
+            .args(&script.args);
+        for (name, value) in &script.env {
+            command.env(name, value);
+        }
+        command
+    }
+
+    /// The stand-in's record of a pane in which the page makes the calls of `script`.
+    pub fn record(&self, script: &Script) -> String {
+        run(
+            self.host_command(script),
+            None,
+            Duration::from_secs(script.limit + 15),
+        )
+        .stderr
+    }
+
+    /// The answers to the calls of `script`, one for each: the record's tail says why when not.
+    pub fn ask(&self, script: &Script) -> Vec<Answer> {
+        let log = self.record(script);
+        let heard = answers(&log);
+        let tail: String = {
+            let chars: Vec<char> = log.chars().collect();
+            chars[chars.len().saturating_sub(1500)..].iter().collect()
+        };
+        assert_eq!(
+            heard.len(),
+            script.calls.len(),
+            "every call was answered:\n{tail}"
+        );
+        heard
     }
 }

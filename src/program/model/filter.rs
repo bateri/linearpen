@@ -9,13 +9,11 @@ pub struct Filter(String);
 
 impl Filter {
     #[must_use]
-    #[allow(dead_code)] // The view call of the page sets it.
     pub fn new(typed: &str) -> Self {
         Self(typed.trim().to_lowercase())
     }
 
     #[must_use]
-    #[allow(dead_code)] // The view call of the page asks it.
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }

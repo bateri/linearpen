@@ -18,7 +18,6 @@ pub enum Error {
 impl Error {
     /// The name the page is told: `refused`, `unreachable` or `failed` (`docs/calls.md`).
     #[must_use]
-    #[allow(dead_code)] // The calls of the page say it.
     pub fn kind(&self) -> &'static str {
         match self {
             Self::Refused => "refused",

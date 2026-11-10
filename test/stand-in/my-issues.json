@@ -48,7 +48,7 @@
             "identifier": "ACM-398",
             "title": "Checkout test fails one run in ten",
             "priority": 1.0,
-            "updatedAt": "2026-11-09T14:20:00.000Z",
+            "updatedAt": "2026-11-09T13:50:00.000Z",
             "url": "https://linear.app/acme/issue/ACM-398/checkout-test-fails-one-run-in-ten",
             "branchName": "ada/acm-398-checkout-test-fails-one-run-in-ten",
             "state": {

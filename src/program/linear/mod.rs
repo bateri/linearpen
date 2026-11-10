@@ -29,7 +29,6 @@ pub enum Scope {
 impl Scope {
     /// The name the page is told: `mine` or `all`.
     #[must_use]
-    #[allow(dead_code)] // The calls of the page say it.
     pub fn name(self) -> &'static str {
         match self {
             Self::Mine => "mine",
@@ -148,7 +147,6 @@ struct VerifyData {
 }
 
 /// Whose key it is: the question that tells whether a key is one.
-#[allow(dead_code)] // The Connect call of the page asks it.
 pub fn verify(transport: &dyn Transport, key: &Key) -> Result<Viewer, Error> {
     run::<(), VerifyData>(transport, key, &query::VERIFY, None).map(|data| data.viewer)
 }

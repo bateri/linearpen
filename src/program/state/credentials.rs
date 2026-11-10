@@ -112,7 +112,6 @@ pub fn find(from_env: Option<&str>, config: Option<&Path>) -> Result<Found, Prob
 
 /// Keeps `key` in the file of `config`, which is made `0600` (and its directory `0700`, if it is
 /// made here). Gives the file's path.
-#[allow(dead_code)] // The Connect call of the page keeps the key with it.
 pub fn save(config: &Path, key: &Key) -> Result<PathBuf, String> {
     let fail = |why: std::io::Error, path: &Path| format!("{}: {why}", path.display());
     if !config.is_dir() {
