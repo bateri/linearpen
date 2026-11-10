@@ -1,0 +1,19 @@
+{
+  "data": {
+    "viewer": {
+      "id": "user-1",
+      "name": "Ada",
+      "organization": {
+        "name": "Acme",
+        "urlKey": "acme"
+      },
+      "assignedIssues": {
+        "nodes": [],
+        "pageInfo": {
+          "hasNextPage": false,
+          "endCursor": null
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,63 @@
+#!/bin/sh
+# Stands in for curl in the tests: nothing here reaches the network.
+#
+# linearpen runs `curl --config -` and gives the configuration (the address, the key, the body) on
+# stdin. This reads it, records the call in $STANDIN_LOG (the arguments, whether the environment has
+# LINEAR_API_KEY, and the stdin), and answers with the file of test/stand-in/ that the query's name
+# asks for, then a line break and an HTTP status, as curl's write-out does.
+#
+#   STANDIN_MODE=refused   Linear refuses the key: HTTP 401
+#   STANDIN_MODE=errors    GraphQL errors, HTTP 400
+#   STANDIN_MODE=broken    a body that is not JSON, HTTP 200
+#   STANDIN_MODE=down      curl could not resolve the host: exit 6, no output
+#   STANDIN_MY=empty       the person has no issues assigned
+here=$(cd "$(dirname "$0")/.." && pwd)
+config=$(cat)
+
+if [ -n "${STANDIN_LOG-}" ]; then
+	{
+		echo "--- call"
+		for arg in "$@"; do
+			echo "argv: $arg"
+		done
+		if [ -n "${LINEAR_API_KEY+x}" ]; then echo "env LINEAR_API_KEY: set"; else echo "env LINEAR_API_KEY: unset"; fi
+		echo "stdin:"
+		printf '%s\n' "$config"
+		echo "--- end"
+	} >>"$STANDIN_LOG"
+fi
+
+case "${STANDIN_MODE-}" in
+refused)
+	cat "$here/refused.json"
+	printf '\n401'
+	exit 0
+	;;
+errors)
+	cat "$here/errors.json"
+	printf '\n400'
+	exit 0
+	;;
+broken)
+	printf 'this is not json\n200'
+	exit 0
+	;;
+down)
+	echo "curl: (6) Could not resolve host" >&2
+	exit 6
+	;;
+esac
+
+case "$config" in
+*operationName*MyIssues*)
+	if [ "${STANDIN_MY-}" = empty ]; then file=my-issues-empty.json; else file=my-issues.json; fi
+	;;
+*operationName*AllIssues*) file=all-issues.json ;;
+*operationName*Verify*) file=verify.json ;;
+*)
+	echo "stand-in curl: a query it does not know" >&2
+	exit 2
+	;;
+esac
+cat "$here/$file"
+printf '\n200'

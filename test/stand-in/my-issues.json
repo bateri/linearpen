@@ -1,0 +1,479 @@
+{
+  "data": {
+    "viewer": {
+      "id": "user-1",
+      "name": "Ada",
+      "organization": {
+        "name": "Acme",
+        "urlKey": "acme"
+      },
+      "assignedIssues": {
+        "nodes": [
+          {
+            "id": "issue-412",
+            "identifier": "ACM-412",
+            "title": "Add rate limiting to the public API",
+            "priority": 2.0,
+            "updatedAt": "2026-11-09T14:20:00.000Z",
+            "url": "https://linear.app/acme/issue/ACM-412/add-rate-limiting-to-the-public-api",
+            "branchName": "ada/acm-412-add-rate-limiting-to-the-public-api",
+            "state": {
+              "id": "state-progress",
+              "name": "In Progress",
+              "type": "started",
+              "position": 1.0
+            },
+            "labels": {
+              "nodes": [
+                {
+                  "name": "api",
+                  "color": "#3e63dd"
+                }
+              ]
+            },
+            "team": {
+              "key": "ACM"
+            },
+            "cycle": {
+              "number": 12
+            },
+            "project": null,
+            "assignee": {
+              "displayName": "Ada",
+              "isMe": true
+            }
+          },
+          {
+            "id": "issue-398",
+            "identifier": "ACM-398",
+            "title": "Checkout test fails one run in ten",
+            "priority": 1.0,
+            "updatedAt": "2026-11-09T14:20:00.000Z",
+            "url": "https://linear.app/acme/issue/ACM-398/checkout-test-fails-one-run-in-ten",
+            "branchName": "ada/acm-398-checkout-test-fails-one-run-in-ten",
+            "state": {
+              "id": "state-progress",
+              "name": "In Progress",
+              "type": "started",
+              "position": 1.0
+            },
+            "labels": {
+              "nodes": [
+                {
+                  "name": "bug",
+                  "color": "#e5484d"
+                }
+              ]
+            },
+            "team": {
+              "key": "ACM"
+            },
+            "cycle": {
+              "number": 12
+            },
+            "project": null,
+            "assignee": {
+              "displayName": "Ada",
+              "isMe": true
+            }
+          },
+          {
+            "id": "issue-405",
+            "identifier": "ACM-405",
+            "title": "Webhook retries ignore the backoff setting",
+            "priority": 2.0,
+            "updatedAt": "2026-11-06T14:20:00.000Z",
+            "url": "https://linear.app/acme/issue/ACM-405/webhook-retries-ignore-the-backoff-setting",
+            "branchName": "ada/acm-405-webhook-retries-ignore-the-backoff-setti",
+            "state": {
+              "id": "state-progress",
+              "name": "In Progress",
+              "type": "started",
+              "position": 1.0
+            },
+            "labels": {
+              "nodes": [
+                {
+                  "name": "bug",
+                  "color": "#e5484d"
+                },
+                {
+                  "name": "api",
+                  "color": "#3e63dd"
+                }
+              ]
+            },
+            "team": {
+              "key": "ACM"
+            },
+            "cycle": {
+              "number": 12
+            },
+            "project": null,
+            "assignee": {
+              "displayName": "Ada",
+              "isMe": true
+            }
+          },
+          {
+            "id": "issue-377",
+            "identifier": "ACM-377",
+            "title": "Write the 3.0 migration guide",
+            "priority": 3.0,
+            "updatedAt": "2026-11-05T14:20:00.000Z",
+            "url": "https://linear.app/acme/issue/ACM-377/write-the-3.0-migration-guide",
+            "branchName": "ada/acm-377-write-the-3.0-migration-guide",
+            "state": {
+              "id": "state-progress",
+              "name": "In Progress",
+              "type": "started",
+              "position": 1.0
+            },
+            "labels": {
+              "nodes": [
+                {
+                  "name": "docs",
+                  "color": "#05a2c2"
+                }
+              ]
+            },
+            "team": {
+              "key": "ACM"
+            },
+            "cycle": {
+              "number": 12
+            },
+            "project": null,
+            "assignee": {
+              "displayName": "Ada",
+              "isMe": true
+            }
+          },
+          {
+            "id": "issue-389",
+            "identifier": "ACM-389",
+            "title": "Cache the pricing table at the edge",
+            "priority": 3.0,
+            "updatedAt": "2026-11-08T14:20:00.000Z",
+            "url": "https://linear.app/acme/issue/ACM-389/cache-the-pricing-table-at-the-edge",
+            "branchName": "ada/acm-389-cache-the-pricing-table-at-the-edge",
+            "state": {
+              "id": "state-review",
+              "name": "In Review",
+              "type": "started",
+              "position": 2.0
+            },
+            "labels": {
+              "nodes": [
+                {
+                  "name": "perf",
+                  "color": "#ffc53d"
+                }
+              ]
+            },
+            "team": {
+              "key": "ACM"
+            },
+            "cycle": {
+              "number": 12
+            },
+            "project": null,
+            "assignee": {
+              "displayName": "Ada",
+              "isMe": true
+            }
+          },
+          {
+            "id": "issue-371",
+            "identifier": "ACM-371",
+            "title": "Show the plan limit on the usage page",
+            "priority": 4.0,
+            "updatedAt": "2026-11-05T14:20:00.000Z",
+            "url": "https://linear.app/acme/issue/ACM-371/show-the-plan-limit-on-the-usage-page",
+            "branchName": "ada/acm-371-show-the-plan-limit-on-the-usage-page",
+            "state": {
+              "id": "state-review",
+              "name": "In Review",
+              "type": "started",
+              "position": 2.0
+            },
+            "labels": {
+              "nodes": [
+                {
+                  "name": "web",
+                  "color": "#ab4aba"
+                }
+              ]
+            },
+            "team": {
+              "key": "ACM"
+            },
+            "cycle": {
+              "number": 12
+            },
+            "project": null,
+            "assignee": {
+              "displayName": "Ada",
+              "isMe": true
+            }
+          },
+          {
+            "id": "issue-420",
+            "identifier": "ACM-420",
+            "title": "Invoice PDF cuts long company names",
+            "priority": 3.0,
+            "updatedAt": "2026-11-10T14:20:00.000Z",
+            "url": "https://linear.app/acme/issue/ACM-420/invoice-pdf-cuts-long-company-names",
+            "branchName": "ada/acm-420-invoice-pdf-cuts-long-company-names",
+            "state": {
+              "id": "state-todo",
+              "name": "Todo",
+              "type": "unstarted",
+              "position": 0.0
+            },
+            "labels": {
+              "nodes": [
+                {
+                  "name": "bug",
+                  "color": "#e5484d"
+                }
+              ]
+            },
+            "team": {
+              "key": "ACM"
+            },
+            "cycle": null,
+            "project": null,
+            "assignee": {
+              "displayName": "Ada",
+              "isMe": true
+            }
+          },
+          {
+            "id": "issue-418",
+            "identifier": "ACM-418",
+            "title": "Let owners transfer a workspace",
+            "priority": 2.0,
+            "updatedAt": "2026-11-09T14:20:00.000Z",
+            "url": "https://linear.app/acme/issue/ACM-418/let-owners-transfer-a-workspace",
+            "branchName": "ada/acm-418-let-owners-transfer-a-workspace",
+            "state": {
+              "id": "state-todo",
+              "name": "Todo",
+              "type": "unstarted",
+              "position": 0.0
+            },
+            "labels": {
+              "nodes": []
+            },
+            "team": {
+              "key": "ACM"
+            },
+            "cycle": null,
+            "project": null,
+            "assignee": {
+              "displayName": "Ada",
+              "isMe": true
+            }
+          },
+          {
+            "id": "issue-415",
+            "identifier": "ACM-415",
+            "title": "Rotate signing keys without downtime",
+            "priority": 2.0,
+            "updatedAt": "2026-11-07T14:20:00.000Z",
+            "url": "https://linear.app/acme/issue/ACM-415/rotate-signing-keys-without-downtime",
+            "branchName": "ada/acm-415-rotate-signing-keys-without-downtime",
+            "state": {
+              "id": "state-todo",
+              "name": "Todo",
+              "type": "unstarted",
+              "position": 0.0
+            },
+            "labels": {
+              "nodes": [
+                {
+                  "name": "security",
+                  "color": "#30a46c"
+                }
+              ]
+            },
+            "team": {
+              "key": "ACM"
+            },
+            "cycle": null,
+            "project": null,
+            "assignee": {
+              "displayName": "Ada",
+              "isMe": true
+            }
+          },
+          {
+            "id": "issue-409",
+            "identifier": "ACM-409",
+            "title": "Empty state for the audit log",
+            "priority": 4.0,
+            "updatedAt": "2026-11-04T14:20:00.000Z",
+            "url": "https://linear.app/acme/issue/ACM-409/empty-state-for-the-audit-log",
+            "branchName": "ada/acm-409-empty-state-for-the-audit-log",
+            "state": {
+              "id": "state-todo",
+              "name": "Todo",
+              "type": "unstarted",
+              "position": 0.0
+            },
+            "labels": {
+              "nodes": [
+                {
+                  "name": "web",
+                  "color": "#ab4aba"
+                }
+              ]
+            },
+            "team": {
+              "key": "ACM"
+            },
+            "cycle": null,
+            "project": null,
+            "assignee": {
+              "displayName": "Ada",
+              "isMe": true
+            }
+          },
+          {
+            "id": "issue-402",
+            "identifier": "ACM-402",
+            "title": "Move the cron jobs to the queue",
+            "priority": 3.0,
+            "updatedAt": "2026-11-02T14:20:00.000Z",
+            "url": "https://linear.app/acme/issue/ACM-402/move-the-cron-jobs-to-the-queue",
+            "branchName": "ada/acm-402-move-the-cron-jobs-to-the-queue",
+            "state": {
+              "id": "state-todo",
+              "name": "Todo",
+              "type": "unstarted",
+              "position": 0.0
+            },
+            "labels": {
+              "nodes": [
+                {
+                  "name": "infra",
+                  "color": "#05a2c2"
+                }
+              ]
+            },
+            "team": {
+              "key": "ACM"
+            },
+            "cycle": null,
+            "project": null,
+            "assignee": {
+              "displayName": "Ada",
+              "isMe": true
+            }
+          },
+          {
+            "id": "issue-396",
+            "identifier": "ACM-396",
+            "title": "Search matches only the first word",
+            "priority": 0.0,
+            "updatedAt": "2026-10-29T14:20:00.000Z",
+            "url": "https://linear.app/acme/issue/ACM-396/search-matches-only-the-first-word",
+            "branchName": "ada/acm-396-search-matches-only-the-first-word",
+            "state": {
+              "id": "state-todo",
+              "name": "Todo",
+              "type": "unstarted",
+              "position": 0.0
+            },
+            "labels": {
+              "nodes": [
+                {
+                  "name": "bug",
+                  "color": "#e5484d"
+                }
+              ]
+            },
+            "team": {
+              "key": "ACM"
+            },
+            "cycle": null,
+            "project": null,
+            "assignee": {
+              "displayName": "Ada",
+              "isMe": true
+            }
+          },
+          {
+            "id": "issue-352",
+            "identifier": "ACM-352",
+            "title": "Retire the legacy export endpoint",
+            "priority": 4.0,
+            "updatedAt": "2026-10-20T14:20:00.000Z",
+            "url": "https://linear.app/acme/issue/ACM-352/retire-the-legacy-export-endpoint",
+            "branchName": "ada/acm-352-retire-the-legacy-export-endpoint",
+            "state": {
+              "id": "state-backlog",
+              "name": "Backlog",
+              "type": "backlog",
+              "position": 0.0
+            },
+            "labels": {
+              "nodes": [
+                {
+                  "name": "api",
+                  "color": "#3e63dd"
+                }
+              ]
+            },
+            "team": {
+              "key": "ACM"
+            },
+            "cycle": null,
+            "project": null,
+            "assignee": {
+              "displayName": "Ada",
+              "isMe": true
+            }
+          },
+          {
+            "id": "issue-340",
+            "identifier": "ACM-340",
+            "title": "Audit the third-party scripts",
+            "priority": 0.0,
+            "updatedAt": "2026-10-12T14:20:00.000Z",
+            "url": "https://linear.app/acme/issue/ACM-340/audit-the-third-party-scripts",
+            "branchName": "ada/acm-340-audit-the-third-party-scripts",
+            "state": {
+              "id": "state-backlog",
+              "name": "Backlog",
+              "type": "backlog",
+              "position": 0.0
+            },
+            "labels": {
+              "nodes": [
+                {
+                  "name": "security",
+                  "color": "#30a46c"
+                }
+              ]
+            },
+            "team": {
+              "key": "ACM"
+            },
+            "cycle": null,
+            "project": null,
+            "assignee": {
+              "displayName": "Ada",
+              "isMe": true
+            }
+          }
+        ],
+        "pageInfo": {
+          "hasNextPage": false,
+          "endCursor": null
+        }
+      }
+    }
+  }
+}
