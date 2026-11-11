@@ -12,9 +12,9 @@
 local kit = require("../lib/kit")
 local commands = require("./commands")
 local head = require("./head")
-local icons = require("./icons")
 local list = require("./list")
 local panel = require("./panel")
+local values = require("./values")
 
 local b, u, S, SIZE, act = kit.b, kit.u, kit.S, kit.SIZE, kit.act
 
@@ -28,14 +28,6 @@ local SCROLL = "new-scroll"
 
 -- The values, in the order they stand and Tab goes.
 local KINDS = { "team", "state", "priority", "assignee", "labels", "project" }
-
-local PRIORITIES = {
-	{ "none", "No priority" },
-	{ "urgent", "Urgent" },
-	{ "high", "High" },
-	{ "medium", "Medium" },
-	{ "low", "Low" },
-}
 
 -- How long a made issue is waited for in the lists that come, seconds.
 local WAIT = 30
@@ -100,38 +92,7 @@ local function about_words()
 	return b.layout.editor_text(name, 1, length + 1) or ""
 end
 
--- The item of `items` with `id`, or nil.
-local function find(items, id)
-	if id == nil then
-		return nil
-	end
-	for _, item in items do
-		if item.id == id then
-			return item
-		end
-	end
-	return nil
-end
-
--- Whether the label `id` is chosen.
-local function has_label(id)
-	for _, held in N.labels do
-		if held == id then
-			return true
-		end
-	end
-	return false
-end
-
--- The person's own entry among the members, or nil.
-local function me_of(data)
-	for _, member in data.members do
-		if member.me then
-			return member
-		end
-	end
-	return nil
-end
+local find, me_of = values.find, values.me_of
 
 -- --- What can be chosen ------------------------------------------------------------------------------
 
@@ -371,47 +332,19 @@ end
 
 -- --- The values --------------------------------------------------------------------------------------
 
-local function mark(on, words)
-	return (on and "\u{2713} " or "") .. words
-end
-
--- The entries of the menu of a value, each `{ key, title }`: the key says which value and which choice.
-local function entries_of(kind, data)
-	local out = {}
-	if kind == "team" then
-		for _, team in data.teams do
-			out[#out + 1] = { key = "team:" .. team.id, title = mark(team.id == data.team, team.key .. " " .. team.name) }
-		end
-	elseif kind == "state" then
-		for _, state in data.states do
-			out[#out + 1] = { key = "state:" .. state.id, title = mark(state.id == N.state, state.name) }
-		end
-	elseif kind == "priority" then
-		for _, priority in PRIORITIES do
-			out[#out + 1] = { key = "priority:" .. priority[1], title = mark(priority[1] == N.priority, priority[2]) }
-		end
-	elseif kind == "assignee" then
-		local me = me_of(data)
-		if me ~= nil then
-			out[#out + 1] = { key = "assignee:" .. me.id, title = mark(me.id == N.assignee, "Me") }
-		end
-		for _, member in data.members do
-			if not member.me then
-				out[#out + 1] = { key = "assignee:" .. member.id, title = mark(member.id == N.assignee, member.name) }
-			end
-		end
-		out[#out + 1] = { key = "assignee:none", title = mark(N.assignee == nil, "No one") }
-	elseif kind == "labels" then
-		for _, label in data.labels do
-			out[#out + 1] = { key = "label:" .. label.id, title = mark(has_label(label.id), label.name) }
-		end
-	elseif kind == "project" then
-		out[#out + 1] = { key = "project:none", title = mark(N.project == nil, "No project") }
-		for _, project in data.projects do
-			out[#out + 1] = { key = "project:" .. project.id, title = mark(project.id == N.project, project.name) }
-		end
+-- What the menus mark: what the draft holds.
+local function current()
+	local labels = {}
+	for _, id in N.labels do
+		labels[id] = true
 	end
-	return out
+	return {
+		state = N.state,
+		priority = N.priority,
+		assignee = N.assignee or "none",
+		labels = labels,
+		project = N.project or "none",
+	}
 end
 
 -- Opens the host's menu of a value, under its control. The reply that asks for it.
@@ -420,10 +353,13 @@ local function open_menu(kind)
 	if data == nil or N.creating then
 		return true
 	end
-	local entries = entries_of(kind, data)
-	if #entries == 0 then
+	local choices = values.choices(kind, data, current(), data.states)
+	if #choices == 0 then
 		return true
 	end
+	local entries = values.entries(choices, function(choice)
+		return choice.kind .. ":" .. choice.id
+	end)
 	return u:menu(MENU, entries, { near = VALUE .. kind }) or true
 end
 
@@ -466,92 +402,34 @@ end
 
 -- --- Drawing -----------------------------------------------------------------------------------------
 
--- A value that opens a menu: what it is now (or its name, dim, where nothing is chosen) and the mark
--- that it opens.
-local function chip(kind, kids, label)
-	local t = u.theme
-	local name = VALUE .. kind
-	kit.buttons[name] = not N.creating or nil
-	local over = u:hovered(name) and not N.creating
-	local held = over and u:pressed(name)
-	local el = b.div()
-		:row()
-		:items_center()
-		:gap(7)
-		:h(SIZE.control)
-		:px(9)
-		:no_shrink()
-		:rounded(t.radius.control)
-		:bg(held and t.control_press or over and t.control_hover or t.control)
-		:border(1, u:focus_visible(name) and t.ring or t.clear)
-		:color(t.ink)
-		:role("button")
-		:label(label)
-		:tip(label)
-		:motion({ seconds = t.motion, color = true })
-	if not N.creating then
-		el:press(name):focusable()
+-- What the chips say: what the draft holds, as the team's choices name it.
+local function shown_of(data)
+	local labels = {}
+	-- In the order they were chosen.
+	for _, id in N.labels do
+		local label = find(data.labels, id)
+		if label ~= nil then
+			labels[#labels + 1] = label
+		end
 	end
-	for _, kid in kids do
-		el:child(kid)
-	end
-	el:child(kit.icon("chevron-down", 10, "dim"))
-	return el
-end
-
-local function words(text, unset)
-	return b.text(text):text_size(SIZE.small):color(unset and "dim" or "foreground"):no_shrink()
+	local assignee = find(data.members, N.assignee)
+	return {
+		team = #data.teams > 1 and (find(data.teams, data.team) or { key = "Team" }) or nil,
+		state = find(data.states, N.state),
+		priority = N.priority,
+		assignee = assignee ~= nil and { id = assignee.id, name = assignee.me and "Me" or assignee.name } or nil,
+		labels = labels,
+		project = find(data.projects, N.project),
+	}
 end
 
 local function value_chips(data)
-	local row = b.div():row():wrap():gap_x(8):gap_y(8):no_shrink()
-	if #data.teams > 1 then
-		local team = find(data.teams, data.team)
-		row:child(chip("team", { words(team ~= nil and team.key or "Team") }, "Team"))
-	end
-	local state = find(data.states, N.state)
-	row:child(chip("state", {
-		icons.state(state ~= nil and state.kind or "other"),
-		words(state ~= nil and state.name or "Status", state == nil),
-	}, "Status"))
-	local priority = "No priority"
-	for _, known in PRIORITIES do
-		if known[1] == N.priority then
-			priority = known[2]
-		end
-	end
-	row:child(chip("priority", {
-		icons.priority(N.priority),
-		words(N.priority == "none" and "Priority" or priority, N.priority == "none"),
-	}, "Priority"))
-	local assignee = find(data.members, N.assignee)
-	row:child(chip("assignee", {
-		icons.person(),
-		words(assignee ~= nil and (assignee.me and "Me" or assignee.name) or "Assignee", assignee == nil),
-	}, "Assignee"))
-	if #data.labels > 0 then
-		local kids = {}
-		-- In the order they were chosen.
-		for _, id in N.labels do
-			local label = find(data.labels, id)
-			if label ~= nil then
-				kids[#kids + 1] = icons.dot(label.color)
-				kids[#kids + 1] = words(label.name)
-			end
-		end
-		if #kids == 0 then
-			kids = { icons.tag(), words("Labels", true) }
-		end
-		row:child(chip("labels", kids, "Labels"))
-	end
-	if #data.projects > 0 then
-		local project = find(data.projects, N.project)
-		row:child(chip("project", {
-			icons.cube(),
-			words(project ~= nil and project.name or "Project", project == nil),
-		}, "Project"))
-	end
-	return row
+	return values.chips(shown_of(data), {
+		prefix = VALUE,
+		disabled = N.creating,
+		labels = #data.labels > 0,
+		projects = #data.projects > 0,
+	})
 end
 
 -- The title: a line, the host's field in the form's look.

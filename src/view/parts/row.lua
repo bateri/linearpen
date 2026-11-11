@@ -130,6 +130,10 @@ function row.issue(item, look, o)
 			):child(b.text(look.working.agent):text_size(SIZE.small):color("accent"):no_shrink())
 		)
 	end
+	if look.changing then
+		-- A change of it is on its way.
+		el:child(b.div():row():items_center():no_shrink():label("Changing"):child(kit.spinner(12, "dim")))
+	end
 	el:child(
 		b.div():w(SIZE.date):no_shrink():row():justify_end():child(
 			b.text(issue.updated):text_size(SIZE.small):color("dim"):no_shrink()

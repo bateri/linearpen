@@ -39,7 +39,7 @@ function status.finish()
 		}
 	end
 	-- (In a form `?` is a character of the words, not the card of keys.)
-	if not S.form_open then
+	if not S.form_open and not S.editing then
 		finish[#finish + 1] = {
 			key = "help",
 			words = hint({ "help" }, "keys"),
@@ -74,7 +74,18 @@ local function new_hints()
 	return start
 end
 
+-- What the keyboard does while the title of the issue is written: it goes in, or it does not.
+local function edit_hints()
+	return {
+		{ key = "save", words = b.div():row():items_center():gap(5):no_shrink():child(u:kbd("enter")):child(b.text("save")), priority = 8 },
+		{ key = "cancel", words = b.div():row():items_center():gap(5):no_shrink():child(u:kbd("escape")):child(b.text("cancel")), priority = 7 },
+	}
+end
+
 function status.view()
+	if S.editing then
+		return u:status("status", { start = edit_hints(), finish = status.finish() })
+	end
 	if S.new_open then
 		return u:status("status", { start = new_hints(), finish = status.finish() })
 	end
@@ -107,6 +118,10 @@ function status.view()
 	end
 	if S.panel_open and not typing then
 		start[#start + 1] = { key = "read", words = hint({ "read_down" }, "scroll"), priority = 5 }
+	end
+	-- The keys that change the issues are in the card and the palette; this one says there are some.
+	if not typing and commands.when.changeable() then
+		start[#start + 1] = { key = "status", words = hint({ "status" }, "status"), priority = 4 }
 	end
 	if head.field.value ~= "" then
 		start[#start + 1] = { key = "clear", words = hint({ "back" }, "clear the filter"), priority = 5 }

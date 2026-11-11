@@ -5,6 +5,7 @@
 
 local markdown = require("@pencere/markdown")
 local kit = require("./lib/kit")
+local change = require("./parts/change")
 local commands = require("./parts/commands")
 local data = require("./parts/data")
 local head = require("./parts/head")
@@ -27,11 +28,11 @@ local function modal()
 	return palette.is_open() or help.is_open()
 end
 
--- While a form (the one for an agent, the one for a new issue) is open its fields have the keyboard,
--- and a command that is a plain key (a letter, a digit, an arrow) is not done: the key is the field's.
--- ⌘K and ⌘Enter are not letters.
+-- While a form (the one for an agent, the one for a new issue) is open, or the title of the issue is
+-- being written, its field has the keyboard, and a command that is a plain key (a letter, a digit, an
+-- arrow) is not done: the key is the field's. ⌘K and ⌘Enter are not letters.
 local function form_open()
-	return work.is_open() or new.is_open()
+	return work.is_open() or new.is_open() or panel.editing()
 end
 commands.when.list = function()
 	return S.screen == "list" and not modal() and not form_open()
@@ -52,6 +53,19 @@ end
 commands.when.reading = function()
 	local target = u:target()
 	return commands.when.idle() and panel.is_open() and not (target ~= nil and kit.buttons[target] ~= nil)
+end
+-- The keys that change the issues the cursor is on, or those selected: there is one to change, and no
+-- change of it is on its way.
+commands.when.changeable = function()
+	return commands.when.idle() and change.can()
+end
+-- The priority needs no choices of the team.
+commands.when.plain_change = function()
+	return commands.when.idle() and change.can(true)
+end
+-- The title is of one issue, and needs none either.
+commands.when.titleable = function()
+	return commands.when.plain_change() and #change.targets() == 1
 end
 commands.when.workable = function()
 	return commands.when.idle() and work.workable()
@@ -158,6 +172,10 @@ local function listing()
 	if banner ~= nil then
 		left:child(banner)
 	end
+	local strip = change.strip()
+	if strip ~= nil then
+		left:child(strip)
+	end
 	left:child(body())
 	local row = b.div():row():grow(1):min_h(0):child(left)
 	if S.panel_open then
@@ -173,6 +191,7 @@ local function render(size, now, reduce_motion)
 	S.work_open = S.screen == "list" and work.is_open()
 	S.new_open = S.screen == "list" and new.is_open()
 	S.form_open = S.work_open or S.new_open
+	S.editing = S.screen == "list" and change.editing()
 	S.panel_open = S.screen == "list" and (panel.is_open() or S.form_open)
 	S.room = (S.panel_open and S.width >= 760) and S.width - panel.width(S.width) or S.width
 	local root = b.div():size_full():col():bg("background"):color("foreground"):family("terminal")
@@ -209,6 +228,18 @@ local function command(id)
 		list.toggle_mark(list.state.cursor)
 	elseif id == "select_all" then
 		list.select_all()
+	elseif id == "status" then
+		return change.run("state")
+	elseif id == "priority" then
+		return change.run("priority")
+	elseif id == "assignee" then
+		return change.run("assignee")
+	elseif id == "labels" then
+		return change.run("labels")
+	elseif id == "project" then
+		return change.run("project")
+	elseif id == "title" then
+		return panel.rename_target()
 	elseif id == "link" then
 		return panel.link()
 	elseif id == "read_down" then
@@ -259,6 +290,8 @@ local function press(id)
 		return panel.link()
 	elseif id == "panel-close" then
 		panel.close()
+	elseif id == "panel-title-edit" then
+		return panel.rename()
 	elseif id == "issue-retry" then
 		panel.retry()
 	elseif id == "clear-selection" then
@@ -269,6 +302,9 @@ local function press(id)
 		local reply = work.press(id)
 		if reply == nil then
 			reply = new.press(id)
+		end
+		if reply == nil then
+			reply = change.press(id)
 		end
 		if reply ~= nil then
 			return reply
@@ -291,6 +327,9 @@ local function on_action(action)
 	end
 	if reply == nil then
 		reply = new.action(action)
+	end
+	if reply == nil then
+		reply = change.action(action)
 	end
 	if reply ~= nil then
 		return reply
@@ -355,6 +394,11 @@ local function key(event)
 		-- The form takes Tab and Esc whoever holds the keyboard, and the list's keys are not its own.
 		return work.key(event)
 	end
+	if panel.editing() then
+		-- The title is being written: its keys are the field's (Enter and Esc come as its actions), and
+		-- the arrows do not take the cursor from the issue.
+		return nil
+	end
 	if u.holder ~= "page" then
 		-- In the field the arrows are the list's and the words stay in it.
 		return list.key(event, true) or nil
@@ -390,18 +434,21 @@ end
 -- The issue open follows the cursor where the cursor is on an issue.
 local function follow()
 	work.sync()
+	change.sync()
 	if not panel.is_open() then
 		return
 	end
 	local item = list.current()
-	if item ~= nil and item.kind == "issue" and item.row.id ~= panel.id() then
+	-- (The issue the person changed stays open, though the change took it out of the list and the
+	-- cursor with it, until the cursor is moved.)
+	if item ~= nil and item.kind == "issue" and item.row.id ~= panel.id() and not panel.held() then
 		panel.show(item)
 	end
 end
 
 local function handle(event)
 	local kind = event.type
-	if kind == "key" and S.screen == "list" and form_open() and not modal() then
+	if kind == "key" and S.screen == "list" and (new.is_open() or work.is_open()) and not modal() then
 		local stepped
 		if new.is_open() then
 			stepped = new.tab(event)

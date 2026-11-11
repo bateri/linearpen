@@ -17,10 +17,15 @@ local function apply(snapshot)
 	if act.listed ~= nil then
 		act.listed()
 	end
+	-- What the commands that change issues need is asked for as the lists come, not at the first key.
+	if act.sync ~= nil then
+		act.sync()
+	end
 end
 
--- Tells the program what the page looks at (`scope`, `filter`, `closed`).
-function act.view(params)
+-- Tells the program what the page looks at (`scope`, `filter`, `closed`). `after`, where there is one, is
+-- called when the program has answered (or has not).
+function act.view(params, after)
 	-- The calls run at the same time in the program: each is numbered, so that one told late does not
 	-- undo a later one.
 	S.view_seq = (S.view_seq or 0) + 1
@@ -29,6 +34,9 @@ function act.view(params)
 		-- The answer of a call that a later one has gone past is not what the program holds now.
 		if result and params.seq == S.view_seq then
 			apply(result)
+		end
+		if after ~= nil then
+			after()
 		end
 		return true
 	end)

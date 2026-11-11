@@ -6,10 +6,11 @@
       "states": {
         "nodes": [
           { "id": "s-prog", "name": "In Progress", "type": "started", "position": 2.0 },
-          { "id": "s-done", "name": "Done", "type": "completed", "position": 3.0 },
+          { "id": "s-review", "name": "In Review", "type": "started", "position": 3.0 },
+          { "id": "s-done", "name": "Done", "type": "completed", "position": 4.0 },
           { "id": "s-todo", "name": "Todo", "type": "unstarted", "position": 1.0 },
           { "id": "s-back", "name": "Backlog", "type": "backlog", "position": 0.0 },
-          { "id": "s-cancel", "name": "Canceled", "type": "canceled", "position": 4.0 }
+          { "id": "s-cancel", "name": "Canceled", "type": "canceled", "position": 5.0 }
         ]
       },
       "labels": {

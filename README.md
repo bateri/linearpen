@@ -2,8 +2,9 @@
 
 Your Linear issues in a terminal pane, and an agent started on the ones you pick: a list grouped
 by state, an issue beside it with its description and comments, and Claude, Codex or Cursor
-working on what you chose in the pane next to it. You can write a new issue in it too, and that is
-the one thing it changes in Linear.
+working on what you chose in the pane next to it. You can write a new issue in it too, and change
+the status, priority, assignee, labels, project and title of the issues you have; those are the two
+things it writes to Linear, and never the description.
 
 <img src="docs/list.png" width="720" alt="linearpen: the issues assigned to you, grouped by state">
 
@@ -28,8 +29,8 @@ target/release/linearpen
 
 ### The key
 
-linearpen asks Linear with a personal API key that has Read permission, and Create issues too if
-you want to make new issues in it. Make one in Linear under Settings, Account, Security. A pane that has no key asks for one (the field hides what you type),
+linearpen asks Linear with a personal API key that has Read permission, Create issues too if you
+want to make new issues in it, and Write too if you want to change the issues you have. Make one in Linear under Settings, Account, Security. A pane that has no key asks for one (the field hides what you type),
 tries it with a question to Linear and keeps it in the file `key` of `~/.config/linearpen` (or of
 `$XDG_CONFIG_HOME/linearpen`), made readable by you alone. `LINEAR_API_KEY` in the environment is
 used first, and kept nowhere. A key file that other users can read is still read, and `linearpen --text` warns about it.
@@ -62,6 +63,34 @@ made. If Linear does not make it the form says why, with what you wrote still in
 sent once, with an identity the program gave the draft, so pressing Create again after an answer that
 was lost asks Linear for that issue before it sends anything else and never makes two. A key without
 Create issues permission is told so in the form.
+
+### Change an issue
+
+<img src="docs/edit.png" width="720" alt="linearpen: an issue open beside the list, with its status, priority, assignee, labels and project as buttons">
+
+The status, priority, assignee, labels and project of the issue that is open are buttons, the same
+ones the form of a new issue has: each says what it is now and opens a menu of the others, the status
+with every state of the team (Done and Canceled too). The title is changed in place: `e`, or a press
+on it, makes it a field with the words selected, `Enter` saves it and `Esc` leaves the old one. A
+change is sent when you choose it, with no question; the control is busy until Linear has answered,
+and if Linear says no the words are under the controls and the value is as it was. A change that
+moves the issue puts it in its new group with the cursor on it, and one that takes it out of the list
+(done, canceled, given to someone else while you look at your own) leaves the issue open beside the
+list, with its new value, until you move the cursor again.
+
+<img src="docs/edit-done.png" width="720" alt="linearpen: the issue that was made Done, gone from the list and still open beside it">
+
+From the list the keys do the same: `s` the status, `p` the priority, `a` the assignee, `l` the
+labels, `Shift P` the project and `e` the title (which opens the issue, to write in its title) of the
+issue under the cursor, or of **all the issues you selected**, up to fifty at once, in one request to
+Linear (`e` is for one). A label that every one of them has is
+taken off and one that not every one has is put on all of them. Issues of more than one team can only
+change their priority, and the menu says so.
+
+<img src="docs/edit-many.png" width="720" alt="linearpen: three issues selected, which the status key changes together">
+
+The change is sent once. Where no answer comes it is not sent again by the program: it tells you, and
+asks Linear what the issue holds now. The description and the team are never written.
 
 ### Work on an issue
 
@@ -102,6 +131,8 @@ Everything the mouse does, the keys do too. The line at the foot says what the k
 | `o`                   | open it in Linear                                                    |
 | `Space`, `⇧ Space`    | scroll the open issue down, up                                       |
 | `x`, `Shift ↑↓`, `⌘A` | select the issue, select more, select all                            |
+| `s` `p` `a` `l` `⇧P`  | change the status, priority, assignee, labels, project               |
+| `e`                   | change the title                                                     |
 | `w`                   | work on the issue or the selected                                    |
 | `c`                   | write a new issue                                                    |
 | `⌘Enter`              | start the agent, or create the issue, in the form that is open       |
@@ -111,14 +142,18 @@ Everything the mouse does, the keys do too. The line at the foot says what the k
 | `⌘K`, `?`             | find a command, the card of keys                                     |
 | `Esc`                 | close what is on top: the form, the issue, the selection, the filter |
 
-## It writes one thing
+## It writes two things
 
-The only thing linearpen tells Linear is a new issue: its one mutation, `IssueCreate`, is sent when
-you press Create in the form and not otherwise, and the list of mutations it may send is one place
-in the program that a test checks every query against, refusing any other before it is sent. A
-state, an assignee, a comment, an archive or a deletion changed from here would be a decision of its
-own. It does not send a new issue twice by itself: the draft has an identity, and an issue whose
-answer was lost is asked for by it.
+linearpen tells Linear a new issue and a change to the issues you have, and nothing else. It has two
+mutations, `IssueCreate` (sent when you press Create in the form) and `IssueBatchUpdate` (sent when you
+choose a status, a priority, an assignee, a label, a project or a title, for one issue or for those you
+selected), and the list of mutations it may send is one place in the program that a test checks every
+query against, refusing any other before it is sent. What a change can be is a type of its own with
+those six fields in it: the description and the team of an issue cannot be written by it, and a
+test looks for them in what is sent. A comment, an archive or a deletion changed from here would be a
+decision of its own. It does not send anything twice by itself: a new issue has an identity the draft
+was given, and an issue whose answer was lost is asked for by it; a change whose answer was lost is
+not sent again, and the issue is asked for.
 
 ## It talks to Linear with `curl`
 

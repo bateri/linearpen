@@ -271,15 +271,22 @@ to another person is not in My issues. What Linear says of them is written into 
 the issues kept for `issue`, and the topic `issues` tells it: the lists are not asked for again.
 
 The change is sent **once**, to all the issues in one request; the program never sends it again by
-itself, and asking twice for the same value changes nothing more. If the answer did not come whole
-(nothing came, or an error), the call fails, and the program asks Linear for each of the issues,
-so that what the topic tells is what Linear holds; the call fails all the same. A key Linear does not
-take (`refused`) is not asked about.
+itself, and asking twice for the same value changes nothing more. If no answer came,
+the call fails, and the program asks Linear for each of the issues, so that what the topic tells is
+what Linear holds; the call fails all the same. An answer that cannot be read (an HTTP status that is
+not 200 with no error in it, such as a gateway's 502, or a body that is not what was asked for) is
+the same as no answer: the issues are asked for, and the call fails with `change-failed` and the
+words that it is not known whether Linear made it. An answer that says no (Linear's own error, or
+`refused`: the key is not taken) says the change was not made, and nothing is asked about. A list
+that was on its way when the change was made, or when the issues were asked for, was asked for
+before it: when it has come it is let go, and the lists are asked for once more, so that the old
+values are not put back.
 
 Errors: `bad-params`, `no-key`, `refused`, `unreachable` (no answer came: the change may have been
-made, and the topic tells what Linear holds), and `change-failed`: Linear did not make it. The words
-say why: `Linear did not change it: this key cannot change issues` where the key reads and may not
-write, else Linear's own words (`Linear did not change it: ...`).
+made, and the topic tells what Linear holds), and `change-failed`: Linear did not make it, or it is
+not known. The words say why: `Linear did not change it: this key cannot change issues` where the key
+reads and may not write, `Linear did not answer whole, so it may have changed it` where the answer
+could not be read, else Linear's own words (`Linear did not change it: ...`).
 
 ### `refresh`
 

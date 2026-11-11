@@ -38,6 +38,7 @@ const TEAMS: &str = include_str!("../../test/stand-in/teams.json");
 const NEW_ISSUE_OPTIONS: &str = include_str!("../../test/stand-in/new-issue-options.json");
 const CREATED_ISSUE: &str = include_str!("../../test/stand-in/created-issue.json");
 const CREATE_REFUSED: &str = include_str!("../../test/stand-in/create-refused.json");
+const CHANGE_REFUSED: &str = include_str!("../../test/stand-in/change-refused.json");
 
 /// How Linear answers in a test.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -78,6 +79,23 @@ pub(crate) struct Canned {
     bare: Mutex<bool>,
     /// Whether Linear has one team.
     one_team: Mutex<bool>,
+    /// How a change is answered.
+    change: Mutex<Change>,
+    /// The inputs of the `IssueBatchUpdate` requests that were sent (`ids` and `input`), in order.
+    changes: Mutex<Vec<serde_json::Value>>,
+    /// What each issue was changed to, in order: the lists and `Issue` answer with it from then on.
+    edits: Mutex<std::collections::HashMap<String, Vec<serde_json::Value>>>,
+    /// The team of an issue where it is not Acme's: the id and the key.
+    teams_of: Mutex<std::collections::HashMap<String, (String, String)>>,
+}
+
+/// How Linear answers a change.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Change {
+    /// By making it.
+    Fine,
+    /// By not making it (an error of its own).
+    Refused,
 }
 
 impl Canned {
@@ -91,7 +109,68 @@ impl Canned {
             made: Mutex::new(None),
             bare: Mutex::new(false),
             one_team: Mutex::new(false),
+            change: Mutex::new(Change::Fine),
+            changes: Mutex::new(Vec::new()),
+            edits: Mutex::new(std::collections::HashMap::new()),
+            teams_of: Mutex::new(std::collections::HashMap::new()),
         })
+    }
+
+    /// How a change is answered from now on.
+    pub(crate) fn set_change(&self, change: Change) {
+        *self.change.lock().unwrap() = change;
+    }
+
+    /// The `IssueBatchUpdate` requests that were sent, in order: `{ "ids": [..], "input": {..} }`.
+    pub(crate) fn changed(&self) -> Vec<serde_json::Value> {
+        self.changes.lock().unwrap().clone()
+    }
+
+    /// From now on the issue `id` is of the team `team` (key `key`), not of Acme.
+    pub(crate) fn set_team_of(&self, id: &str, team: &str, key: &str) {
+        self.teams_of
+            .lock()
+            .unwrap()
+            .insert(id.to_owned(), (team.to_owned(), key.to_owned()));
+    }
+
+    /// The node of the issue `id` as the fixtures have it, with the changes made to it since; `None`
+    /// where there is no such issue.
+    fn node_of(&self, id: &str) -> Option<serde_json::Value> {
+        let all: serde_json::Value = serde_json::from_str(ALL_ISSUES).unwrap();
+        let mut node = all["data"]["issues"]["nodes"]
+            .as_array()?
+            .iter()
+            .find(|node| node["id"] == id)
+            .cloned()
+            .or_else(|| self.made_node().filter(|node| node["id"] == id))?;
+        if let Some((team, key)) = self.teams_of.lock().unwrap().get(id) {
+            node["team"] = serde_json::json!({ "id": team, "key": key });
+        }
+        for input in self.edits.lock().unwrap().get(id).into_iter().flatten() {
+            edit_node(&mut node, input);
+        }
+        Some(node)
+    }
+
+    /// A node of a list as it stands now: `None` where it has left the list, being done or
+    /// canceled, or (in the list of the person's own) given to someone else.
+    fn shown(&self, node: &serde_json::Value, mine: bool) -> Option<serde_json::Value> {
+        let id = node["id"].as_str()?;
+        let edited = self.edits.lock().unwrap().contains_key(id)
+            || self.teams_of.lock().unwrap().contains_key(id);
+        if !edited {
+            return Some(node.clone());
+        }
+        let now = self.node_of(id)?;
+        let kind = now["state"]["type"].as_str().unwrap_or_default();
+        if kind == "completed" || kind == "canceled" {
+            return None;
+        }
+        if mine && now["assignee"]["isMe"] != true {
+            return None;
+        }
+        Some(now)
     }
 
     /// From now on Linear has one team and no label or project to choose.
@@ -144,34 +223,18 @@ impl Canned {
         node["id"] = input["id"].clone();
         node["title"] = input["title"].clone();
         node["priority"] = input["priority"].as_f64().unwrap_or(0.0).into();
-        let (name, kind, position) = match input["stateId"].as_str() {
-            Some("s-prog") => ("In Progress", "started", 2.0),
-            Some("s-back") => ("Backlog", "backlog", 0.0),
-            _ => ("Todo", "unstarted", 1.0),
-        };
-        node["state"] = serde_json::json!({
-            "id": input["stateId"], "name": name, "type": kind, "position": position });
-        let labels: Vec<serde_json::Value> = input["labelIds"]
+        node["state"] = option_of("states", input["stateId"].as_str().unwrap_or("s-todo"))
+            .unwrap_or_else(|| option_of("states", "s-todo").unwrap());
+        node["labels"]["nodes"] = input["labelIds"]
             .as_array()
             .into_iter()
             .flatten()
-            .filter_map(|id| match id.as_str()? {
-                "l-bug" => Some(("l-bug", "bug", "#eb5757")),
-                "l-api" => Some(("l-api", "api", "#3e63dd")),
-                "l-customer" => Some(("l-customer", "Customer", "#f2994a")),
-                _ => None,
-            })
-            .map(|(id, name, color)| serde_json::json!({ "id": id, "name": name, "color": color }))
-            .collect();
-        node["labels"]["nodes"] = labels.into();
+            .filter_map(|id| option_of("labels", id.as_str()?))
+            .collect::<Vec<_>>()
+            .into();
         node["assignee"] = match input["assigneeId"].as_str() {
-            Some("u-ada") => {
-                serde_json::json!({ "id": "u-ada", "displayName": "Ada", "isMe": true })
-            }
-            Some("u-deniz") => {
-                serde_json::json!({ "id": "u-deniz", "displayName": "Deniz", "isMe": false })
-            }
-            _ => serde_json::Value::Null,
+            Some(id) => person_of(id),
+            None => serde_json::Value::Null,
         };
         Some(node)
     }
@@ -201,18 +264,49 @@ impl Canned {
         Some(value)
     }
 
-    /// A list of the fixtures with the created issue first, if one was made.
+    /// The issue `id` as `Issue` says it: the fixture's description and comments, the rest as the
+    /// issue stands in the lists now.
+    fn detail_of(&self, id: &str) -> String {
+        let mut value: serde_json::Value = serde_json::from_str(ISSUE).unwrap();
+        if let Some(node) = self.node_of(id) {
+            for key in [
+                "id",
+                "identifier",
+                "title",
+                "priority",
+                "state",
+                "labels",
+                "assignee",
+                "team",
+                "project",
+                "cycle",
+                "url",
+                "branchName",
+            ] {
+                value["data"]["issue"][key] = node[key].clone();
+            }
+        }
+        value.to_string()
+    }
+
+    /// A list of the fixtures with the created issue first, if one was made, and each issue as the
+    /// changes made leave it.
     fn listing(&self, fixture: &str, mine: bool) -> String {
-        let Some(node) = self.made_node() else {
-            return fixture.to_owned();
-        };
         let mut value: serde_json::Value = serde_json::from_str(fixture).unwrap();
         let nodes = if mine {
             &mut value["data"]["viewer"]["assignedIssues"]["nodes"]
         } else {
             &mut value["data"]["issues"]["nodes"]
         };
-        nodes.as_array_mut().unwrap().insert(0, node);
+        let nodes = nodes.as_array_mut().unwrap();
+        if let Some(node) = self.made_node() {
+            nodes.insert(0, node);
+        }
+        let now: Vec<serde_json::Value> = nodes
+            .iter()
+            .filter_map(|node| self.shown(node, mine))
+            .collect();
+        *nodes = now;
         value.to_string()
     }
 
@@ -236,6 +330,70 @@ impl Canned {
     }
 }
 
+/// The state, label, project or member `id` of the options the fixtures have for Acme, as a node
+/// of an issue has it. (`kind` is `states`, `labels`, `projects` or `members`.)
+fn option_of(kind: &str, id: &str) -> Option<serde_json::Value> {
+    let options: serde_json::Value = serde_json::from_str(NEW_ISSUE_OPTIONS).unwrap();
+    let found = options["data"]["team"][kind]["nodes"]
+        .as_array()?
+        .iter()
+        .find(|node| node["id"] == id)?
+        .clone();
+    Some(match kind {
+        "labels" => serde_json::json!({
+            "id": found["id"], "name": found["name"], "color": found["color"] }),
+        "projects" => serde_json::json!({ "id": found["id"], "name": found["name"] }),
+        "members" => serde_json::json!({
+            "id": found["id"], "displayName": found["displayName"], "isMe": found["isMe"] }),
+        _ => found,
+    })
+}
+
+/// A member as an issue names its assignee; the label that is of the workspace is found too.
+fn person_of(id: &str) -> serde_json::Value {
+    option_of("members", id).unwrap_or(serde_json::Value::Null)
+}
+
+/// What an `IssueBatchUpdate` input does to the node of an issue.
+fn edit_node(node: &mut serde_json::Value, input: &serde_json::Value) {
+    if let Some(title) = input.get("title") {
+        node["title"] = title.clone();
+    }
+    if let Some(priority) = input["priority"].as_f64() {
+        node["priority"] = priority.into();
+    }
+    if let Some(state) = input["stateId"]
+        .as_str()
+        .and_then(|id| option_of("states", id))
+    {
+        node["state"] = state;
+    }
+    if let Some(assignee) = input.get("assigneeId") {
+        node["assignee"] = assignee.as_str().map_or(serde_json::Value::Null, person_of);
+    }
+    if let Some(project) = input.get("projectId") {
+        node["project"] = project
+            .as_str()
+            .and_then(|id| option_of("projects", id))
+            .unwrap_or(serde_json::Value::Null);
+    }
+    let mut labels: Vec<serde_json::Value> = node["labels"]["nodes"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    for id in input["removedLabelIds"].as_array().into_iter().flatten() {
+        labels.retain(|label| label["id"] != *id);
+    }
+    for id in input["addedLabelIds"].as_array().into_iter().flatten() {
+        let already = labels.iter().any(|label| label["id"] == *id);
+        if let (false, Some(label)) = (already, id.as_str().and_then(|id| option_of("labels", id)))
+        {
+            labels.push(label);
+        }
+    }
+    node["labels"]["nodes"] = labels.into();
+}
+
 impl Transport for Canned {
     fn post(&self, key: &Key, body: &str) -> Result<Reply, LinearError> {
         let name = [
@@ -243,6 +401,7 @@ impl Transport for Canned {
             "MyIssues",
             "AllIssues",
             "IssueCreate",
+            "IssueBatchUpdate",
             "NewIssueTeams",
             "NewIssueOptions",
             "Issue",
@@ -280,11 +439,39 @@ impl Transport for Canned {
                         Some(value) if value["data"]["issue"]["id"] == id => {
                             reply(200, &value.to_string())
                         }
-                        _ => reply(200, ISSUE),
+                        _ => reply(200, &self.detail_of(id)),
                     }
                 }
                 "NewIssueTeams" => reply(200, &self.teams_text()),
                 "NewIssueOptions" => reply(200, &self.options_text()),
+                "IssueBatchUpdate" => {
+                    let asked: serde_json::Value = serde_json::from_str(body).unwrap();
+                    self.changes.lock().unwrap().push(serde_json::json!({
+                        "ids": asked["variables"]["ids"], "input": asked["variables"]["input"] }));
+                    if *self.change.lock().unwrap() == Change::Refused {
+                        return reply(400, CHANGE_REFUSED);
+                    }
+                    let ids = asked["variables"]["ids"]
+                        .as_array()
+                        .cloned()
+                        .unwrap_or_default();
+                    let mut nodes = Vec::new();
+                    for id in ids.iter().filter_map(|id| id.as_str()) {
+                        self.edits
+                            .lock()
+                            .unwrap()
+                            .entry(id.to_owned())
+                            .or_default()
+                            .push(asked["variables"]["input"].clone());
+                        nodes.extend(self.node_of(id));
+                    }
+                    reply(
+                        200,
+                        &serde_json::json!({ "data": { "issueBatchUpdate": {
+                            "success": true, "issues": nodes } } })
+                        .to_string(),
+                    )
+                }
                 "IssueCreate" => {
                     let asked: serde_json::Value = serde_json::from_str(body).unwrap();
                     let input = asked["variables"]["input"].clone();
@@ -1519,7 +1706,7 @@ fn a_value_opens_its_menu_and_the_pick_is_written_to_the_control() {
     page.click("new-value:state").expect("state");
     assert_eq!(
         menu_titles(&page),
-        ["Backlog", "\u{2713} Todo", "In Progress"]
+        ["Backlog", "\u{2713} Todo", "In Progress", "In Review"]
     );
     page.pick_titled("In Progress").expect("In Progress");
     page.wait_for(WITHIN, |page| {
@@ -1763,4 +1950,566 @@ fn an_issue_made_while_all_issues_is_shown_leaves_the_list_as_it_is() {
     cursor_on(&mut page, "ACM-900");
     // (It is for the person, and the list that is shown is still All issues.)
     assert!(page.says("ACM-417"), "{}", said(&page));
+}
+
+// --- Changing an issue ---------------------------------------------------------------------------
+
+/// Whether the control `name` is laid out and the person can press it now.
+pub(crate) fn pressable(page: &Page, name: &str) -> bool {
+    let id = pencere_view::Id::named(name);
+    page.outline()
+        .accessible
+        .iter()
+        .any(|node| node.id == Some(id) && !node.state.disabled)
+}
+
+/// Opens the issue under the cursor and waits until its controls can be pressed (the choices of its
+/// team have come).
+fn open_the_controls(page: &mut Page) {
+    open_the_issue(page);
+    page.wait_for(WITHIN, |page| pressable(page, "panel-value:state"))
+        .unwrap_or_else(|why| panic!("the controls can be pressed: {why:?}: {}", said(page)));
+}
+
+/// Waits until Linear has been sent `count` changes.
+fn changed(linear: &Arc<Canned>, page: &mut Page, count: usize) {
+    page.wait_for(WITHIN, |_| linear.changed().len() >= count)
+        .unwrap_or_else(|why| {
+            panic!(
+                "Linear is asked: {why:?}: {:?}: {}",
+                linear.changed(),
+                said(page)
+            )
+        });
+}
+
+/// Presses `key` until a menu opens (a command waits for the choices of the team, and for a change
+/// that is on its way), and gives the menu's entries: the title and whether it can be picked.
+fn menu_after(page: &mut Page, key: &str) -> Vec<(String, bool)> {
+    for _ in 0..100 {
+        if page.menu().is_none() {
+            page.press(key).expect("the key");
+        }
+        if page.menu().is_some() {
+            break;
+        }
+        page.advance(0.1).expect("a moment");
+    }
+    page.menu()
+        .unwrap_or_else(|| panic!("{key} opens a menu: {}", said(page)))
+        .entries
+        .iter()
+        .filter_map(|entry| match entry {
+            pencere_view::MenuEntry::Item { title, enabled, .. } => Some((title.clone(), *enabled)),
+            _ => None,
+        })
+        .collect()
+}
+
+fn titles(entries: &[(String, bool)]) -> Vec<&str> {
+    entries.iter().map(|(title, _)| title.as_str()).collect()
+}
+
+/// Whether the page has the host's field `name` now (one it has taken away is not).
+fn has_field(page: &Page, name: &str) -> bool {
+    let id = pencere_view::Id::named(name);
+    page.outline().fields.iter().any(|field| field.id == id)
+}
+
+/// Whether a group's head says `words` to a screen reader (`In Review, 3`).
+fn group_says(page: &Page, words: &str) -> bool {
+    page.outline()
+        .accessible
+        .iter()
+        .any(|node| node.words == words)
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_status_control_opens_its_menu_the_pick_goes_to_linear_and_the_issue_changes_group() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    assert!(group_says(&page, "In Progress, 4"), "{}", said(&page));
+    open_the_controls(&mut page);
+    page.click("panel-value:state").expect("status");
+    // Every state of the team, not only the open ones: the one it is in is marked.
+    assert_eq!(
+        menu_titles(&page),
+        [
+            "Backlog",
+            "Todo",
+            "\u{2713} In Progress",
+            "In Review",
+            "Done",
+            "Canceled"
+        ]
+    );
+    page.pick_titled("In Review").expect("In Review");
+    changed(&linear, &mut page, 1);
+    assert_eq!(
+        linear.changed()[0],
+        serde_json::json!({ "ids": ["issue-412"], "input": { "stateId": "s-review" } })
+    );
+    // The control says the new value, the issue is in its new group, and the cursor is on it.
+    page.wait_for(WITHIN, |page| {
+        page.words_in("panel-value:state")
+            .contains(&"In Review".to_owned())
+            && group_says(page, "In Review, 3")
+    })
+    .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    assert!(group_says(&page, "In Progress, 3"), "{}", said(&page));
+    cursor_on(&mut page, "ACM-412");
+    // (Linear was not asked for the lists again.)
+    assert_eq!(linear.times("MyIssues"), 1);
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_change_to_a_folded_group_opens_it_and_the_cursor_follows_the_issue() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    assert!(group_says(&page, "Backlog, 2"), "{}", said(&page));
+    let entries = menu_after(&mut page, "s");
+    assert_eq!(entries.len(), 6, "{entries:?}");
+    page.pick_titled("Backlog").expect("Backlog");
+    changed(&linear, &mut page, 1);
+    // Backlog is folded in the list, and it is opened to show where the issue went.
+    page.wait_for(WITHIN, |page| group_says(page, "Backlog, 3"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    page.wait_for(WITHIN, |page| page.bounds("row:i:issue-412").is_some())
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    cursor_on(&mut page, "ACM-412");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn done_takes_the_issue_out_of_the_list_the_panel_stays_on_it_and_follows_the_cursor_after_a_move()
+{
+    let (linear, _session, mut page) = open_lists(WIDE);
+    // A line that is not the first, so that its neighbour is not where the cursor began.
+    page.press("down").expect("down");
+    cursor_on(&mut page, "ACM-398");
+    open_the_controls(&mut page);
+    page.click("panel-value:state").expect("status");
+    page.pick_titled("Done").expect("Done");
+    changed(&linear, &mut page, 1);
+    assert_eq!(
+        linear.changed()[0],
+        serde_json::json!({ "ids": ["issue-398"], "input": { "stateId": "s-done" } })
+    );
+    // The line is gone, the cursor is on the next, and the issue is still open and says Done.
+    page.wait_for(WITHIN, |page| {
+        page.bounds("row:i:issue-398").is_none()
+            && page
+                .words_in("panel-value:state")
+                .contains(&"Done".to_owned())
+    })
+    .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    cursor_on(&mut page, "ACM-405");
+    assert!(page.says("Checkout test fails"), "{}", said(&page));
+    assert!(group_says(&page, "In Progress, 3"), "{}", said(&page));
+    page.advance(0.5).expect("a moment");
+    assert!(
+        page.says("Checkout test fails"),
+        "the panel stays where the person left it: {}",
+        said(&page)
+    );
+    // The change is undone from the panel that stayed: the issue is back in the list.
+    page.click("panel-value:state").expect("status");
+    page.pick_titled("In Progress").expect("In Progress");
+    changed(&linear, &mut page, 2);
+    assert_eq!(
+        linear.changed()[1],
+        serde_json::json!({ "ids": ["issue-398"], "input": { "stateId": "s-prog" } })
+    );
+    page.wait_for(WITHIN, |page| page.bounds("row:i:issue-398").is_some())
+        .unwrap_or_else(|why| panic!("the line is back: {why:?}: {}", said(&page)));
+    assert!(group_says(&page, "In Progress, 4"), "{}", said(&page));
+    assert!(page.says("Checkout test fails"), "{}", said(&page));
+    // Once the cursor is moved the issue open follows it again.
+    page.press("down").expect("down");
+    page.wait_for(WITHIN, |page| {
+        page.words_in("panel-title-edit")
+            .contains(&"Write the 3.0 migration guide".to_owned())
+    })
+    .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn s_changes_the_issue_under_the_cursor_beside_its_line() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    page.press("down").expect("down");
+    cursor_on(&mut page, "ACM-398");
+    let entries = menu_after(&mut page, "s");
+    assert_eq!(
+        titles(&entries),
+        [
+            "Backlog",
+            "Todo",
+            "\u{2713} In Progress",
+            "In Review",
+            "Done",
+            "Canceled"
+        ]
+    );
+    // The menu is by the line the cursor is on.
+    let line = page.bounds("row:i:issue-398").expect("the line");
+    let menu = page.menu().expect("the menu").at;
+    assert!(
+        (menu.y - line.y).abs() <= line.h * 2.0,
+        "the menu {menu:?} is by the line {line:?}"
+    );
+    page.pick_titled("Todo").expect("Todo");
+    changed(&linear, &mut page, 1);
+    assert_eq!(
+        linear.changed()[0],
+        serde_json::json!({ "ids": ["issue-398"], "input": { "stateId": "s-todo" } })
+    );
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn s_with_three_issues_selected_changes_all_three_and_the_menu_says_how_many() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    page.press("shift+down").expect("shift+down");
+    page.press("shift+down").expect("shift+down");
+    page.wait_for(WITHIN, |page| page.says("3 selected"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    let entries = menu_after(&mut page, "s");
+    // The first line is a title and cannot be picked.
+    assert_eq!(entries[0], ("Status of 3 issues".to_owned(), false));
+    assert_eq!(entries[1], ("Backlog".to_owned(), true));
+    page.pick_titled("Done").expect("Done");
+    changed(&linear, &mut page, 1);
+    assert_eq!(
+        linear.changed()[0],
+        serde_json::json!({
+            "ids": ["issue-412", "issue-398", "issue-405"],
+            "input": { "stateId": "s-done" }
+        })
+    );
+    // They are gone from the list, and the cursor is on the next that is there.
+    page.wait_for(WITHIN, |page| group_says(page, "In Progress, 1"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    cursor_on(&mut page, "ACM-377");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn issues_of_two_teams_say_why_status_cannot_change_and_priority_can() {
+    let linear = Canned::new(Mode::Fine);
+    linear.set_team_of("issue-398", "team-web", "WEB");
+    let session = session_over(&linear, Some("lin_api_test"), None);
+    let mut page = open(&session, WIDE, None, "ACM-412").expect("the page opens");
+    page.press("shift+down").expect("shift+down");
+    page.wait_for(WITHIN, |page| page.says("2 selected"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    let entries = menu_after(&mut page, "s");
+    assert_eq!(
+        entries,
+        [
+            ("Status of 2 issues".to_owned(), false),
+            ("The issues are of more than one team".to_owned(), false)
+        ]
+    );
+    // (Nothing can be picked: Escape closes the menu.)
+    page.press("escape").expect("escape");
+    let entries = menu_after(&mut page, "p");
+    assert_eq!(entries[0], ("Priority of 2 issues".to_owned(), false));
+    assert_eq!(entries.len(), 6, "{entries:?}");
+    page.pick_titled("Low").expect("Low");
+    changed(&linear, &mut page, 1);
+    assert_eq!(
+        linear.changed()[0],
+        serde_json::json!({ "ids": ["issue-412", "issue-398"], "input": { "priority": 4 } })
+    );
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn l_twice_adds_a_label_and_takes_it_off() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    let entries = menu_after(&mut page, "l");
+    assert_eq!(titles(&entries), ["\u{2713} api", "bug", "Customer"]);
+    page.pick_titled("bug").expect("bug");
+    changed(&linear, &mut page, 1);
+    assert_eq!(
+        linear.changed()[0],
+        serde_json::json!({ "ids": ["issue-412"], "input": { "addedLabelIds": ["l-bug"] } })
+    );
+    page.wait_for(WITHIN, |page| {
+        page.words_in("row:i:issue-412").contains(&"bug".to_owned())
+    })
+    .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    let entries = menu_after(&mut page, "l");
+    assert_eq!(
+        titles(&entries),
+        ["\u{2713} api", "\u{2713} bug", "Customer"]
+    );
+    page.pick_titled("\u{2713} bug").expect("bug off");
+    changed(&linear, &mut page, 2);
+    assert_eq!(
+        linear.changed()[1],
+        serde_json::json!({ "ids": ["issue-412"], "input": { "removedLabelIds": ["l-bug"] } })
+    );
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn assignee_and_project_are_set_and_unset_by_their_menus() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    let entries = menu_after(&mut page, "a");
+    assert_eq!(titles(&entries), ["\u{2713} Me", "Deniz", "No one"]);
+    page.pick_titled("No one").expect("No one");
+    changed(&linear, &mut page, 1);
+    assert_eq!(
+        linear.changed()[0],
+        serde_json::json!({ "ids": ["issue-412"], "input": { "assigneeId": null } })
+    );
+    // The issue is no longer the person's: it leaves My issues, and the cursor goes on.
+    page.wait_for(WITHIN, |page| group_says(page, "In Progress, 3"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    cursor_on(&mut page, "ACM-398");
+    // The panel's own control sets a project.
+    open_the_controls(&mut page);
+    page.click("panel-value:project").expect("project");
+    assert_eq!(menu_titles(&page), ["\u{2713} No project", "Billing"]);
+    page.pick_titled("Billing").expect("Billing");
+    changed(&linear, &mut page, 2);
+    assert_eq!(
+        linear.changed()[1],
+        serde_json::json!({ "ids": ["issue-398"], "input": { "projectId": "p-1" } })
+    );
+    page.wait_for(WITHIN, |page| {
+        page.words_in("panel-value:project")
+            .contains(&"Billing".to_owned())
+    })
+    .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn e_makes_the_title_a_field_enter_saves_escape_leaves_it_and_an_empty_title_is_not_sent() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    let title = "Add rate limiting to the public API";
+    page.press("e").expect("e");
+    page.wait_for(WITHIN, |page| {
+        page.field("panel-title/field") == Some(title)
+    })
+    .unwrap_or_else(|why| panic!("the title is a field: {why:?}: {}", said(&page)));
+    // The words are selected, so that what is typed replaces them; and the keys are the field's.
+    assert_eq!(
+        page.field_selection("panel-title/field"),
+        Some(0..title.len())
+    );
+    page.type_text("s p a l e").expect("letters");
+    assert_eq!(page.field("panel-title/field"), Some("s p a l e"));
+    assert!(page.menu().is_none(), "no command ran");
+    page.press("down").expect("down");
+    cursor_on(&mut page, "ACM-412");
+    // Escape leaves the old title, and sends nothing.
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| !has_field(page, "panel-title/field"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    assert!(page.says(title), "{}", said(&page));
+    assert!(linear.changed().is_empty(), "{:?}", linear.changed());
+    assert!(
+        page.bounds("panel-close").is_some(),
+        "Escape was the field's, not the panel's"
+    );
+    // An empty title is not sent either.
+    page.press("e").expect("e");
+    page.wait_for(WITHIN, |page| {
+        page.field("panel-title/field") == Some(title)
+    })
+    .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    page.press("backspace").expect("backspace");
+    page.press("enter").expect("enter");
+    page.wait_for(WITHIN, |page| !has_field(page, "panel-title/field"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    assert!(linear.changed().is_empty(), "{:?}", linear.changed());
+    // Enter saves what was written, once.
+    page.press("e").expect("e");
+    page.wait_for(WITHIN, |page| {
+        page.field("panel-title/field") == Some(title)
+    })
+    .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    page.type_text("  Limit the public API  ")
+        .expect("the title");
+    page.press("enter").expect("enter");
+    changed(&linear, &mut page, 1);
+    assert_eq!(
+        linear.changed()[0],
+        serde_json::json!({ "ids": ["issue-412"], "input": { "title": "Limit the public API" } })
+    );
+    page.wait_for(WITHIN, |page| page.says("Limit the public API"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    assert!(!has_field(&page, "panel-title/field"));
+    assert_eq!(linear.changed().len(), 1);
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_refusal_is_said_in_the_panel_or_in_a_strip_and_the_value_stays() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    linear.set_change(Change::Refused);
+    open_the_controls(&mut page);
+    page.click("panel-value:state").expect("status");
+    page.pick_titled("Done").expect("Done");
+    changed(&linear, &mut page, 1);
+    page.wait_for(WITHIN, |page| page.says("Linear did not change it"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    // Nothing was changed: the line is where it was, and the control says what it said.
+    assert!(page.bounds("row:i:issue-412").is_some(), "{}", said(&page));
+    assert!(group_says(&page, "In Progress, 4"), "{}", said(&page));
+    assert!(
+        page.words_in("panel-value:state")
+            .contains(&"In Progress".to_owned())
+    );
+    assert!(
+        !page.says("Dismiss"),
+        "the strip is for what the panel is not on"
+    );
+    // With the panel put away the words are in a strip over the list.
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| !page.says("API key"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    let entries = menu_after(&mut page, "s");
+    assert_eq!(entries.len(), 6);
+    page.pick_titled("Done").expect("Done");
+    changed(&linear, &mut page, 2);
+    page.wait_for(WITHIN, |page| page.says("Linear did not change ACM-412"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    assert!(group_says(&page, "In Progress, 4"), "{}", said(&page));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_letters_of_the_keys_are_letters_in_the_filter_and_in_the_forms() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    page.press("/").expect("slash");
+    page.type_text("spale").expect("the filter");
+    page.wait_for(WITHIN, |page| page.says("No issue matches"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    assert!(page.menu().is_none());
+    page.press("escape").expect("escape");
+    page.press("escape").expect("escape");
+    open_new(&mut page);
+    page.type_text("spale").expect("the title");
+    assert_eq!(page.field("new-title/field"), Some("spale"));
+    assert!(page.menu().is_none());
+    assert!(linear.changed().is_empty());
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn in_an_80_by_24_pane_the_controls_are_inside_the_pane() {
+    let (_linear, _session, mut page) = open_lists(PANE);
+    open_the_controls(&mut page);
+    for name in [
+        "panel-value:state",
+        "panel-value:priority",
+        "panel-value:assignee",
+        "panel-value:labels",
+        "panel-value:project",
+        "panel-close",
+    ] {
+        let at = page
+            .bounds(name)
+            .unwrap_or_else(|| panic!("{name} is laid out"));
+        assert!(
+            at.x >= 0.0 && at.x + at.w <= PANE.0 + 0.5 && at.y + at.h <= PANE.1 + 0.5,
+            "{name}: {at:?}"
+        );
+    }
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_press_on_the_title_makes_it_a_field_and_a_press_elsewhere_leaves_it_as_it_was() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    open_the_controls(&mut page);
+    let title = "Add rate limiting to the public API";
+    page.click("panel-title-edit").expect("the title");
+    page.wait_for(WITHIN, |page| {
+        page.field("panel-title/field") == Some(title)
+    })
+    .unwrap_or_else(|why| panic!("the title is a field: {why:?}: {}", said(&page)));
+    page.type_text("zz").expect("the words");
+    // Only Enter writes: a press on another line takes the keyboard away, and what was typed goes.
+    page.click("row:i:issue-398").expect("another line");
+    page.wait_for(WITHIN, |page| !has_field(page, "panel-title/field"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    cursor_on(&mut page, "ACM-398");
+    page.advance(0.5).expect("a moment");
+    assert!(linear.changed().is_empty(), "{:?}", linear.changed());
+    assert!(page.says(title), "{}", said(&page));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn tab_takes_the_keyboard_out_of_the_title_and_nothing_is_written() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    open_the_controls(&mut page);
+    let title = "Add rate limiting to the public API";
+    page.press("e").expect("e");
+    page.wait_for(WITHIN, |page| {
+        page.field("panel-title/field") == Some(title)
+    })
+    .unwrap_or_else(|why| panic!("the title is a field: {why:?}: {}", said(&page)));
+    page.type_text("zz").expect("the words");
+    page.press("tab").expect("tab");
+    page.wait_for(WITHIN, |page| !has_field(page, "panel-title/field"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    page.advance(0.5).expect("a moment");
+    assert!(linear.changed().is_empty(), "{:?}", linear.changed());
+    assert!(page.says(title), "{}", said(&page));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn e_edits_the_one_issue_selected_though_the_cursor_is_on_another() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    page.press("x").expect("x");
+    page.press("down").expect("down");
+    cursor_on(&mut page, "ACM-398");
+    page.press("e").expect("e");
+    // The title that is the field's is the selected issue's, and the panel is on that issue.
+    let title = "Add rate limiting to the public API";
+    page.wait_for(WITHIN, |page| {
+        page.field("panel-title/field") == Some(title)
+    })
+    .unwrap_or_else(|why| {
+        panic!(
+            "the selected issue's title is a field: {why:?}: {}",
+            said(&page)
+        )
+    });
+    page.advance(0.5).expect("a moment");
+    assert_eq!(
+        page.field("panel-title/field"),
+        Some(title),
+        "{}",
+        said(&page)
+    );
+    page.type_text("Limit it").expect("the title");
+    page.press("enter").expect("enter");
+    changed(&linear, &mut page, 1);
+    assert_eq!(
+        linear.changed()[0],
+        serde_json::json!({ "ids": ["issue-412"], "input": { "title": "Limit it" } })
+    );
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_project_has_a_key_and_what_it_picks_is_written() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    let entries = menu_after(&mut page, "shift+p");
+    assert_eq!(titles(&entries), ["\u{2713} No project", "Billing"]);
+    page.pick_titled("Billing").expect("Billing");
+    changed(&linear, &mut page, 1);
+    assert_eq!(
+        linear.changed()[0],
+        serde_json::json!({ "ids": ["issue-412"], "input": { "projectId": "p-1" } })
+    );
 }

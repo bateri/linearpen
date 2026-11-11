@@ -108,7 +108,7 @@ settle() {
 		return
 	fi
 	awk -v changes="$changed" '
-	function state_name(id) { return id == "s-back" ? "Backlog" : id == "s-todo" ? "Todo" : id == "s-prog" ? "In Progress" : id == "s-done" ? "Done" : id == "s-cancel" ? "Canceled" : "State" }
+	function state_name(id) { return id == "s-back" ? "Backlog" : id == "s-todo" ? "Todo" : id == "s-prog" ? "In Progress" : id == "s-review" ? "In Review" : id == "s-done" ? "Done" : id == "s-cancel" ? "Canceled" : "State" }
 	function state_type(id) { return id == "s-back" ? "backlog" : id == "s-todo" ? "unstarted" : id == "s-done" ? "completed" : id == "s-cancel" ? "canceled" : "started" }
 	function finish(   i, line, ind, in_state, text) {
 		if (((id, "state") in set) && (state_type(set[id, "state"]) == "completed" || state_type(set[id, "state"]) == "canceled")) return
@@ -263,8 +263,9 @@ changed_node() {
 	case "$cstate" in
 	s-back) cstate='{"id":"s-back","name":"Backlog","type":"backlog","position":0.0}' ;;
 	s-todo) cstate='{"id":"s-todo","name":"Todo","type":"unstarted","position":1.0}' ;;
-	s-done) cstate='{"id":"s-done","name":"Done","type":"completed","position":3.0}' ;;
-	s-cancel) cstate='{"id":"s-cancel","name":"Canceled","type":"canceled","position":4.0}' ;;
+	s-review) cstate='{"id":"s-review","name":"In Review","type":"started","position":3.0}' ;;
+	s-done) cstate='{"id":"s-done","name":"Done","type":"completed","position":4.0}' ;;
+	s-cancel) cstate='{"id":"s-cancel","name":"Canceled","type":"canceled","position":5.0}' ;;
 	*) cstate='{"id":"s-prog","name":"In Progress","type":"started","position":2.0}' ;;
 	esac
 	cwho=$(latest "$cid" assignee)

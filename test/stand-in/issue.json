@@ -9,10 +9,10 @@
    "url": "https://linear.app/acme/issue/ACM-412/add-rate-limiting-to-the-public-api",
    "branchName": "ada/acm-412-add-rate-limiting-to-the-public-api",
    "state": {
-    "id": "state-progress",
+    "id": "s-prog",
     "name": "In Progress",
     "type": "started",
-    "position": 1.0
+    "position": 2.0
    },
    "labels": {
     "nodes": [

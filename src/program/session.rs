@@ -92,11 +92,39 @@ pub struct State {
     choices: HashMap<String, Options>,
     generation: u64,
     refresh_wanted: bool,
+    /// An issue was changed while the lists were on their way: what comes is from before it, and is
+    /// let go.
+    stale: bool,
     worker: bool,
     closed: bool,
 }
 
 impl State {
+    /// Tells that an issue of the lists was changed: where the lists are on their way, they were
+    /// asked for before it, so what comes is let go and they are asked for once more.
+    fn note_change(&mut self) {
+        if self.refreshing {
+            self.stale = true;
+            self.refresh_wanted = true;
+        }
+    }
+
+    /// What the worker does with the lists it asked for, or with why it could not.
+    fn landed(&mut self, got: Result<Lists, Error>) {
+        self.refreshing = false;
+        match got {
+            // Asked for before a change was made: it would put the old values back. The change
+            // asked for the lists once more (`note_change`).
+            Ok(_) if self.stale => {}
+            Ok(lists) => {
+                self.lists = Some(lists);
+                self.error = None;
+                self.updated = Some(now_seconds());
+            }
+            Err(error) => self.error = Some(error),
+        }
+    }
+
     /// Lets go of the teams and what each offers, so that the next question asks Linear again.
     pub fn forget_choices(&mut self) {
         self.teams = None;
@@ -227,6 +255,7 @@ fn work(shared: &Shared) {
             }
             state.refresh_wanted = false;
             state.refreshing = true;
+            state.stale = false;
             // The asking of the lists is the asking of the choices too (`r` and the five minutes).
             state.forget_choices();
             shared.changed(&mut state);
@@ -235,15 +264,7 @@ fn work(shared: &Shared) {
         let Some(key) = key else { continue };
         let got = fetch_both(shared.transport.as_ref(), &key);
         let mut state = shared.lock();
-        state.refreshing = false;
-        match got {
-            Ok(lists) => {
-                state.lists = Some(lists);
-                state.error = None;
-                state.updated = Some(now_seconds());
-            }
-            Err(error) => state.error = Some(error),
-        }
+        state.landed(got);
         shared.changed(&mut state);
         next = Instant::now() + shared.every;
     }
@@ -284,6 +305,7 @@ impl Session {
                 view_seen: [0; 3],
                 generation: 0,
                 refresh_wanted: false,
+                stale: false,
                 worker: false,
                 closed: false,
             }),
@@ -507,9 +529,10 @@ impl Session {
     /// Makes `change` in the issues with Linear's ids `ids`, from one to fifty: the program's other
     /// write. It is sent once. What Linear answers is written into the lists and the issues kept as
     /// it is, and the topic is told; no list is asked for again. Where it did not come back whole
-    /// (no answer, or an error), or came back without one of the issues, each of those is asked for,
-    /// so that what is shown is what Linear holds; nothing is sent again, and the failure is told. A
-    /// key Linear does not take cannot have changed anything, and is not asked about.
+    /// (no answer), or came back without one of the issues, each of those is asked for, so that what
+    /// is shown is what Linear holds; nothing is sent again, and the failure is told. An answer that is
+    /// an error (Linear said no, or the key is not taken) says the change was not made, and nothing is
+    /// asked about.
     pub fn change(&self, ids: &[String], change: &Change) -> Result<Vec<Changed>, Error> {
         if ids.is_empty() || ids.len() > linear::BATCH_MOST {
             return Err(Error::Failed(format!(
@@ -535,16 +558,27 @@ impl Session {
                             listed,
                         });
                     }
+                    state.note_change();
                     self.shared.changed(&mut state);
                 }
                 told.extend(self.ask_again(&key, &missing));
                 Ok(told)
             }
             Err(failure @ (Error::Refused | Error::Forbidden)) => Err(failure),
-            Err(failure) => {
+            // No answer came: the change may have been made, and Linear is asked what it holds.
+            Err(failure @ Error::Unreachable(_)) => {
                 self.ask_again(&key, ids);
                 Err(failure)
             }
+            // What came is not an answer to read (a gateway's 502, a body cut short): it says
+            // nothing of whether the change was made, so Linear is asked as well, and it is told
+            // that it is not known.
+            Err(Error::Failed(why)) if linear::left_open(&why) => {
+                self.ask_again(&key, ids);
+                Err(Error::Unsure)
+            }
+            // Linear answered and said no: nothing is sent again and nothing more is asked.
+            Err(failure) => Err(failure),
         }
     }
 
@@ -557,6 +591,7 @@ impl Session {
                 Ok(issue) => {
                     let mut state = self.shared.lock();
                     let listed = state.put(&issue);
+                    state.note_change();
                     self.shared.changed(&mut state);
                     told.push(Changed {
                         id: issue.id,
@@ -1027,6 +1062,43 @@ mod tests {
     }
 
     #[test]
+    fn a_change_made_while_the_lists_are_on_their_way_has_them_asked_for_once_more() {
+        let (session, _sent) =
+            holding(vec![batch_reply(&[wire("a", "Added it", "started", true)])]);
+        session.shared.lock().refreshing = true;
+        session
+            .change(&strings(&["a"]), &Change::Title("Added it".to_owned()))
+            .unwrap();
+        assert!(
+            session.shared.lock().refresh_wanted,
+            "the list on its way was asked for before the change, and would put the old title back"
+        );
+        // That list comes, from before the change: it is let go, and the lists keep the change.
+        let old = {
+            let state = session.shared.lock();
+            let lists = state.lists.as_ref().unwrap();
+            let mut old = lists.clone();
+            old.mine.issues[0] = issue_of(&wire("a", "Add it", "started", true));
+            old
+        };
+        session.shared.lock().landed(Ok(old));
+        let state = session.state();
+        assert!(!state.refreshing);
+        assert_eq!(
+            state.lists.as_ref().unwrap().mine.issues[0].title,
+            "Added it",
+            "the old title was not put back"
+        );
+        // Where none is on its way nothing more is asked for.
+        let (session, _sent) =
+            holding(vec![batch_reply(&[wire("a", "Added it", "started", true)])]);
+        session
+            .change(&strings(&["a"]), &Change::Title("Added it".to_owned()))
+            .unwrap();
+        assert!(!session.shared.lock().refresh_wanted);
+    }
+
+    #[test]
     fn from_one_to_fifty_issues_at_most_and_nothing_is_sent_for_more() {
         let (session, sent) = holding(Vec::new());
         let many: Vec<String> = (0..51).map(|n| format!("i{n}")).collect();
@@ -1074,6 +1146,53 @@ mod tests {
         assert_eq!(sent.lock().unwrap().len(), 2, "one change, one question");
     }
 
+    /// A gateway's 502 or a body cut short is not Linear's no: the change may have been made, so the
+    /// issues are asked for, and it is told that it is not known. Nothing is sent twice.
+    #[test]
+    fn a_change_whose_answer_cannot_be_read_asks_for_the_issues_and_is_not_known() {
+        for broken in [
+            Ok(Reply {
+                status: 502,
+                body: "<html>Bad Gateway</html>".to_owned(),
+            }),
+            said("not json at all"),
+        ] {
+            let found = said(&format!(
+                r#"{{"data":{{"issue":{}}}}}"#,
+                wire("a", "Add it", "completed", true)
+            ));
+            let (session, sent) = holding(vec![broken, found]);
+            let failed = session
+                .change(&strings(&["a"]), &Change::State("s-completed".to_owned()))
+                .unwrap_err();
+            assert_eq!(failed, Error::Unsure);
+            let sent = sent.lock().unwrap();
+            assert_eq!(sent.len(), 2);
+            assert!(sent[0].contains(r#""operationName":"IssueBatchUpdate""#));
+            assert!(sent[1].contains(r#""operationName":"Issue""#));
+            drop(sent);
+            // Linear did make it: the list says so.
+            let state = session.state();
+            assert_eq!(ids_of(&state.lists.as_ref().unwrap().mine), ["b"]);
+        }
+    }
+
+    /// What is asked for after a change that had no answer is a change of the lists as well: a list on
+    /// its way would put the old values back.
+    #[test]
+    fn asking_for_the_issues_after_no_answer_lets_go_of_a_list_on_its_way() {
+        let found = said(&format!(
+            r#"{{"data":{{"issue":{}}}}}"#,
+            wire("a", "Add it", "completed", true)
+        ));
+        let (session, _sent) =
+            holding(vec![Err(Error::Unreachable("timed out".to_owned())), found]);
+        session.shared.lock().refreshing = true;
+        let _ = session.change(&strings(&["a"]), &Change::State("s-completed".to_owned()));
+        let state = session.shared.lock();
+        assert!(state.refresh_wanted && state.stale);
+    }
+
     #[test]
     fn a_change_linear_says_it_did_not_make_leaves_the_lists_as_they_are() {
         let still = said(&format!(
@@ -1091,7 +1210,11 @@ mod tests {
             failed,
             Error::Failed("Linear said: state does not belong to the team".to_owned())
         );
-        assert_eq!(sent.lock().unwrap().len(), 2);
+        assert_eq!(
+            sent.lock().unwrap().len(),
+            1,
+            "Linear answered: nothing more is asked"
+        );
         let state = session.state();
         assert_eq!(ids_of(&state.lists.as_ref().unwrap().mine), ["a", "b"]);
     }

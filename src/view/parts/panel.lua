@@ -5,19 +5,22 @@
 
 local markdown = require("@pencere/markdown")
 local kit = require("../lib/kit")
+local change = require("./change")
 local commands = require("./commands")
-local icons = require("./icons")
+local list = require("./list")
+local values = require("./values")
 
 local b, u, S, SIZE, act = kit.b, kit.u, kit.S, kit.SIZE, kit.act
 
 local panel = {}
 
--- The issue open: what the row knew of it (`{ id, identifier, title, priority, labels, state, late }`),
--- and what the program told of it, by id: `{ status = "loading" | "ready" | "failed", issue, error }`.
-local P = { open = nil, kept = {} }
+-- The issue open: what the row knew of it when it was opened (`{ id, identifier, title, priority, labels,
+-- state }`: all it says where the list has the issue no more and the program has not told yet), and
+-- what the program told of it, by id: `{ status = "loading" | "ready" | "failed", issue, error }`.
+-- `pin` is set while a change of the issue is on its way or has just been made: the issue stays open
+-- (it may have left the list) until the cursor is moved by the person (`{ id, moves }`).
+local P = { open = nil, kept = {}, pin = nil }
 panel.state = P
-
-local PRIORITY = { urgent = "Urgent", high = "High", medium = "Medium", low = "Low", none = "No priority" }
 
 -- The box that scrolls: the description and the comments.
 local SCROLL = "panel-scroll"
@@ -59,6 +62,22 @@ local function ask(id)
 	end)
 end
 
+-- Asks again for the issue open, without a loading: what is shown stays until it comes. `done` is
+-- called when it has. Whether it asked (it does not where the issue is not the one open).
+function panel.reask(id, done)
+	if P.open == nil or P.open.id ~= id then
+		return false
+	end
+	kit.call("issue", { id = id }, function(result, err)
+		if not err then
+			P.kept[id] = { status = "ready", issue = result }
+		end
+		done()
+		return true
+	end)
+	return true
+end
+
 -- Opens the issue of the list's line `item` beside the list (and asks the program for it, unless it
 -- has it).
 function panel.show(item)
@@ -66,6 +85,7 @@ function panel.show(item)
 		return false
 	end
 	local row = item.row
+	P.pin = nil
 	if P.open ~= nil and P.open.id ~= row.id then
 		-- Another issue is read from its top, not from where the one before was left.
 		kit.scroll_to(SCROLL, 0)
@@ -88,6 +108,101 @@ end
 
 function panel.close()
 	P.open = nil
+	P.pin = nil
+end
+
+-- --- Staying on an issue the person changed ----------------------------------------------------------
+
+-- A change of the issues `ids` is on its way: where the issue open is one of them, it stays open
+-- (the change may take it out of the list, and the cursor goes to its neighbour) until the cursor is
+-- moved by the person.
+function panel.hold(ids)
+	if P.open == nil then
+		return
+	end
+	for _, id in ids do
+		if id == P.open.id then
+			P.pin = { id = id, moves = list.moves() }
+		end
+	end
+end
+
+-- The change of the issue `id` is done and the list still holds it: it need not be held open.
+function panel.release(id)
+	if P.pin ~= nil and P.pin.id == id then
+		P.pin = nil
+	end
+end
+
+-- Whether the issue open is held: it is what the person changed and the cursor has not been moved since.
+function panel.held()
+	local pin = P.pin
+	if pin == nil then
+		return false
+	end
+	if P.open == nil or P.open.id ~= pin.id or list.moves() ~= pin.moves then
+		P.pin = nil
+		return false
+	end
+	return true
+end
+
+-- Forgets what the program told of the issue: it has been changed, and is asked again when it is opened.
+function panel.forget(id)
+	if P.open == nil or P.open.id ~= id then
+		P.kept[id] = nil
+	end
+end
+
+-- The title of the issue open is made a field. The reply that gives it the keyboard.
+function panel.rename()
+	if P.open == nil then
+		return true
+	end
+	return change.rename(P.open.id, panel.info().title)
+end
+
+-- The title of the issue the command `e` is for (the one target) is made a field; its issue is opened
+-- beside the list first where it is not.
+function panel.rename_target()
+	local ids = change.targets()
+	if #ids ~= 1 then
+		return true
+	end
+	-- The issue open follows the cursor: the cursor goes to the issue first, where it is another (one
+	-- selected is the target, not the one under the cursor).
+	local current = list.current()
+	if current == nil or current.kind ~= "issue" or current.row.id ~= ids[1] then
+		if list.reveal_issue(ids[1]) == nil then
+			return true
+		end
+	end
+	if P.open == nil or P.open.id ~= ids[1] then
+		panel.show(list.item(ids[1]))
+	end
+	return panel.rename()
+end
+
+-- Whether the title of the issue open is being written.
+function panel.editing()
+	return change.editing()
+end
+
+-- What the change part asks of the issue open (it does not require this part).
+act.panel_id = panel.id
+act.panel_hold = panel.hold
+act.panel_release = panel.release
+act.panel_reask = panel.reask
+act.panel_forget = panel.forget
+act.panel_team = function()
+	return P.open ~= nil and panel.info().teamId or nil
+end
+-- The line of the issue open where it is no more in the list, as the lists say a line.
+act.panel_row = function(id)
+	if P.open ~= nil and P.open.id == id then
+		return panel.detail()
+	end
+	return nil
 end
 
 -- Scrolls what is said of the issue by most of what its room shows, down (1) or up (-1): the way
@@ -118,32 +233,116 @@ function panel.link()
 	return { link = detail.url }
 end
 
--- A line of what is known of the issue: a small picture and its words.
-local function fact(picture, words)
-	return b.div():row():items_center():gap(7):no_shrink():child(picture):child(
-		b.text(words):text_size(SIZE.small):color("dim"):no_shrink()
-	)
+-- The issue open as it is now: from the list's line where the list has it, else from what the program
+-- told of it (the issue left the list: done, given to someone else), else as it was when opened.
+-- Its values and the ids of what they are (`teamId`, `stateId`, `assigneeId`, `projectId`).
+function panel.info()
+	local id = P.open.id
+	local item = list.item(id)
+	if item ~= nil then
+		local row = item.row
+		return {
+			id = id,
+			identifier = row.identifier,
+			title = row.title,
+			priority = row.priority,
+			labels = row.labels,
+			state = { id = row.stateId, name = item.group.name, kind = item.group.kind },
+			teamId = row.teamId,
+			assigneeId = row.assigneeId,
+			projectId = row.projectId,
+		}
+	end
+	local detail = panel.detail()
+	if detail ~= nil then
+		return {
+			id = id,
+			identifier = detail.identifier,
+			title = detail.title,
+			priority = detail.priority,
+			labels = detail.labels,
+			state = { id = detail.stateId, name = detail.state.name, kind = detail.state.kind },
+			teamId = detail.teamId,
+			assigneeId = detail.assigneeId,
+			projectId = detail.projectId,
+		}
+	end
+	return {
+		id = id,
+		identifier = P.open.identifier,
+		title = P.open.title,
+		priority = P.open.priority,
+		labels = P.open.labels,
+		state = P.open.state,
+	}
 end
 
-local function meta(info, detail)
-	local row = b.div():row():wrap():items_center():gap_x(16):gap_y(6)
-	row:child(fact(icons.state(info.state.kind, info.late), info.state.name))
-	row:child(fact(icons.priority(info.priority), PRIORITY[info.priority] or info.priority))
-	for _, label in info.labels do
-		row:child(fact(icons.dot(label.color), label.name))
-	end
-	if detail ~= nil then
-		if detail.cycle ~= nil then
-			row:child(b.text("Cycle " .. detail.cycle):text_size(SIZE.small):color("dim"):no_shrink())
-		end
-		if detail.project ~= nil then
-			row:child(b.text(detail.project):text_size(SIZE.small):color("dim"):no_shrink())
-		end
-		if detail.assignee ~= nil and detail.assignee ~= "you" then
-			row:child(b.text(detail.assignee):text_size(SIZE.small):color("dim"):no_shrink())
+-- What the chips say of the issue: the names of who and what it has, from the team's choices where
+-- they are here, else from what the program told of the issue.
+local function shown_of(info, detail, data)
+	local assignee = nil
+	if info.assigneeId ~= nil then
+		local member = data ~= nil and values.find(data.members, info.assigneeId) or nil
+		if member ~= nil then
+			assignee = { id = member.id, name = member.me and "Me" or member.name }
+		elseif detail ~= nil and detail.assigneeId == info.assigneeId and detail.assignee ~= nil then
+			assignee = { id = info.assigneeId, name = detail.assignee == "you" and "Me" or detail.assignee }
+		else
+			assignee = { id = info.assigneeId, name = "Someone" }
 		end
 	end
-	return row
+	local project = nil
+	if info.projectId ~= nil then
+		local known = data ~= nil and values.find(data.projects, info.projectId) or nil
+		if known ~= nil then
+			project = known
+		elseif detail ~= nil and detail.projectId == info.projectId and detail.project ~= nil then
+			project = { id = info.projectId, name = detail.project }
+		else
+			project = { id = info.projectId, name = "Project" }
+		end
+	end
+	return {
+		state = info.state,
+		priority = info.priority,
+		assignee = assignee,
+		labels = info.labels,
+		project = project,
+	}
+end
+
+-- Whether nothing of the issue is on its way and its title is not being written: the priority needs no
+-- choices of the team, and is pressable then (as its key is).
+local function idle(info)
+	return not change.busy(info.id) and not change.editing()
+end
+
+-- Whether the other controls can be pressed too: the choices of the team are here.
+local function pressable(info)
+	return change.ready(info.teamId) and idle(info)
+end
+
+-- What stands after the controls, plain: the cycle.
+local function cycle(detail)
+	if detail ~= nil and detail.cycle ~= nil then
+		return b.div():h(SIZE.control):row():items_center():no_shrink():child(
+			b.text("Cycle " .. detail.cycle):text_size(SIZE.small):color("dim"):no_shrink()
+		)
+	end
+	return nil
+end
+
+local function controls(info, detail)
+	local data = change.options(info.teamId)
+	return values.chips(shown_of(info, detail, data), {
+		prefix = "panel-value:",
+		disabled = not pressable(info),
+		priority_disabled = not idle(info),
+		busy = change.busy(info.id),
+		labels = data == nil or #data.labels > 0 or #info.labels > 0,
+		projects = data == nil or #data.projects > 0 or info.projectId ~= nil,
+		tail = cycle(detail),
+	})
 end
 
 -- Markdown written by someone else, drawn as text. A part that is not valid is shown as it came.
@@ -219,8 +418,30 @@ function panel.view(width)
 			tip = detail == nil and "Linear has not told where it is" or "Open the issue in your browser",
 		})):child(kit.button("panel-close", "Close", { suffix = "Esc" }))
 	)
-	top:child(b.text(info.title):text_size(16):weight(700):wrap():mt(14):mb(10):no_shrink())
-	top:child(meta(info, detail))
+	local now = panel.info()
+	-- The title is the words, which a press turns into a field; a press while it is a field is its own.
+	local title = b.text(now.title):text_size(16):weight(700):wrap():no_shrink()
+	kit.buttons["panel-title-edit"] = true
+	local edit = b.div()
+		:press("panel-title-edit")
+		:focusable()
+		:role("button")
+		:label("Edit the title")
+		:tip("Edit the title")
+		:mt(14)
+		:mb(10)
+		:no_shrink()
+		:child(title)
+	top:child(change.title(now.id, edit))
+	top:child(controls(now, detail))
+	local why = change.error_for(now.id)
+	if why ~= nil then
+		top:child(
+			b.div():row():items_start():gap(8):no_shrink():mt(10):child(
+				b.div():size(7, 7):rounded(4):bg("warning"):no_shrink():mt(6)
+			):child(b.text(why):text_size(SIZE.small):color("warning"):wrap():min_w(0):grow(1))
+		)
+	end
 	local content = b.div():col():grow(1):min_w(0):min_h(0):child(top)
 	content:child(b.div():h(1):bg(b.alpha("foreground", 0.18)):no_shrink())
 	content:child(

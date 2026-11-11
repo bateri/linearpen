@@ -18,10 +18,10 @@
             "url": "https://linear.app/acme/issue/ACM-412/add-rate-limiting-to-the-public-api",
             "branchName": "ada/acm-412-add-rate-limiting-to-the-public-api",
             "state": {
-              "id": "state-progress",
+              "id": "s-prog",
               "name": "In Progress",
               "type": "started",
-              "position": 1.0
+              "position": 2.0
             },
             "labels": {
               "nodes": [
@@ -55,10 +55,10 @@
             "url": "https://linear.app/acme/issue/ACM-398/checkout-test-fails-one-run-in-ten",
             "branchName": "ada/acm-398-checkout-test-fails-one-run-in-ten",
             "state": {
-              "id": "state-progress",
+              "id": "s-prog",
               "name": "In Progress",
               "type": "started",
-              "position": 1.0
+              "position": 2.0
             },
             "labels": {
               "nodes": [
@@ -92,10 +92,10 @@
             "url": "https://linear.app/acme/issue/ACM-405/webhook-retries-ignore-the-backoff-setting",
             "branchName": "ada/acm-405-webhook-retries-ignore-the-backoff-setti",
             "state": {
-              "id": "state-progress",
+              "id": "s-prog",
               "name": "In Progress",
               "type": "started",
-              "position": 1.0
+              "position": 2.0
             },
             "labels": {
               "nodes": [
@@ -134,10 +134,10 @@
             "url": "https://linear.app/acme/issue/ACM-377/write-the-3.0-migration-guide",
             "branchName": "ada/acm-377-write-the-3.0-migration-guide",
             "state": {
-              "id": "state-progress",
+              "id": "s-prog",
               "name": "In Progress",
               "type": "started",
-              "position": 1.0
+              "position": 2.0
             },
             "labels": {
               "nodes": [
@@ -171,10 +171,10 @@
             "url": "https://linear.app/acme/issue/ACM-389/cache-the-pricing-table-at-the-edge",
             "branchName": "ada/acm-389-cache-the-pricing-table-at-the-edge",
             "state": {
-              "id": "state-review",
+              "id": "s-review",
               "name": "In Review",
               "type": "started",
-              "position": 2.0
+              "position": 3.0
             },
             "labels": {
               "nodes": [
@@ -208,10 +208,10 @@
             "url": "https://linear.app/acme/issue/ACM-371/show-the-plan-limit-on-the-usage-page",
             "branchName": "ada/acm-371-show-the-plan-limit-on-the-usage-page",
             "state": {
-              "id": "state-review",
+              "id": "s-review",
               "name": "In Review",
               "type": "started",
-              "position": 2.0
+              "position": 3.0
             },
             "labels": {
               "nodes": [
@@ -245,10 +245,10 @@
             "url": "https://linear.app/acme/issue/ACM-420/invoice-pdf-cuts-long-company-names",
             "branchName": "ada/acm-420-invoice-pdf-cuts-long-company-names",
             "state": {
-              "id": "state-todo",
+              "id": "s-todo",
               "name": "Todo",
               "type": "unstarted",
-              "position": 0.0
+              "position": 1.0
             },
             "labels": {
               "nodes": [
@@ -280,10 +280,10 @@
             "url": "https://linear.app/acme/issue/ACM-418/let-owners-transfer-a-workspace",
             "branchName": "ada/acm-418-let-owners-transfer-a-workspace",
             "state": {
-              "id": "state-todo",
+              "id": "s-todo",
               "name": "Todo",
               "type": "unstarted",
-              "position": 0.0
+              "position": 1.0
             },
             "labels": {
               "nodes": []
@@ -309,10 +309,10 @@
             "url": "https://linear.app/acme/issue/ACM-415/rotate-signing-keys-without-downtime",
             "branchName": "ada/acm-415-rotate-signing-keys-without-downtime",
             "state": {
-              "id": "state-todo",
+              "id": "s-todo",
               "name": "Todo",
               "type": "unstarted",
-              "position": 0.0
+              "position": 1.0
             },
             "labels": {
               "nodes": [
@@ -344,10 +344,10 @@
             "url": "https://linear.app/acme/issue/ACM-409/empty-state-for-the-audit-log",
             "branchName": "ada/acm-409-empty-state-for-the-audit-log",
             "state": {
-              "id": "state-todo",
+              "id": "s-todo",
               "name": "Todo",
               "type": "unstarted",
-              "position": 0.0
+              "position": 1.0
             },
             "labels": {
               "nodes": [
@@ -379,10 +379,10 @@
             "url": "https://linear.app/acme/issue/ACM-402/move-the-cron-jobs-to-the-queue",
             "branchName": "ada/acm-402-move-the-cron-jobs-to-the-queue",
             "state": {
-              "id": "state-todo",
+              "id": "s-todo",
               "name": "Todo",
               "type": "unstarted",
-              "position": 0.0
+              "position": 1.0
             },
             "labels": {
               "nodes": [
@@ -414,10 +414,10 @@
             "url": "https://linear.app/acme/issue/ACM-396/search-matches-only-the-first-word",
             "branchName": "ada/acm-396-search-matches-only-the-first-word",
             "state": {
-              "id": "state-todo",
+              "id": "s-todo",
               "name": "Todo",
               "type": "unstarted",
-              "position": 0.0
+              "position": 1.0
             },
             "labels": {
               "nodes": [
@@ -449,7 +449,7 @@
             "url": "https://linear.app/acme/issue/ACM-352/retire-the-legacy-export-endpoint",
             "branchName": "ada/acm-352-retire-the-legacy-export-endpoint",
             "state": {
-              "id": "state-backlog",
+              "id": "s-back",
               "name": "Backlog",
               "type": "backlog",
               "position": 0.0
@@ -484,7 +484,7 @@
             "url": "https://linear.app/acme/issue/ACM-340/audit-the-third-party-scripts",
             "branchName": "ada/acm-340-audit-the-third-party-scripts",
             "state": {
-              "id": "state-backlog",
+              "id": "s-back",
               "name": "Backlog",
               "type": "backlog",
               "position": 0.0

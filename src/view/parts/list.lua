@@ -17,11 +17,35 @@ local HEAD = SIZE.row + SIZE.group_gap
 -- The lines as the program last told them: `items` one for each (`{ kind, key, group, row }`),
 -- `tops` where each starts (and where the last ends), `at` the place of a key, and the groups that
 -- are further along than the first of their kind.
-local L = { items = {}, tops = { 0 }, at = {}, late = {}, cursor = nil, cursor_group = nil, marks = {} }
+-- `moves` counts the times the person put the cursor somewhere (a key, a press), not the times a new list
+-- moved it; `seen` is the scope and the filter the lines were last made for.
+local L = { items = {}, tops = { 0 }, at = {}, late = {}, cursor = nil, cursor_group = nil, marks = {}, moves = 0, seen = nil }
 list.state = L
 
 local function index_of(key)
 	return key ~= nil and L.at[key] or nil
+end
+
+-- The issue the cursor goes to where its line is gone from a list of the same view (the issue was
+-- done, given to someone else): the next one that is still there, else the one before.
+local function neighbour(old_items, old_at, key, at)
+	local index = old_at[key]
+	if index == nil then
+		return nil
+	end
+	for step = index + 1, #old_items do
+		local item = old_items[step]
+		if item.kind == "issue" and at[item.key] ~= nil then
+			return item.key
+		end
+	end
+	for step = index - 1, 1, -1 do
+		local item = old_items[step]
+		if item.kind == "issue" and at[item.key] ~= nil then
+			return item.key
+		end
+	end
+	return nil
 end
 
 -- What the program told: the lines made again from it, the cursor kept where it still stands (or on
@@ -47,12 +71,27 @@ function list.load(snapshot)
 			first_issue = first_issue or issue_key
 		end
 	end
+	local old_items, old_at = L.items, L.at
 	L.items, L.tops, L.at, L.late = items, tops, at, late
+	local view = snapshot.scope .. "\n" .. snapshot.filter
+	local same_view = L.seen == view
+	L.seen = view
+	local was = L.cursor
 	if L.at[L.cursor] == nil then
-		-- Where the cursor's line is gone: on the head of its group where the group is folded, else
-		-- (a filter took the issue away) on the first issue.
+		-- Where the cursor's line is gone: on the head of its group where the group is folded; where the
+		-- view is the same and the issue left it (a change took it out), on its neighbour; else (a filter
+		-- took the issue away) on the first issue.
 		local head = L.cursor_group ~= nil and items[at["g:" .. L.cursor_group] or 0] or nil
-		L.cursor = head ~= nil and head.group.closed and head.key or first_issue or (head and head.key)
+		local near = nil
+		if same_view and was ~= nil and string.sub(was, 1, 2) == "i:" and not (head ~= nil and head.group.closed) then
+			near = neighbour(old_items, old_at, was, at)
+		end
+		L.cursor = head ~= nil and head.group.closed and head.key or near or first_issue or (head and head.key)
+		-- (Not a move of the person's: the issue open is not let go of for it.)
+		local index = L.at[L.cursor]
+		if index ~= nil then
+			virtual.reveal(ID, index, #L.items, SIZE.row, 0, L.tops)
+		end
 	end
 	local found = L.items[L.at[L.cursor] or 0]
 	L.cursor_group = found and found.group.key or nil
@@ -75,9 +114,19 @@ end
 
 -- The ids of the issues selected, in the order of the list.
 function list.marked_ids()
+	-- (The marks are few: their places are sorted, and the lines are not all passed.)
+	local places = {}
+	for key in L.marks do
+		local place = L.at[key]
+		if place ~= nil then
+			places[#places + 1] = place
+		end
+	end
+	table.sort(places)
 	local ids = {}
-	for _, item in L.items do
-		if item.kind == "issue" and L.marks[item.key] then
+	for _, place in places do
+		local item = L.items[place]
+		if item.kind == "issue" then
 			ids[#ids + 1] = item.row.id
 		end
 	end
@@ -131,12 +180,24 @@ function list.current()
 	return L.items[L.at[L.cursor] or 0]
 end
 
+-- How many times the person has put the cursor somewhere.
+function list.moves()
+	return L.moves
+end
+
+-- The line of the issue with Linear's `id` (`{ kind, key, group, row }`), or nil.
+function list.item(id)
+	local item = L.items[L.at["i:" .. id] or 0]
+	return item
+end
+
 -- Puts the cursor on `key` and scrolls it into view.
 local function put(key)
 	local index = index_of(key)
 	if index == nil then
 		return false
 	end
+	L.moves += 1
 	L.cursor = key
 	L.cursor_group = L.items[index].group.key
 	virtual.reveal(ID, index, #L.items, SIZE.row, 0, L.tops)
@@ -199,6 +260,7 @@ function list.fold(closed)
 	-- The cursor goes to the head of the group it folds, where it will be when the lines are gone.
 	if closed then
 		L.cursor, L.cursor_group = "g:" .. group.key, group.key
+		L.moves += 1
 	end
 	S.closed[group.key] = closed
 	act.view({ closed = S.closed })
@@ -308,6 +370,7 @@ function list.view(room, panel_open)
 			hovered = u:hovered(name),
 			marked = L.marks[item.key] == true,
 			working = item.kind == "issue" and S.issues.working ~= nil and S.issues.working[item.row.id] or nil,
+			changing = item.kind == "issue" and act.busy ~= nil and act.busy(item.row.id) or false,
 			check = any or selected or u:hovered(name) or u:hovered(row.check_name(item.key)),
 		}
 		if item.kind == "group" then

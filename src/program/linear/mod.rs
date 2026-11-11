@@ -157,10 +157,7 @@ fn run<V: Serialize, T: DeserializeOwned>(
         return Err(Error::Forbidden);
     }
     if let Some(first) = answer.errors.first() {
-        return Err(Error::Failed(format!(
-            "Linear said: {}",
-            tidy(&first.message)
-        )));
+        return Err(Error::Failed(format!("{SAID}{}", tidy(&first.message))));
     }
     if reply.status != 200 {
         return Err(Error::Failed(format!(
@@ -328,7 +325,22 @@ pub fn change(
     data.batch
         .filter(|payload| payload.success)
         .map(|payload| payload.issues.unwrap_or_default())
-        .ok_or_else(|| Error::Failed("Linear did not change the issues".to_owned()))
+        .ok_or_else(|| Error::Failed(NOT_CHANGED.to_owned()))
+}
+
+/// What a `Failed` of Linear's own errors begins with: Linear answered and said no.
+pub const SAID: &str = "Linear said: ";
+
+/// What `change` says where Linear answered with data and not with `success`: no.
+const NOT_CHANGED: &str = "Linear did not change the issues";
+
+/// Whether a `Failed` of a write leaves it open that Linear made it. Linear's own errors, and a
+/// payload that says it did not, are its no; an HTTP status that is not 200 with no error in it, and
+/// a body that cannot be read (a gateway's 502, a page cut short), come after the request was
+/// sent and say nothing of whether Linear acted on it.
+#[must_use]
+pub fn left_open(why: &str) -> bool {
+    !(why.starts_with(SAID) || why == NOT_CHANGED)
 }
 
 #[cfg(test)]

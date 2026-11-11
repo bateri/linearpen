@@ -490,7 +490,7 @@ fn new_options_tell_the_teams_and_the_choices_of_one_and_a_new_draft_id() {
         .iter()
         .map(|state| state["name"].as_str().unwrap())
         .collect();
-    assert_eq!(states, ["Backlog", "Todo", "In Progress"]);
+    assert_eq!(states, ["Backlog", "Todo", "In Progress", "In Review"]);
     // What a change can put an issue in: those, then Done and Canceled.
     let all_states: Vec<&str> = first["allStates"]
         .as_array()
@@ -500,9 +500,16 @@ fn new_options_tell_the_teams_and_the_choices_of_one_and_a_new_draft_id() {
         .collect();
     assert_eq!(
         all_states,
-        ["Backlog", "Todo", "In Progress", "Done", "Canceled"]
+        [
+            "Backlog",
+            "Todo",
+            "In Progress",
+            "In Review",
+            "Done",
+            "Canceled"
+        ]
     );
-    assert_eq!(first["allStates"][3]["kind"], "completed");
+    assert_eq!(first["allStates"][4]["kind"], "completed");
     assert_eq!(first["defaultState"], "s-todo");
     let labels: Vec<&str> = first["labels"]
         .as_array()

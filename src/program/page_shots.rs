@@ -14,7 +14,7 @@ use std::time::Duration;
 use pencere_drive::headless::Error;
 use pencere_drive::shot::{Fonts, Palette};
 
-use crate::page_tests::{Canned, Mode, PANE, Page, open, rig, session_over};
+use crate::page_tests::{Canned, Mode, PANE, Page, open, pressable, rig, session_over};
 
 /// A page as large as a terminal pane on a laptop.
 const BIG: (f32, f32) = (1280.0, 800.0);
@@ -49,7 +49,12 @@ fn save(page: &Page, fonts: &Fonts, palette: Palette, name: &str) {
 fn lists(size: (f32, f32), fonts: &Fonts) -> Result<Page, Error> {
     let linear = Canned::new(Mode::Fine);
     let session = session_over(&linear, Some("lin_api_test"), None);
-    open(&session, size, Some(fonts), "ACM-412")
+    let mut page = open(&session, size, Some(fonts), "ACM-412")?;
+    // The line of keys says `s` where the choices of the team have come, which they do a moment after
+    // the list (a pane too narrow for it never says it: that wait is given up).
+    let _ = page.wait_for(Duration::from_secs(3), |page| page.says("status"));
+    page.advance(0.3)?;
+    Ok(page)
 }
 
 /// The page over the lists of a workspace with one team (as the design shows it), at `size`, and
@@ -115,6 +120,54 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     })?;
     page.advance(0.4)?;
     save(&page, &fonts, Palette::Dark, "narrow-issue.png");
+
+    // An issue changed. The controls of the issue open (the menu a press on one opens is the host's, which
+    // a picture made without one does not draw), its title as a field (nor is what is typed into a
+    // line), the issue done, left the list and still open, three issues selected for a change, and the
+    // controls in an 80 by 24 pane.
+    let mut page = lists(BIG, &fonts)?;
+    page.press("enter")?;
+    page.wait_for(Duration::from_secs(20), |page| {
+        page.says("600 requests a minute") && pressable(page, "panel-value:state")
+    })?;
+    page.advance(0.6)?;
+    save(&page, &fonts, Palette::Dark, "edit.png");
+    page.press("e")?;
+    page.wait_for(Duration::from_secs(20), |page| page.says("save"))?;
+    page.advance(0.6)?;
+    save(&page, &fonts, Palette::Dark, "edit-title.png");
+    page.press("escape")?;
+    page.wait_for(Duration::from_secs(20), |page| !page.says("save"))?;
+    page.click("panel-value:state")?;
+    page.pick_titled("Done")?;
+    page.wait_for(Duration::from_secs(20), |page| {
+        page.bounds("row:i:issue-412").is_none()
+            && page
+                .words_in("panel-value:state")
+                .contains(&"Done".to_owned())
+    })?;
+    page.advance(0.6)?;
+    save(&page, &fonts, Palette::Dark, "edit-done.png");
+    let mut page = lists(BIG, &fonts)?;
+    page.press("x")?;
+    page.press("down")?;
+    page.press("x")?;
+    page.press("down")?;
+    page.press("x")?;
+    page.wait_for(Duration::from_secs(20), |page| page.says("3 selected"))?;
+    page.press("s")?;
+    if let Err(why) = page.wait_for(Duration::from_secs(20), |page| page.menu().is_some()) {
+        panic!("{why:?}: {:?}", page.words());
+    }
+    page.advance(0.4)?;
+    save(&page, &fonts, Palette::Dark, "edit-many.png");
+    let mut page = lists(PANE, &fonts)?;
+    page.press("enter")?;
+    page.wait_for(Duration::from_secs(20), |page| {
+        page.says("600 requests a minute") && pressable(page, "panel-value:state")
+    })?;
+    page.advance(0.6)?;
+    save(&page, &fonts, Palette::Dark, "narrow-edit.png");
 
     // A new issue: the empty form, the form written (the host draws what is typed into a line, so the
     // title is not in a picture made without one), the issue made and open beside the list, and the
