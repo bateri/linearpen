@@ -2869,3 +2869,118 @@ fn after_tab_enter_presses_the_control_and_a_command_gives_the_keyboard_back() {
         .unwrap_or_else(|why| panic!("enter opens the issue: {why:?}: {}", said(&page)));
     assert!(!page.says("ACM-417"), "the scope stays: {}", said(&page));
 }
+
+// --- The issue alone in a narrow pane -----------------------------------------------------------------
+// Where the pane is too narrow for the list beside the issue, the issue has the pane and the list is
+// not on the page: the arrows scroll what is read, j and k go to the issue after and the one before,
+// and no key does something to a line that is not shown.
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn in_a_narrow_pane_the_arrows_scroll_the_issue_and_j_and_k_go_to_the_next_issue() {
+    let (_linear, _session, mut page) = open_lists(PANE);
+    open_the_issue(&mut page);
+    page.advance(0.4).expect("a moment");
+    let top = |page: &Page| page.bounds("panel-comments").map(|at| at.y);
+    let before = top(&page).expect("the comments are laid out");
+    // Down scrolls the issue that is read, and it is still that issue.
+    page.press("down").expect("down");
+    page.advance(0.6).expect("a moment");
+    page.wait_for(WITHIN, |page| top(page).is_some_and(|y| y < before - 1.0))
+        .unwrap_or_else(|why| panic!("down scrolls the issue: {why:?}: {:?}", top(&page)));
+    assert!(
+        page.says("ACM-412"),
+        "it is the same issue: {}",
+        said(&page)
+    );
+    page.press("up").expect("up");
+    page.advance(0.6).expect("a moment");
+    page.wait_for(WITHIN, |page| {
+        top(page).is_some_and(|y| (y - before).abs() < 1.0)
+    })
+    .unwrap_or_else(|why| panic!("up scrolls it back: {why:?}: {:?}", top(&page)));
+    // The line of keys says what the keys do here.
+    assert!(page.says("scroll"), "{}", said(&page));
+    assert!(page.says("next issue"), "{}", said(&page));
+    assert!(!page.says("move"), "{}", said(&page));
+    // j goes to the issue after, k to the one before; a group's head is never where it stops.
+    page.press("j").expect("j");
+    page.wait_for(WITHIN, |page| page.says("ACM-398") && !page.says("ACM-412"))
+        .unwrap_or_else(|why| panic!("j goes to the next issue: {why:?}: {}", said(&page)));
+    page.press("k").expect("k");
+    page.wait_for(WITHIN, |page| page.says("ACM-412") && !page.says("ACM-398"))
+        .unwrap_or_else(|why| panic!("k goes to the one before: {why:?}: {}", said(&page)));
+    for identifier in [
+        "ACM-398", "ACM-405", "ACM-377", "ACM-389", "ACM-371", "ACM-420",
+    ] {
+        page.press("j").expect("j");
+        page.wait_for(WITHIN, |page| page.says(identifier))
+            .unwrap_or_else(|why| panic!("j comes to {identifier}: {why:?}: {}", said(&page)));
+    }
+    // k at the first issue stays on it.
+    for _ in 0..8 {
+        page.press("k").expect("k");
+        page.advance(0.1).expect("a moment");
+    }
+    page.wait_for(WITHIN, |page| page.says("ACM-412"))
+        .unwrap_or_else(|why| panic!("k ends at the first issue: {why:?}: {}", said(&page)));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn in_a_narrow_pane_no_key_does_something_to_a_line_that_is_not_shown() {
+    let (_linear, _session, mut page) = open_lists(PANE);
+    open_the_issue(&mut page);
+    page.advance(0.4).expect("a moment");
+    // x would select a line, Shift and an arrow more of them, 2 would show another list, the
+    // arrows left and right would fold a group: none of it is on the page.
+    for keys in ["x", "shift+down", "2", "left", "/"] {
+        let _ = page.press(keys);
+        page.advance(0.3).expect("a moment");
+    }
+    assert!(
+        page.says("ACM-412"),
+        "the issue is still the one read: {}",
+        said(&page)
+    );
+    page.press("escape").expect("escape closes the issue");
+    page.wait_for(WITHIN, |page| page.bounds("panel-close").is_none())
+        .expect("the issue is closed");
+    page.advance(0.4).expect("a moment");
+    assert!(
+        !page.says("selected"),
+        "nothing was selected: {}",
+        said(&page)
+    );
+    assert!(
+        !page.says("ACM-417"),
+        "the scope is the same: {}",
+        said(&page)
+    );
+    assert!(page.says("ACM-398"), "no group was folded: {}", said(&page));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn in_a_narrow_pane_a_change_is_of_the_issue_read_and_not_of_the_ones_selected() {
+    let (_linear, _session, mut page) = open_lists(PANE);
+    page.press("x").expect("x");
+    page.press("shift+down").expect("shift and down");
+    page.press("shift+down").expect("shift and down");
+    page.wait_for(WITHIN, |page| page.says("3 selected"))
+        .unwrap_or_else(|why| panic!("three are selected: {why:?}: {}", said(&page)));
+    open_the_issue_under_the_cursor(&mut page);
+    let entries = menu_after(&mut page, "s");
+    assert!(
+        !entries.iter().any(|(title, _)| title.contains("3 issues")),
+        "the menu is of the issue read: {entries:?}"
+    );
+}
+
+/// Opens the issue under the cursor with Enter, whichever it is.
+fn open_the_issue_under_the_cursor(page: &mut Page) {
+    page.press("enter").expect("enter");
+    page.wait_for(WITHIN, |page| page.bounds("panel-close").is_some())
+        .unwrap_or_else(|why| panic!("the issue opens: {why:?}: {}", said(page)));
+    page.advance(0.4).expect("a moment");
+}

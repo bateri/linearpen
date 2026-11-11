@@ -243,6 +243,22 @@ function list.move(name)
 	return moved
 end
 
+-- Takes the cursor to the issue after (`way` 1) or before (-1) the line it is on, past the heads of
+-- the groups: what moves it where the list is not on the page and a head would be nowhere to be
+-- seen. Whether it moved.
+function list.step_issue(way)
+	local at = index_of(L.cursor) or (way > 0 and 0 or #L.items + 1)
+	local to = at + way
+	while to >= 1 and to <= #L.items do
+		local item = L.items[to]
+		if item.kind == "issue" then
+			return put(item.key)
+		end
+		to += way
+	end
+	return false
+end
+
 -- Folds (`closed` true) or opens (false) the group of the cursor's line, or turns it over (nil);
 -- the program is asked and tells the new list.
 function list.fold(closed)

@@ -43,7 +43,8 @@ The list is **My issues** (what is assigned to you) or **All issues** (the open 
 each saying whose it is), grouped by state with the backlog folded, and asked of Linear again every
 five minutes. `/` filters it by title, identifier or label. Enter opens an issue beside the list
 (from the filter too), with its description, its comments, its cycle, its project and who has it;
-Space scrolls it, and `Open in Linear` puts it in your browser. In a pane too narrow for both, the issue takes the pane.
+Space scrolls it, and `Open in Linear` puts it in your browser. In a pane too narrow for both, the issue takes the pane:
+there the arrows scroll it, and `j` and `k` go to the issue after and the one before.
 
 ### A new issue
 

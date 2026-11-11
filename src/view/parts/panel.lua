@@ -209,6 +209,24 @@ function panel.scroll(way)
 	return true
 end
 
+-- Scrolls it by `points` (the arrows, where the issue has the pane), or to its top (`to` "top") or
+-- its end ("end").
+function panel.scroll_by(points, to)
+	if P.open == nil then
+		return false
+	end
+	local extent = b.layout.scroll_extent(SCROLL)
+	local last = extent ~= nil and extent.max_offset or 0
+	local y = (kit.offset(SCROLL) or 0) + (points or 0)
+	if to == "top" then
+		y = 0
+	elseif to == "end" then
+		y = last
+	end
+	kit.scroll_to(SCROLL, math.min(math.max(y, 0), math.max(last, 0)), true)
+	return true
+end
+
 -- Asks the program for the open issue again (where it could not tell).
 function panel.retry()
 	if P.open ~= nil then

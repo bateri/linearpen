@@ -86,8 +86,14 @@ local function row_of(id)
 	return list.issue(id) or act.panel_row(id)
 end
 
--- The ids of what a command changes: the issues selected, else the one under the cursor.
+-- The ids of what a command changes: the issues selected, else the one under the cursor. Where the
+-- issue has the whole pane the list is not on the page, and what is selected in it is not seen: the
+-- change is of the issue that is read.
 function change.targets()
+	if S.alone then
+		local id = act.panel_id()
+		return id ~= nil and { id } or {}
+	end
 	local ids = list.marked_ids()
 	if #ids == 0 then
 		local item = list.current()

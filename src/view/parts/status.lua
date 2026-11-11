@@ -97,8 +97,20 @@ function status.view()
 	-- the whole pane there is no line to select or to open.
 	local start = {}
 	local typing = head.typing()
-	local alone = S.panel_open and S.width < 760
-	if list.count() > 0 then
+	local alone = S.alone
+	if alone then
+		-- The issue has the pane: the arrows are its own, and `j` and `k` go to the other issues.
+		start[#start + 1] = { key = "scroll", words = hint({ "up", "down" }, "scroll"), priority = 8 }
+		if list.count() > 1 then
+			start[#start + 1] = {
+				key = "next",
+				words = b.div():row():items_center():gap(5):no_shrink():child(u:kbd("j")):child(u:kbd("k")):child(
+					b.text("next issue")
+				),
+				priority = 7,
+			}
+		end
+	elseif list.count() > 0 then
 		start[#start + 1] = { key = "move", words = hint({ "up", "down" }, "move"), priority = 8 }
 		if not typing and not alone then
 			start[#start + 1] = { key = "select", words = hint({ "select" }, "select"), priority = 6 }
@@ -116,7 +128,7 @@ function status.view()
 			start[#start + 1] = { key = "open", words = hint({ "open" }, "open"), priority = 7 }
 		end
 	end
-	if S.panel_open and not typing then
+	if S.panel_open and not typing and not alone then
 		start[#start + 1] = { key = "read", words = hint({ "read_down" }, "scroll"), priority = 5 }
 	end
 	-- The keys that change the issues are in the card and the palette; this one says there are some.

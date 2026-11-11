@@ -46,6 +46,14 @@ end
 commands.when.idle = function()
 	return commands.when.list() and not head.typing()
 end
+-- The list is on the page: what selects its lines, folds its groups, filters it or chooses which list
+-- it is. (Where the issue has the whole pane it is not.)
+commands.when.shown = function()
+	return commands.when.list() and not S.alone
+end
+commands.when.shown_idle = function()
+	return commands.when.idle() and not S.alone
+end
 commands.when.issue = function()
 	return commands.when.list() and panel.detail() ~= nil
 end
@@ -194,6 +202,9 @@ local function render(size, now, reduce_motion)
 	S.editing = S.screen == "list" and change.editing()
 	S.panel_open = S.screen == "list" and (panel.is_open() or S.form_open)
 	S.room = (S.panel_open and S.width >= 760) and S.width - panel.width(S.width) or S.width
+	-- The issue has the whole pane (it is too narrow for the list beside it): the list and its head
+	-- are not on the page, and no key is theirs.
+	S.alone = S.screen == "list" and panel.is_open() and not S.form_open and S.width < 760
 	local root = b.div():size_full():col():bg("background"):color("foreground"):family("terminal")
 	if S.screen == "boot" then
 		root:child(booting())
@@ -368,6 +379,33 @@ local function back()
 	return true
 end
 
+-- A key where the issue has the whole pane: the arrows scroll what is read (the list they would
+-- move in is not on the page), Page Up and Page Down by what the room shows, Home and End to its
+-- ends; `j` and `k` go to the issue after and the one before. Shift and an arrow, which selects
+-- lines, and Enter, which opens the one that is open, do nothing.
+local LINES = 63
+local function reading_key(event)
+	local mods = event.mods or {}
+	if mods.command or mods.control or mods.alt then
+		return nil
+	end
+	local name = event.key
+	if name == "up" or name == "down" then
+		if not mods.shift then
+			panel.scroll_by(name == "down" and LINES or -LINES)
+		end
+	elseif name == "page_down" or name == "page_up" then
+		panel.scroll(name == "page_down" and 1 or -1)
+	elseif name == "home" or name == "end" then
+		panel.scroll_by(nil, name == "home" and "top" or "end")
+	elseif (name == "j" or name == "k") and not mods.shift then
+		list.step_issue(name == "j" and 1 or -1)
+	elseif name ~= "enter" then
+		return nil
+	end
+	return true
+end
+
 -- A key no component took.
 local function key(event)
 	local mods = event.mods or {}
@@ -408,6 +446,9 @@ local function key(event)
 	end
 	if event.key == "escape" then
 		return back()
+	end
+	if S.alone then
+		return reading_key(event)
 	end
 	return list.key(event, false) or nil
 end
