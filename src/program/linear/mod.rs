@@ -8,7 +8,7 @@ pub mod query;
 pub mod transport;
 pub mod types;
 
-pub use error::{Error, tidy};
+pub use error::{Error, plain, tidy};
 pub use key::{Key, KeyError};
 pub use transport::Transport;
 pub use types::{Issue, Viewer};

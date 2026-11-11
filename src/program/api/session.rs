@@ -39,6 +39,8 @@ fn boot(session: &Session, _: Nothing) -> Result<Boot, Failure> {
         };
         (key, state.problem.clone())
     };
+    // A page that opens (again, under `make dev`) numbers its `view` calls from one.
+    session.forget_view_order();
     // The lists are asked for as the page opens, if there is a key to ask with.
     session.begin();
     Ok(Boot {
@@ -93,6 +95,8 @@ struct ViewParams {
     scope: Option<String>,
     filter: Option<String>,
     closed: Option<HashMap<String, bool>>,
+    /// The number of this call among the page's `view` calls.
+    seq: Option<u64>,
 }
 
 fn view(session: &Session, params: ViewParams) -> Result<Snapshot, Failure> {
@@ -124,17 +128,7 @@ fn view(session: &Session, params: ViewParams) -> Result<Snapshot, Failure> {
             "closed names at most {CLOSED_MOST} groups"
         )));
     }
-    session.set_view(|view| {
-        if let Some(scope) = scope {
-            view.scope = scope;
-        }
-        if let Some(filter) = params.filter {
-            view.filter = filter;
-        }
-        if let Some(closed) = params.closed {
-            view.closed = closed;
-        }
-    });
+    session.set_view(params.seq, scope, params.filter, params.closed);
     Ok(snapshot(&session.state()))
 }
 

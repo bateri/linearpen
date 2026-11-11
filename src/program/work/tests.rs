@@ -262,12 +262,48 @@ fn where_bateri_says_no_the_words_are_its_own() {
         start(&env, &request(&issues, Folder::Here)).unwrap_err(),
         Refused::Failed("bateri: no pane for you".to_owned())
     );
-    // An answer that is not a pane's id is not taken for one.
+    // An answer that is not a pane's id is not taken for one, and a pane that may be there keeps
+    // the file it was told to read.
     *runner.pane.lock().unwrap() = (true, "ok\n".to_owned());
     assert!(matches!(
         start(&env, &request(&issues, Folder::Here)),
         Err(Refused::Failed(_))
     ));
+    let kept = std::fs::read_dir(state.path().join("work"))
+        .unwrap()
+        .count();
+    assert_eq!(kept, 1, "the file of a pane that may be there stays");
+}
+
+#[test]
+fn where_the_pane_is_refused_what_was_made_for_it_is_taken_away() {
+    let bin = bin(&["bateri", "claude"]);
+    let state = tempfile::tempdir().unwrap();
+    let runner = Recorder::new();
+    *runner.pane.lock().unwrap() = (false, "bateri: no pane for you".to_owned());
+    let setup = setup(&bin, true);
+    let issues = [fixture_issue()];
+    let env = Env {
+        setup: &setup,
+        runner: &runner,
+        state: Some(state.path()),
+        now: 0,
+    };
+    assert!(start(&env, &request(&issues, Folder::Worktree)).is_err());
+    let asked = runner.asked();
+    assert_eq!(
+        &asked[asked.len() - 2..],
+        [
+            "git worktree remove /work/acme-app-acm-412",
+            "git branch -d ada/acm-412-add-rate-limiting"
+        ],
+        "{asked:?}"
+    );
+    // The file of the issues is not left behind: nothing is in the folder of the files.
+    let left = std::fs::read_dir(state.path().join("work"))
+        .unwrap()
+        .count();
+    assert_eq!(left, 0);
 }
 
 #[test]

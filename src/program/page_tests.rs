@@ -950,6 +950,28 @@ fn what_is_selected_is_what_the_form_is_for_and_a_box_lets_one_go() {
 
 #[test]
 #[ignore = "opens the kit's interpreter: make test-page"]
+fn the_keyboard_lets_an_issue_go_from_the_form_and_the_card_of_keys_is_not_said_there() {
+    let (_rig, mut page) = open_rig(WIDE, true, &["claude"]);
+    page.press("x").expect("x");
+    page.press("shift+down").expect("shift+down");
+    page.press("shift+down").expect("shift+down");
+    open_form(&mut page);
+    assert!(page.says("Work on 3 issues"), "{}", said(&page));
+    // In the form `?` is a character of the words, so the foot does not offer the card of keys.
+    assert!(page.says("next field"), "{}", said(&page));
+    assert!(!page.words().contains(&"?"), "{}", said(&page));
+    // From the words for the agent, Shift Tab goes up to the last of the boxes, and the space bar
+    // lets that issue go.
+    page.press("shift+tab").expect("shift+tab");
+    page.press("space").expect("space");
+    page.wait_for(WITHIN, |page| page.says("Work on 2 issues"))
+        .unwrap_or_else(|why| panic!("an issue is let go: {why:?}: {}", said(&page)));
+    assert!(page.says("2 selected"), "{}", said(&page));
+    assert!(!page.says("ACM-405 Webhook"), "{}", said(&page));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
 fn tab_goes_on_to_the_next_field_arrows_choose_and_escape_puts_the_form_away() {
     let (rig, mut page) = open_rig(WIDE, true, &["claude", "codex"]);
     open_form(&mut page);

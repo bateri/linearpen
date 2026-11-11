@@ -69,6 +69,9 @@ pub struct State {
     /// When the lists were told, seconds since the epoch.
     pub updated: Option<u64>,
     pub view: View,
+    /// The number of the last `view` call that set each member of `view` (scope, filter, closed),
+    /// which are made at the same time and may be told out of their order.
+    view_seen: [u64; 3],
     /// The issues an agent was started on whose pane has not ended, by Linear's id.
     pub working: HashMap<String, Working>,
     /// Issues opened, as Linear told them (with their description and comments), by id: they are
@@ -200,6 +203,7 @@ impl Session {
                 },
                 working: HashMap::new(),
                 details: HashMap::new(),
+                view_seen: [0; 3],
                 generation: 0,
                 refresh_wanted: false,
                 worker: false,
@@ -330,13 +334,16 @@ impl Session {
     /// The issue with Linear's `id` (or its identifier), with its description and comments: from
     /// what was kept, else asked of Linear (without holding the state while it is).
     pub fn detail(&self, id: &str) -> Result<Issue, Error> {
-        let key = {
-            let state = self.shared.lock();
-            if let Some(kept) = state.details.get(id) {
-                return Ok(kept.clone());
-            }
-            state.key.clone()
-        };
+        if let Some(kept) = self.shared.lock().details.get(id) {
+            return Ok(kept.clone());
+        }
+        self.detail_fresh(id)
+    }
+
+    /// The same, always asked of Linear (and kept): what is handed to an agent is what Linear says
+    /// now, not what the panel showed when it was first opened.
+    pub fn detail_fresh(&self, id: &str) -> Result<Issue, Error> {
+        let key = self.shared.lock().key.clone();
         let Some(key) = key else {
             return Err(Error::Failed(
                 "there is no key to ask Linear with".to_owned(),
@@ -351,10 +358,48 @@ impl Session {
         Ok(issue)
     }
 
-    /// Changes what the page is looking at, and wakes whoever shows it.
-    pub fn set_view(&self, change: impl FnOnce(&mut View)) {
+    /// A page that begins again numbers its `view` calls from the start: what was held of the last
+    /// one's numbers is let go.
+    pub fn forget_view_order(&self) {
+        self.shared.lock().view_seen = [0; 3];
+    }
+
+    /// Changes what the page is looking at, and wakes whoever shows it. The page numbers its calls
+    /// (`seq`): a member that a call with a higher number has set is left as it is, for calls run at
+    /// the same time and may come out of their order. A call with no number is the latest.
+    pub fn set_view(
+        &self,
+        seq: Option<u64>,
+        scope: Option<Scope>,
+        filter: Option<String>,
+        closed: Option<HashMap<String, bool>>,
+    ) {
         let mut state = self.shared.lock();
-        change(&mut state.view);
+        // Only a member that the call sets is held to the order: one it does not set is not its.
+        let mut allowed = |member: usize, sets: bool| match seq {
+            _ if !sets => false,
+            Some(seq) if seq < state.view_seen[member] => false,
+            Some(seq) => {
+                state.view_seen[member] = seq;
+                true
+            }
+            None => true,
+        };
+        let (scope_ok, filter_ok, closed_ok) = (
+            allowed(0, scope.is_some()),
+            allowed(1, filter.is_some()),
+            allowed(2, closed.is_some()),
+        );
+        if let Some(scope) = scope.filter(|_| scope_ok) {
+            state.view.scope = scope;
+        }
+        if let Some(filter) = filter.filter(|_| filter_ok) {
+            state.view.filter = filter;
+        }
+        if let Some(closed) = closed.filter(|_| closed_ok) {
+            state.view.closed = closed;
+        }
+        self.shared.changed(&mut state);
     }
 
     /// Waits until `State` is not at `seen` any more, or `limit` has passed: gives its generation.
@@ -391,5 +436,68 @@ impl Drop for Session {
         let mut state = self.shared.lock();
         state.closed = true;
         self.shared.wake.notify_all();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::linear::transport::Reply;
+
+    /// A transport that is never asked: these tests hold no key.
+    struct Never;
+
+    impl Transport for Never {
+        fn post(&self, _: &Key, _: &str) -> Result<Reply, Error> {
+            Err(Error::Unreachable("not asked".to_owned()))
+        }
+    }
+
+    fn session() -> Session {
+        Session::new(
+            Arc::new(Never),
+            Paths {
+                config: None,
+                state: None,
+            },
+            None,
+            Duration::from_secs(3600),
+        )
+    }
+
+    #[test]
+    fn a_view_call_told_late_does_not_undo_a_later_one_of_the_same_member() {
+        let session = session();
+        session.set_view(Some(2), None, Some("rate".to_owned()), None);
+        session.set_view(Some(1), None, Some("rat".to_owned()), None);
+        assert_eq!(session.state().view.filter, "rate");
+        session.set_view(Some(3), None, Some("rates".to_owned()), None);
+        assert_eq!(session.state().view.filter, "rates");
+    }
+
+    #[test]
+    fn a_call_is_held_to_the_order_only_of_the_members_it_sets() {
+        let session = session();
+        // The filter call has the higher number and comes first: the scope call is not its.
+        session.set_view(Some(5), None, Some("bug".to_owned()), None);
+        session.set_view(Some(4), Some(Scope::All), None, None);
+        let folded = HashMap::from([("todo".to_owned(), true)]);
+        session.set_view(Some(3), None, None, Some(folded.clone()));
+        let state = session.state();
+        assert_eq!(state.view.scope, Scope::All);
+        assert_eq!(state.view.filter, "bug");
+        assert_eq!(state.view.closed, folded);
+    }
+
+    #[test]
+    fn a_page_that_begins_again_is_heard_from_its_first_call() {
+        let session = session();
+        session.set_view(Some(9), None, Some("old".to_owned()), None);
+        session.forget_view_order();
+        session.set_view(Some(1), None, Some("new".to_owned()), None);
+        assert_eq!(session.state().view.filter, "new");
+        // A call with no number is the latest.
+        session.set_view(None, None, Some("last".to_owned()), None);
+        assert_eq!(session.state().view.filter, "last");
     }
 }

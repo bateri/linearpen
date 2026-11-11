@@ -170,7 +170,7 @@ fn start(session: &Session, params: Hand) -> Result<StartedMessage, Failure> {
     let issues: Vec<Issue> = params
         .ids
         .iter()
-        .map(|id| session.detail(id))
+        .map(|id| session.detail_fresh(id))
         .collect::<Result<_, _>>()
         .map_err(Failure::Linear)?;
     let started = work::start(

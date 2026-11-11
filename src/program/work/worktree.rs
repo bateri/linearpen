@@ -124,12 +124,13 @@ pub fn offer(
     Ok(Offer { root, path, branch })
 }
 
-/// Makes the worktree: on the branch where there is one, else on a new one from `HEAD`.
+/// Makes the worktree: on the branch where there is one, else on a new one from `HEAD`. It says
+/// whether the branch is a new one (`undo` takes it away again).
 ///
 /// # Errors
 ///
 /// The words of why it could not be made (the folder is taken, `git` refused).
-pub fn create(runner: &dyn Runner, offer: &Offer) -> Result<(), String> {
+pub fn create(runner: &dyn Runner, offer: &Offer) -> Result<bool, String> {
     let git = |args: &[&str]| {
         let args: Vec<String> = args.iter().map(|word| (*word).to_owned()).collect();
         runner
@@ -157,9 +158,24 @@ pub fn create(runner: &dyn Runner, offer: &Offer) -> Result<(), String> {
         git(&["worktree", "add", "-b", &offer.branch, &path, "HEAD"])?
     };
     if ran.ok {
-        Ok(())
+        Ok(!exists)
     } else {
         Err(ran.reason("git did not make the worktree"))
+    }
+}
+
+/// Takes away what `create` made, when what was to run in it could not be started: the worktree
+/// (which `git` takes away only if nothing in it has changed), and the branch if it was made new
+/// (which `git` deletes only if it holds nothing that `HEAD` does not). Nothing of it is reported:
+/// what is left is left for the person, who is told that the start failed.
+pub fn undo(runner: &dyn Runner, offer: &Offer, new_branch: bool) {
+    let git = |args: &[&str]| {
+        let args: Vec<String> = args.iter().map(|word| (*word).to_owned()).collect();
+        runner.run("git", &args, Some(&offer.root))
+    };
+    let path = offer.path.display().to_string();
+    if git(&["worktree", "remove", &path]).is_ok_and(|ran| ran.ok) && new_branch {
+        let _ = git(&["branch", "-d", &offer.branch]);
     }
 }
 
@@ -168,7 +184,7 @@ mod tests {
     use std::process::Command;
     use std::sync::Mutex;
 
-    use super::super::runner::{Ran, System};
+    use super::super::runner::Ran;
     use super::*;
 
     /// A runner that answers as a repository would, and keeps what it was asked.
@@ -263,16 +279,36 @@ mod tests {
         assert_eq!(asked.0.lock().unwrap()[0], "git rev-parse --show-toplevel");
     }
 
-    fn git(dir: &Path, args: &[&str]) -> bool {
-        Command::new("git")
-            .args(args)
-            .current_dir(dir)
+    /// `git` as the tests have it: with none of the configuration of the machine they run on (a
+    /// hook, a signing key, an identity) and a name of its own to commit as.
+    fn isolate(command: &mut Command) -> &mut Command {
+        command
             .env("GIT_AUTHOR_NAME", "Test")
             .env("GIT_AUTHOR_EMAIL", "test@example.com")
             .env("GIT_COMMITTER_NAME", "Test")
             .env("GIT_COMMITTER_EMAIL", "test@example.com")
             .env("GIT_CONFIG_GLOBAL", "/dev/null")
             .env("GIT_CONFIG_SYSTEM", "/dev/null")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+    }
+
+    /// The runner of the program, with `git` isolated: what the code under test runs is the same.
+    struct Isolated;
+
+    impl Runner for Isolated {
+        fn run(&self, program: &str, args: &[String], cwd: Option<&Path>) -> std::io::Result<Ran> {
+            let mut command = super::super::runner::command_of(program, args, cwd);
+            let output = isolate(&mut command).output()?;
+            Ok(Ran {
+                ok: output.status.success(),
+                out: String::from_utf8_lossy(&output.stdout).into_owned(),
+                err: String::from_utf8_lossy(&output.stderr).into_owned(),
+            })
+        }
+    }
+
+    fn git(dir: &Path, args: &[&str]) -> bool {
+        isolate(Command::new("git").args(args).current_dir(dir))
             .stdin(std::process::Stdio::null())
             .output()
             .is_ok_and(|out| out.status.success())
@@ -298,17 +334,50 @@ mod tests {
             return;
         }
         let (_base, root) = repository();
-        let found = offer(&System, &root, "ACM-412", Some("ada/acm-412-add")).unwrap();
+        let found = offer(&Isolated, &root, "ACM-412", Some("ada/acm-412-add")).unwrap();
         assert_eq!(found.root, root);
-        create(&System, &found).unwrap();
+        assert!(create(&Isolated, &found).unwrap(), "the branch is new");
         assert!(found.path.join("a.txt").exists());
         // The folder is taken now.
-        assert!(create(&System, &found).unwrap_err().contains("taken"));
+        assert!(create(&Isolated, &found).unwrap_err().contains("taken"));
         // A branch that is there is used as it is.
         assert!(git(&root, &["branch", "ready"]));
-        let again = offer(&System, &root, "ACM-9", Some("ready")).unwrap();
-        create(&System, &again).unwrap();
+        let again = offer(&Isolated, &root, "ACM-9", Some("ready")).unwrap();
+        assert!(!create(&Isolated, &again).unwrap(), "the branch was there");
         assert!(again.path.join("a.txt").exists());
+    }
+
+    #[test]
+    fn what_was_made_is_taken_away_and_a_branch_that_was_there_is_kept() {
+        if Command::new("git").arg("--version").output().is_err() {
+            return;
+        }
+        let (_base, root) = repository();
+        let made = offer(&Isolated, &root, "ACM-412", Some("ada/acm-412-add")).unwrap();
+        let new_branch = create(&Isolated, &made).unwrap();
+        undo(&Isolated, &made, new_branch);
+        assert!(!made.path.exists());
+        assert!(!git(
+            &root,
+            &[
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                "refs/heads/ada/acm-412-add"
+            ]
+        ));
+        // Made again, it is free to be.
+        assert!(create(&Isolated, &made).unwrap());
+        // A branch that was there stays.
+        assert!(git(&root, &["branch", "ready"]));
+        let kept = offer(&Isolated, &root, "ACM-9", Some("ready")).unwrap();
+        let new_branch = create(&Isolated, &kept).unwrap();
+        undo(&Isolated, &kept, new_branch);
+        assert!(!kept.path.exists());
+        assert!(git(
+            &root,
+            &["rev-parse", "--verify", "--quiet", "refs/heads/ready"]
+        ));
     }
 
     #[test]
@@ -317,7 +386,7 @@ mod tests {
             return;
         }
         let plain = tempfile::tempdir().unwrap();
-        let why = offer(&System, plain.path(), "ACM-1", None).unwrap_err();
+        let why = offer(&Isolated, plain.path(), "ACM-1", None).unwrap_err();
         assert!(why.contains("not in a git repository"), "{why}");
     }
 }

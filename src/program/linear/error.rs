@@ -39,15 +39,22 @@ impl fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-/// `text` as one short line of plain words: what Linear sends back is shown to the person, never
-/// trusted, so control characters go and the length is held.
-pub fn tidy(text: &str) -> String {
-    const LONGEST: usize = 200;
+/// `text` as one line with no control character in it (a terminal takes an escape sequence in what
+/// is printed for a command), runs of white space made one space. The length is not held.
+#[must_use]
+pub fn plain(text: &str) -> String {
     let plain: String = text
         .chars()
         .map(|c| if c.is_control() { ' ' } else { c })
         .collect();
-    let plain = plain.split_whitespace().collect::<Vec<_>>().join(" ");
+    plain.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// `text` as one short line of plain words: what Linear sends back is shown to the person, never
+/// trusted, so control characters go and the length is held.
+pub fn tidy(text: &str) -> String {
+    const LONGEST: usize = 200;
+    let plain = plain(text);
     if plain.chars().count() > LONGEST {
         let mut cut: String = plain.chars().take(LONGEST - 1).collect();
         cut.push('\u{2026}');

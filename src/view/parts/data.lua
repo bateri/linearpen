@@ -17,8 +17,13 @@ end
 
 -- Tells the program what the page looks at (`scope`, `filter`, `closed`).
 function act.view(params)
+	-- The calls run at the same time in the program: each is numbered, so that one told late does not
+	-- undo a later one.
+	S.view_seq = (S.view_seq or 0) + 1
+	params.seq = S.view_seq
 	kit.call("view", params, function(result)
-		if result then
+		-- The answer of a call that a later one has gone past is not what the program holds now.
+		if result and params.seq == S.view_seq then
 			apply(result)
 		end
 		return true

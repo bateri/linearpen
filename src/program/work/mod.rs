@@ -187,12 +187,15 @@ pub fn start(env: &Env<'_>, request: &Request<'_>) -> Result<Started, Refused> {
         request.issues,
     )
     .map_err(|why| Refused::Failed(format!("the issues could not be written: {why}")))?;
-    let folder = match &offer {
-        Some(offer) => {
-            worktree::create(env.runner, offer).map_err(Refused::Failed)?;
-            offer.path.clone()
-        }
-        None => here,
+    let (folder, made) = match &offer {
+        Some(offer) => match worktree::create(env.runner, offer) {
+            Ok(new_branch) => (offer.path.clone(), Some((offer, new_branch))),
+            Err(why) => {
+                handoff::discard(&context);
+                return Err(Refused::Failed(why));
+            }
+        },
+        None => (here, None),
     };
     let prompt = handoff::prompt(request.prompt, &context);
     let pane = bateri::launch(
@@ -202,7 +205,17 @@ pub fn start(env: &Env<'_>, request: &Request<'_>) -> Result<Started, Refused> {
         &first.identifier,
         &request.agent.command(&prompt),
     )
-    .map_err(Refused::Failed)?;
+    .map_err(|no| {
+        // Nothing runs there, so what was made for it goes, and a start tried again finds the
+        // folder and the branch free. (Where a pane may be there, it is left what it runs on.)
+        if !no.maybe {
+            if let Some((offer, new_branch)) = made {
+                worktree::undo(env.runner, offer, new_branch);
+            }
+            handoff::discard(&context);
+        }
+        Refused::Failed(no.why)
+    })?;
     Ok(Started {
         pane,
         folder,

@@ -59,6 +59,9 @@ optional (`{}` asks for the list as it is). Params:
 - `closed`: `{ "<group key>": true | false }`, the groups the person folded (`true`) or opened
   (`false`), at most 64; one not named is as it begins (`backlog` and `triage` folded). It replaces
   what the program held.
+- `seq`: the number of this call among the page's `view` calls, which grows with each. Calls run at
+  the same time and may be told out of their order: a member (`scope`, `filter` or `closed`) that a
+  call with a higher `seq` has set is left as it is. A call with no `seq` is taken as the latest.
 
 Answer: the **list** (below).
 
@@ -93,7 +96,7 @@ cycle's number or null. `at` is the day as the list writes it. Errors: `bad-para
 What the person can choose from when they hand issues to an agent, and what cannot be chosen and
 why. Params: `{ "ids": ["issue-412", "issue-405"] }`, one to twenty-five ids of the list's issues, in
 the order they are to be handed over; the first names the branch of a new worktree. Nothing is
-started. The first issue is the one of the lists; Linear is asked for it only where the lists do not
+started. (The page asks with the first id alone: what can be chosen is the same for all.) The first issue is the one of the lists; Linear is asked for it only where the lists do not
 have it (they may not have come).
 
 ```json

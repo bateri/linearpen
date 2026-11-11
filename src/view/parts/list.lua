@@ -203,6 +203,11 @@ function list.press(event)
 	end
 	local hit = b.layout.hit({ x = event.x, y = event.y })
 	if hit ~= nil and string.sub(hit, 1, 6) == "check:" then
+		-- (While the form is open what it is for is let go of by its own boxes, which the keyboard
+		-- reaches too: the list's boxes are not a way to add to it, which only the pointer could do.)
+		if S.work_open then
+			return true
+		end
 		local box = string.sub(hit, 7)
 		put(box)
 		list.toggle_mark(box)

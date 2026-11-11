@@ -33,6 +33,9 @@ work.state = W
 
 local AGENT, FOLDER, PLACE = "work-agent", "work-folder", "work-place"
 
+-- The most issues one agent is started on (the program's limit, docs/calls.md).
+work.MOST = 25
+
 -- The editor of the words for the agent: another each time the form opens, so that it begins empty.
 local function prompt_name()
 	return "work-prompt" .. W.serial
@@ -76,6 +79,7 @@ function work.startable()
 		and options.unavailable == nil
 		and W.agent ~= nil
 		and #work.ids() > 0
+		and #work.ids() <= work.MOST
 end
 
 -- Asks the program what can be chosen for the issues (the first names the branch of a worktree).
@@ -86,7 +90,8 @@ local function ask(ids)
 	end
 	W.asked = first
 	W.options = { status = "loading" }
-	kit.call("work_options", { ids = ids }, function(result, err)
+	-- Only the first is told: what can be chosen is the same for all, and the branch is the first's.
+	kit.call("work_options", { ids = { first } }, function(result, err)
 		if W.asked ~= first then
 			return true
 		end
@@ -131,7 +136,8 @@ function work.show()
 	panel.close()
 	W.open, W.live, W.fixed = true, live, live and {} or ids
 	W.serial += 1
-	W.asked, W.options, W.starting, W.error = nil, nil, false, nil
+	-- (A start that is on its way is not forgotten: its answer comes to a form that may be gone.)
+	W.asked, W.options, W.error = nil, nil, nil
 	work.sync()
 	return u:focus(prompt_name())
 end
@@ -149,6 +155,7 @@ function work.start()
 	local length = b.layout.editor_length(name) or 0
 	local words = b.layout.editor_text(name, 1, length + 1) or ""
 	W.starting, W.error = true, nil
+	local serial = W.serial
 	kit.call("start", {
 		ids = work.ids(),
 		prompt = words,
@@ -157,6 +164,10 @@ function work.start()
 		open = W.place,
 	}, function(_, err)
 		W.starting = false
+		-- The form it was sent from may have been put away, and another opened: that one is not done.
+		if W.serial ~= serial or not W.open then
+			return true
+		end
 		if err then
 			W.error = err.message or err.code
 			return true
@@ -191,9 +202,22 @@ end
 -- The box that lets an issue go from the form (and from the selection).
 local function leave_box(id, info)
 	local name = "work-check:" .. id
-	return b.div():size(14, 14):no_shrink():press(name):role("checkbox"):checked(true):label("Leave out " .. info.identifier):child(
-		row.box(name, true)
-	)
+	local ring = u.theme.ring
+	-- The box has the keyboard in Tab's order, and enter or the space bar lets the issue go.
+	return b.div()
+		:row()
+		:size(18, 18)
+		:items_center()
+		:justify_center()
+		:rounded(6)
+		:no_shrink()
+		:border(1, u:focus_visible(name) and ring or u.theme.clear)
+		:press(name)
+		:focusable()
+		:role("checkbox")
+		:checked(true)
+		:label("Leave out " .. info.identifier)
+		:child(row.box(name, true))
 end
 
 -- An issue the form is for: its box (where they were selected, to let one go), identifier and title.
@@ -316,6 +340,8 @@ local function start_button()
 		why = options.unavailable
 	elseif #work.ids() == 0 then
 		why = "No issue is chosen"
+	elseif #work.ids() > work.MOST then
+		why = "At most " .. work.MOST .. " issues at a time: leave some out"
 	end
 	local button = kit.button("work-start", start_label(), {
 		primary = true,
@@ -366,7 +392,7 @@ function work.view(width)
 	end
 	local button, why = start_button()
 	local foot = b.div():row():items_center():gap(12):no_shrink():child(button)
-	if why ~= nil and options ~= nil and options.unavailable ~= nil then
+	if why ~= nil and #ids > 0 then
 		foot:child(b.text(why):text_size(SIZE.small):color("warning"):wrap():min_w(0):grow(1))
 	end
 	content:child(foot)
@@ -391,7 +417,8 @@ function work.press(id)
 		return work.start()
 	elseif string.sub(id, 1, 11) == "work-check:" then
 		list.toggle_mark("i:" .. string.sub(id, 12))
-		return true
+		-- The box is gone with the issue: the keyboard goes back to the words for the agent.
+		return u:focus(u:field(prompt_name()))
 	end
 	return nil
 end
@@ -413,10 +440,19 @@ function work.action(action)
 	return true
 end
 
--- What Tab goes through, in order, as it stands now: the words for the agent, the choice made in each
--- control (the one of its parts that is in the order of the keyboard), and the button that starts.
+-- What Tab goes through, in order, as it stands now: the boxes that let an issue go, the words for the
+-- agent, the choice made in each control (the one of its parts that is in the order of the keyboard), and the button that starts.
 local function order()
-	local names = { u:field(prompt_name()) }
+	local names = {}
+	if W.live then
+		for _, id in work.ids() do
+			local name = "work-check:" .. id
+			if b.layout.bounds(name) ~= nil then
+				names[#names + 1] = name
+			end
+		end
+	end
+	names[#names + 1] = u:field(prompt_name())
 	local controls = { { AGENT, W.agent }, { FOLDER, W.folder }, { PLACE, W.place } }
 	for _, control in controls do
 		local name = control[2] ~= nil and u:name(control[1], "item", control[2]) or nil

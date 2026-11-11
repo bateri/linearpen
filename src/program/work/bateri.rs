@@ -37,6 +37,9 @@ pub fn arguments(place: Place, folder: &Path, label: &str, program: &[String]) -
         Place::Split => vec!["split".to_owned(), "--right".to_owned()],
         Place::Tab => vec!["tab".to_owned()],
     };
+    // The label is Linear's identifier: one that begins with a dash is not taken for an option.
+    let label = label.trim_start_matches('-');
+    let label = if label.is_empty() { "issue" } else { label };
     words.extend([
         "--cwd".to_owned(),
         folder.display().to_string(),
@@ -54,30 +57,44 @@ fn is_pane(word: &str) -> bool {
         .is_some_and(|digits| !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()))
 }
 
+/// Why there is no pane.
+#[derive(Debug, PartialEq, Eq)]
+pub struct NoPane {
+    /// The words for the person.
+    pub why: String,
+    /// bateri went well but did not say which pane it made: there may be one, running in the folder
+    /// and on the file that were made for it, which are not to be taken away.
+    pub maybe: bool,
+}
+
 /// Makes the pane that runs `program` in `folder`, and says its id.
 ///
 /// # Errors
 ///
-/// The words that say why there is no pane.
+/// Why there is no pane.
 pub fn launch(
     runner: &dyn Runner,
     place: Place,
     folder: &Path,
     label: &str,
     program: &[String],
-) -> Result<String, String> {
+) -> Result<String, NoPane> {
     let words = arguments(place, folder, label, program);
+    let none = |why: String| NoPane { why, maybe: false };
     let ran = runner
         .run(PROGRAM, &words, None)
-        .map_err(|why| format!("bateri could not be run: {why}"))?;
+        .map_err(|why| none(format!("bateri could not be run: {why}")))?;
     if !ran.ok {
-        return Err(ran.reason("bateri did not make the pane"));
+        return Err(none(ran.reason("bateri did not make the pane")));
     }
     let id = ran.out.trim();
     if is_pane(id) {
         Ok(id.to_owned())
     } else {
-        Err("bateri did not say which pane it made".to_owned())
+        Err(NoPane {
+            why: "bateri did not say which pane it made".to_owned(),
+            maybe: true,
+        })
     }
 }
 
@@ -113,6 +130,9 @@ mod tests {
                 "-x look"
             ]
         );
+        // A label that looks like an option is made one that does not.
+        let odd = arguments(Place::Tab, Path::new("/w"), "--cwd", &["codex".to_owned()]);
+        assert_eq!(odd[3..5], ["--label", "cwd"]);
         let tab = arguments(Place::Tab, Path::new("/w"), "ACM-1", &["codex".to_owned()]);
         assert_eq!(tab[0], "tab");
         assert!(!tab.contains(&"--right".to_owned()), "{tab:?}");

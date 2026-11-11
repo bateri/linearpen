@@ -1,24 +1,151 @@
 # linearpen
 
-Your Linear issues in a terminal pane, and an agent started on the ones you pick. It only reads:
-nothing is changed in Linear.
+Your Linear issues in a terminal pane, and an agent started on the ones you pick: a list grouped
+by state, an issue beside it with its description and comments, and Claude, Codex or Cursor
+working on what you chose in the pane next to it. It only reads: nothing is changed in Linear.
 
-linearpen is a pen for bateri: in a terminal that shows pencere
-views it opens in the pane, and anywhere else it prints your issues as text.
+<img src="docs/list.png" width="720" alt="linearpen: the issues assigned to you, grouped by state">
 
-## Try it
+## Use
+
+linearpen is a [pencere](https://github.com/bateri/pencere) program, one native file with the
+interface inside it. Run it in a terminal that hosts pencere views
+([bateri](https://github.com/bateri/bateri)) and the pane becomes the interface, the way `vim`
+takes the screen and gives it back. Run it anywhere else and it prints your issues as text.
+
+```sh
+linearpen            # the interface
+linearpen --text     # your issues as text, whatever the terminal is
+```
+
+There is no release yet: it is built from its source, with Rust and `curl`.
 
 ```sh
 cargo build --release
-LINEAR_API_KEY=<a personal API key with Read permission> target/release/linearpen --text
+target/release/linearpen
 ```
 
-Make the key in Linear under Settings, Account, Security. The key is also read from the file `key`
-in `~/.config/linearpen` (or `$XDG_CONFIG_HOME/linearpen`); keep it readable by you alone.
+### The key
 
-linearpen talks to Linear with `curl`, so `curl` has to be installed. The key goes to `curl` on its
-standard input, not as an argument and not in its environment.
+linearpen asks Linear with a personal API key that has Read permission. Make one in Linear under
+Settings, Account, Security. A pane that has no key asks for one (the field hides what you type),
+tries it with a question to Linear and keeps it in the file `key` of `~/.config/linearpen` (or of
+`$XDG_CONFIG_HOME/linearpen`), made readable by you alone. `LINEAR_API_KEY` in the environment is
+used first, and kept nowhere. A key file that other users can read is still read, and `linearpen --text` warns about it.
+
+### Your issues
+
+<img src="docs/issue.png" width="720" alt="linearpen: an issue open beside the list">
+
+The list is **My issues** (what is assigned to you) or **All issues** (the open issues of the workspace,
+each saying whose it is), grouped by state with the backlog folded, and asked of Linear again every
+five minutes. `/` filters it by title, identifier or label. Enter opens an issue beside the list,
+with its description, its comments, its cycle, its project and who has it; `Open in Linear` puts it
+in your browser. In a pane too narrow for both, the issue takes the pane.
+
+### Work on an issue
+
+<img src="docs/work.png" width="720" alt="linearpen: three issues selected and the form that hands them to Claude">
+
+`x` selects an issue, Shift with the arrows selects more, `⌘A` selects what is shown. `w` opens a
+form for the issue under the cursor or for the ones selected: say what the agent should do, choose
+the agent (the ones of Claude, Codex and Cursor that are in your `PATH`), whether it works in this
+folder or in a new `git` worktree on the issue's branch, and whether its pane splits to the right or
+opens a new tab. `⌘Enter` starts it, and each issue says which agent is on it until the pane ends.
+
+<img src="docs/started.png" width="720" alt="linearpen: the issues an agent was started on, each marked with its name">
+
+How it starts one:
+
+- It asks bateri for the pane (`bateri split` or `bateri tab`), so nothing is started outside a
+  bateri pane, and the form says why.
+- The issues, with their descriptions and comments, are written to a file that only you can read, in
+  `~/.local/state/linearpen/work` (`$XDG_STATE_HOME`), and the agent is told where it is. What the
+  agent is started with is a sentence that names the file and what you wrote, never the text of an
+  issue.
+- That file says, before anything else, that other people wrote the issues, so what is in them is
+  read as a description of the work and not as an order.
+- A new worktree is made beside the repository (`<repository>-<issue>`), on the branch Linear
+  names for the issue, after the name has been checked with `git check-ref-format`.
+- No option that lets an agent skip its questions is ever given.
+
+### The keyboard, and the mouse
+
+Everything the mouse does, the keys do too. The line at the foot says what the keys do where you are,
+`?` lists them all and `⌘K` finds a command by its name.
+
+| Key                   | What it does                                                         |
+| --------------------- | -------------------------------------------------------------------- |
+| `↑` `↓` / `j` `k`     | move                                                                 |
+| `←` `→`               | close and open a group                                               |
+| `Enter`               | open the issue beside the list                                       |
+| `o`                   | open it in Linear                                                    |
+| `x`, `Shift ↑↓`, `⌘A` | select the issue, select more, select all                            |
+| `w`, `⌘Enter`         | work on the issue or the selected, start the agent                   |
+| `1` `2`               | My issues, All issues                                                |
+| `/`                   | filter                                                               |
+| `r`                   | ask Linear again                                                     |
+| `⌘K`, `?`             | find a command, the card of keys                                     |
+| `Esc`                 | close what is on top: the form, the issue, the selection, the filter |
+
+## It only reads
+
+Linear is asked questions and never told anything: no query in linearpen changes data, and a test
+reads every query it sends to see that none is a mutation. Writing to Linear would be a decision of
+its own.
+
+## It talks to Linear with `curl`
+
+There is no HTTP or TLS library in linearpen: Linear is asked by the `curl` of your machine, with
+the key on its standard input, so it is not in its arguments (where `ps` shows them) or in its
+environment. The key is not written to a log, to an error message, to the page or to the file an
+agent reads. What Linear sends back is treated as what other people wrote: a branch name does not
+reach `git` before `git check-ref-format` has passed it, and no text of Linear goes through a shell.
+
+## How it works
+
+- `src/program/` is linearpen's program, in Rust, on the `pencere` crate. The rule of its directories
+  is one sentence: **`api/` knows the page; `linear/`, `model/`, `state/`, `work/` and `text/` do
+  not.** `linear/` asks Linear through `curl`, `model/` groups, sorts and filters, `state/` keeps the
+  key, `work/` hands issues to an agent, `text/` prints the issues where a terminal shows no views;
+  `api/` is what the page asks and listens to, and `docs/calls.md` is that contract.
+- `src/view/` is the interface, a page of pencere's kit: boxes and lines of text that the terminal
+  lays out and draws in its own font and theme, every colour a role of the theme. `commands.lua` is
+  the one table of commands that the keys, the palette, the card of keys and the buttons are made
+  from.
+- `build.rs` carries the page and its pictures in the program: `target/release/linearpen` is the
+  one file.
+
+## Work on it
+
+You need Rust and git. linearpen is built and tested with [pencere](https://github.com/bateri/pencere)
+at the commit its `Cargo.lock` names, which `make` fetches into `.cache/pencere` and builds there:
+`make fake-host` the stand-in terminal the tests play linearpen in, and `make dev` the `pencere`
+command that runs the page in a pane.
+
+```sh
+make fake-host      # the stand-in terminal, built once (and again when Cargo.lock moves pencere)
+make check          # formatting, lints, the program's tests, and the page's tests
+make shots          # the pictures of docs/, drawn in the fonts of this machine
+make dev            # in a pane of a terminal that hosts pencere: run it from its files,
+                    # and again when one under src/ changes
+```
+
+What the tests are:
+
+- `tests/e2e.rs` runs the built program in a pane under the stand-in terminal with a **stand-in
+  `curl`, `bateri` and agents** first on the `PATH` (`test/stand-in/bin/`), and a home of its own:
+  what the page is told for each call and topic, what is asked of Linear, what is handed to an agent.
+  Nothing in them reaches Linear, a bateri that is open, or a key of yours.
+- `src/program/page_tests.rs` runs the page as a terminal runs it, on pencere's host with no screen,
+  with the program's own handlers in the same process, over made-up issues.
+
+The page's tests open the kit's interpreter, so they are `cargo test`'s ignored ones, and `make
+check` runs them.
 
 ## License
 
-GPL-3.0-or-later.
+linearpen is free software: you can redistribute it and/or modify it under the terms of the
+[GNU General Public License](LICENSE) as published by the Free Software Foundation, either version 3
+of the License, or (at your option) any later version. It is distributed in the hope that it will be
+useful, but WITHOUT ANY WARRANTY; see the license for details.

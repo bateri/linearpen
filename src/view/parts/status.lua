@@ -37,13 +37,16 @@ function status.finish()
 			priority = 2,
 		}
 	end
-	finish[#finish + 1] = {
-		key = "help",
-		words = hint({ "help" }, "keys"),
-		press = true,
-		tip = "Show the keys",
-		priority = 9,
-	}
+	-- (In the form `?` is a character of the words for the agent, not the card of keys.)
+	if not S.work_open then
+		finish[#finish + 1] = {
+			key = "help",
+			words = hint({ "help" }, "keys"),
+			press = true,
+			tip = "Show the keys",
+			priority = 9,
+		}
+	end
 	return finish
 end
 

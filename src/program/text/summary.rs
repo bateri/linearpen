@@ -3,7 +3,7 @@
 use std::fmt::Write as _;
 
 use crate::linear::types::Priority;
-use crate::linear::{Issue, Listing, Viewer};
+use crate::linear::{Issue, Listing, Viewer, plain};
 use crate::model::filter::Filter;
 use crate::model::groups::group;
 use crate::model::time::short_date;
@@ -31,14 +31,14 @@ fn line(issue: &Issue, widest: usize) -> String {
         issue.identifier,
         priority_words(issue.priority),
         short_date(&issue.updated_at),
-        issue.title
+        plain(&issue.title)
     );
     if !issue.labels.is_empty() {
-        let names: Vec<&str> = issue.labels.iter().map(|l| l.name.as_str()).collect();
+        let names: Vec<String> = issue.labels.iter().map(|l| plain(&l.name)).collect();
         let _ = write!(out, "  [{}]", names.join(", "));
     }
     if let Some(assignee) = &issue.assignee {
-        let _ = write!(out, "  ({})", assignee.display_name);
+        let _ = write!(out, "  ({})", plain(&assignee.display_name));
     }
     out
 }
@@ -64,7 +64,7 @@ fn section(out: &mut String, title: &str, listing: &Listing, empty: &str) {
         .max()
         .unwrap_or(0);
     for group in groups {
-        let _ = writeln!(out, "  {} ({})", group.name, group.issues.len());
+        let _ = writeln!(out, "  {} ({})", plain(group.name), group.issues.len());
         for issue in group.issues {
             let _ = writeln!(out, "{}", line(issue, widest));
         }
@@ -77,7 +77,8 @@ impl Summary<'_> {
     pub fn text(&self, note: Option<&str>) -> String {
         let mut out = format!(
             "{} - {}\n\n",
-            self.viewer.organization.name, self.viewer.name
+            plain(&self.viewer.organization.name),
+            plain(&self.viewer.name)
         );
         section(
             &mut out,
@@ -185,5 +186,40 @@ a note
         .text(None);
         assert!(text.contains("Only the first 1 are listed"), "{text}");
         assert!(text.contains("There are no open issues."));
+    }
+
+    #[test]
+    fn what_linear_wrote_prints_without_a_control_character() {
+        let mut a = issue(
+            "ACM-1",
+            "Fix \u{1b}]52;c;AAAA\u{7} the thing",
+            "Todo",
+            "unstarted",
+            0.0,
+            "2026-11-01",
+        );
+        a.labels.push(Label {
+            name: "bug\u{1b}[31m".to_owned(),
+            color: "#ff0000".to_owned(),
+        });
+        let mine = Listing {
+            issues: vec![a],
+            truncated: false,
+        };
+        let all = Listing {
+            issues: Vec::new(),
+            truncated: false,
+        };
+        let text = Summary {
+            viewer: &viewer(),
+            mine: &mine,
+            all: &all,
+        }
+        .text(None);
+        assert!(
+            !text.contains('\u{1b}') && !text.contains('\u{7}'),
+            "{text:?}"
+        );
+        assert!(text.contains("Fix ]52;c;AAAA the thing"), "{text:?}");
     }
 }

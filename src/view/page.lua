@@ -295,7 +295,12 @@ local function key(event)
 	local mods = event.mods or {}
 	local plain = not (mods.command or mods.control or mods.alt or mods.shift)
 	local target = u:target()
-	if plain and (event.key == "enter" or event.key == " ") and target ~= nil and kit.buttons[target] then
+	if
+		plain
+		and (event.key == "enter" or event.key == " ")
+		and target ~= nil
+		and (kit.buttons[target] or string.sub(target, 1, 11) == "work-check:")
+	then
 		return press(target)
 	end
 	if S.screen ~= "list" or modal() then
