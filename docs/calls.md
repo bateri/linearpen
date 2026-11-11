@@ -12,12 +12,14 @@ the call takes: a member it does not know, a value out of range; the words say w
 `refused` (Linear did not accept the key), `unreachable` (Linear was not reached: `curl` is not
 installed, or the network, the name or the time failed), `failed` (Linear answered, but not with
 what was asked), `unavailable` (an agent cannot be started from here: bateri or the agent is not
-there), `start-failed` (it was tried and did not start: the words say why) and `create-failed` (an
-issue was to be made and Linear did not make it: the words say why). The words of an error are for
+there), `start-failed` (it was tried and did not start: the words say why), `create-failed` (an
+issue was to be made and Linear did not make it: the words say why) and `change-failed` (a change was
+to be made to issues and Linear did not make it: the words say why). The words of an error are for
 the person and never hold the key.
 
-The pen writes one thing: the issue the person makes (`create`). Nothing else here changes anything
-in Linear.
+The pen writes two things: the issue the person makes (`create`), and the change the person makes to
+issues (`change`): one of their status, priority, assignee, labels, project or title. The description
+and the team are never written, by any call. Nothing else here changes anything in Linear.
 
 ## Calls
 
@@ -79,8 +81,9 @@ of the issue (a row's `id`) or its identifier: up to 64 letters, digits and dash
   "url": "https://linear.app/acme/issue/ACM-412/add-rate-limiting",
   "description": "The public API has no limit per key.\n\n- A limit per key",
   "priority": "high", "state": { "name": "In Progress", "kind": "started" },
-  "labels": [{ "name": "api", "color": "#3e63dd" }],
+  "labels": [{ "id": "l-api", "name": "api", "color": "#3e63dd" }],
   "cycle": 12, "project": null, "assignee": "you",
+  "teamId": "team-acm", "stateId": "s-prog", "assigneeId": "u-ada", "projectId": null,
   "comments": [{ "author": "Deniz", "at": "Nov 6", "body": "Redis is already there." }],
   "more": false
 }
@@ -90,7 +93,11 @@ of the issue (a row's `id`) or its identifier: up to 64 letters, digits and dash
 act on. `description` is null where there is none. Comments are the first fifty, the oldest first;
 `more` says there is more in Linear than is told (more comments, or a text cut at 20 000 characters
 for the description and 2 000 for a comment). `assignee` is `"you"`, a name or null; `cycle` is the
-cycle's number or null. `at` is the day as the list writes it. Errors: `bad-params`, `no-key`,
+cycle's number or null. `at` is the day as the list writes it. `teamId`, `stateId`, `assigneeId`,
+`projectId` and each label's `id` are Linear's ids of what the issue is of and in (null where there
+is none): what a menu marks as the issue's own and what `change` names. They are the same as in a
+row of the list, and a `change` writes the new value into what is kept, so the next `issue` of the
+same issue tells it. Errors: `bad-params`, `no-key`,
 `refused`, `unreachable`, `failed` (also where Linear has no such issue).
 
 ### `work_options`
@@ -167,6 +174,8 @@ digits and dashes.
   "teams": [{ "id": "team-acm", "key": "ACM", "name": "Acme" }, { "id": "team-web", "key": "WEB", "name": "Web" }],
   "team": "team-acm", "defaultState": "s-todo",
   "states": [{ "id": "s-todo", "name": "Todo", "kind": "unstarted" }],
+  "allStates": [{ "id": "s-todo", "name": "Todo", "kind": "unstarted" },
+                { "id": "s-done", "name": "Done", "kind": "completed" }],
   "labels": [{ "id": "l-api", "name": "api", "color": "#3e63dd" }],
   "projects": [{ "id": "p-1", "name": "Billing" }],
   "members": [{ "id": "u-ada", "name": "Ada", "me": true }]
@@ -178,9 +187,13 @@ digits and dashes.
 - `teams`: the teams an issue can be made in, by name (at most 50). `team`: the id of the team the
   rest is of.
 - `states`: the open states of the team: `triage`, `backlog`, `unstarted`, `started`, in that order
-  and by position within a kind (Done and Canceled are not offered). `defaultState` is the team's own
-  state for a new issue, else the first `unstarted`, else the first `backlog`; it is one of `states`
-  or null.
+  and by position within a kind (Done and Canceled are not offered): what a new issue begins in.
+  `defaultState` is the team's own state for a new issue, else the first `unstarted`, else the first
+  `backlog`; it is one of `states` or null.
+- `allStates`: every state an issue of the team can be put in (what `change` takes as `status`): the
+  same, then `completed` and `canceled`, in the order of the kinds and by position within one. A
+  state that is a duplicate (its own kind where Linear has one, or one of the canceled kind that is
+  named `Duplicate`) is not in it: it wants the issue it duplicates, which a change does not name.
 - `labels`: the team's labels and the workspace's, once each, by name; a label that is a group of
   labels is not offered. `color` is Linear's own (`#rrggbb`). At most 100.
 - `projects`: the team's projects that are not finished or canceled, by name (at most 50).
@@ -230,6 +243,44 @@ not settle it either, it is not known that Linear did not make it, and the words
 (`Linear did not answer whole, so it may have made the issue: press Create again to find out`);
 pressing Create again sends the same `id`, which cannot make a second issue.
 
+### `change`
+
+Changes one field of one issue or of several, in Linear. Params:
+
+```json
+{ "ids": ["issue-412", "issue-405"], "status": "s-done" }
+```
+
+- `ids`: Linear's ids of the issues (a row's `id`), from one to 50 (Linear's own limit of a batch);
+  up to 64 letters, digits and dashes each. One said twice is one.
+- **Exactly one** of these, which is the field that is changed (two, or none, is `bad-params`; so is
+  any member this call does not take, `description` and `team` among them: neither is written):
+  `status` (the id of a state, from `new_options`' `allStates`), `priority` (`none`, `urgent`,
+  `high`, `medium` or `low`), `assignee` (the id of a person, or `null` for no one), `addLabel` and
+  `removeLabel` (the id of one label the issues get or lose), `project` (the id of a project, or
+  `null` for none), `title` (one to 255 characters; it is made one line, with no white space at
+  its ends).
+
+```json
+{ "issues": [{ "id": "issue-412", "listed": false }, { "id": "issue-405", "listed": true }] }
+```
+
+The answer tells the issues Linear changed, and for each whether the list in view (the scope the
+page last set with `view`) still holds it: one that is done or canceled is in no list, and one given
+to another person is not in My issues. What Linear says of them is written into both lists and into
+the issues kept for `issue`, and the topic `issues` tells it: the lists are not asked for again.
+
+The change is sent **once**, to all the issues in one request; the program never sends it again by
+itself, and asking twice for the same value changes nothing more. If the answer did not come whole
+(nothing came, or an error), the call fails, and the program asks Linear for each of the issues,
+so that what the topic tells is what Linear holds; the call fails all the same. A key Linear does not
+take (`refused`) is not asked about.
+
+Errors: `bad-params`, `no-key`, `refused`, `unreachable` (no answer came: the change may have been
+made, and the topic tells what Linear holds), and `change-failed`: Linear did not make it. The words
+say why: `Linear did not change it: this key cannot change issues` where the key reads and may not
+write, else Linear's own words (`Linear did not change it: ...`).
+
 ### `refresh`
 
 Asks Linear for both lists again, and for the teams and choices of a new issue the next time they are
@@ -254,7 +305,8 @@ the lists came, asking failed). The same value `view` answers with.
       "rows": [
         { "id": "issue-412", "identifier": "ACM-412", "title": "Add rate limiting",
           "priority": "high", "updated": "Nov 9",
-          "labels": [{ "name": "api", "color": "#3e63dd" }], "assignee": null }
+          "labels": [{ "id": "l-api", "name": "api", "color": "#3e63dd" }], "assignee": null,
+          "teamId": "team-acm", "stateId": "s-prog", "assigneeId": "u-ada", "projectId": null }
       ] }
   ],
   "updated": 1762870000, "organization": "Acme", "person": "Ada",
@@ -276,6 +328,10 @@ the lists came, asking failed). The same value `view` answers with.
 - `priority`: `none`, `urgent`, `high`, `medium` or `low`. `updated`: the day of the last change as
   the list writes it. `assignee` is set only in the list of all issues: `"you"`, a name, or null.
 - A label's `color` is Linear's own (`#rrggbb`): data, not a role of the theme.
+- `teamId`, `stateId`, `assigneeId` (null where unassigned) and `projectId` (null where in none) are
+  Linear's ids of what the issue is of and in, and each label has its `id`: a menu marks what the
+  issue has by them, and a change names them (`change`). Whether several issues are of one team is
+  told by their `teamId`s.
 - `updated`: when the lists came, seconds since the epoch; `organization` and `person` are the
   workspace's name and the person's. Both are null before the first answer.
 - `working`: the issues an agent was started on and whose pane has not ended, by Linear's id, with

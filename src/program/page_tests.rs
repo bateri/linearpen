@@ -156,17 +156,21 @@ impl Canned {
             .into_iter()
             .flatten()
             .filter_map(|id| match id.as_str()? {
-                "l-bug" => Some(("bug", "#eb5757")),
-                "l-api" => Some(("api", "#3e63dd")),
-                "l-customer" => Some(("Customer", "#f2994a")),
+                "l-bug" => Some(("l-bug", "bug", "#eb5757")),
+                "l-api" => Some(("l-api", "api", "#3e63dd")),
+                "l-customer" => Some(("l-customer", "Customer", "#f2994a")),
                 _ => None,
             })
-            .map(|(name, color)| serde_json::json!({ "name": name, "color": color }))
+            .map(|(id, name, color)| serde_json::json!({ "id": id, "name": name, "color": color }))
             .collect();
         node["labels"]["nodes"] = labels.into();
         node["assignee"] = match input["assigneeId"].as_str() {
-            Some("u-ada") => serde_json::json!({ "displayName": "Ada", "isMe": true }),
-            Some("u-deniz") => serde_json::json!({ "displayName": "Deniz", "isMe": false }),
+            Some("u-ada") => {
+                serde_json::json!({ "id": "u-ada", "displayName": "Ada", "isMe": true })
+            }
+            Some("u-deniz") => {
+                serde_json::json!({ "id": "u-deniz", "displayName": "Deniz", "isMe": false })
+            }
             _ => serde_json::Value::Null,
         };
         Some(node)

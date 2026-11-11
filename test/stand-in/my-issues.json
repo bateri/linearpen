@@ -26,12 +26,14 @@
             "labels": {
               "nodes": [
                 {
+                  "id": "l-api",
                   "name": "api",
                   "color": "#3e63dd"
                 }
               ]
             },
             "team": {
+              "id": "team-acm",
               "key": "ACM"
             },
             "cycle": {
@@ -39,6 +41,7 @@
             },
             "project": null,
             "assignee": {
+              "id": "u-ada",
               "displayName": "Ada",
               "isMe": true
             }
@@ -60,12 +63,14 @@
             "labels": {
               "nodes": [
                 {
+                  "id": "l-bug",
                   "name": "bug",
                   "color": "#e5484d"
                 }
               ]
             },
             "team": {
+              "id": "team-acm",
               "key": "ACM"
             },
             "cycle": {
@@ -73,6 +78,7 @@
             },
             "project": null,
             "assignee": {
+              "id": "u-ada",
               "displayName": "Ada",
               "isMe": true
             }
@@ -94,16 +100,19 @@
             "labels": {
               "nodes": [
                 {
+                  "id": "l-bug",
                   "name": "bug",
                   "color": "#e5484d"
                 },
                 {
+                  "id": "l-api",
                   "name": "api",
                   "color": "#3e63dd"
                 }
               ]
             },
             "team": {
+              "id": "team-acm",
               "key": "ACM"
             },
             "cycle": {
@@ -111,6 +120,7 @@
             },
             "project": null,
             "assignee": {
+              "id": "u-ada",
               "displayName": "Ada",
               "isMe": true
             }
@@ -132,12 +142,14 @@
             "labels": {
               "nodes": [
                 {
+                  "id": "l-docs",
                   "name": "docs",
                   "color": "#05a2c2"
                 }
               ]
             },
             "team": {
+              "id": "team-acm",
               "key": "ACM"
             },
             "cycle": {
@@ -145,6 +157,7 @@
             },
             "project": null,
             "assignee": {
+              "id": "u-ada",
               "displayName": "Ada",
               "isMe": true
             }
@@ -166,12 +179,14 @@
             "labels": {
               "nodes": [
                 {
+                  "id": "l-perf",
                   "name": "perf",
                   "color": "#ffc53d"
                 }
               ]
             },
             "team": {
+              "id": "team-acm",
               "key": "ACM"
             },
             "cycle": {
@@ -179,6 +194,7 @@
             },
             "project": null,
             "assignee": {
+              "id": "u-ada",
               "displayName": "Ada",
               "isMe": true
             }
@@ -200,12 +216,14 @@
             "labels": {
               "nodes": [
                 {
+                  "id": "l-web",
                   "name": "web",
                   "color": "#ab4aba"
                 }
               ]
             },
             "team": {
+              "id": "team-acm",
               "key": "ACM"
             },
             "cycle": {
@@ -213,6 +231,7 @@
             },
             "project": null,
             "assignee": {
+              "id": "u-ada",
               "displayName": "Ada",
               "isMe": true
             }
@@ -234,17 +253,20 @@
             "labels": {
               "nodes": [
                 {
+                  "id": "l-bug",
                   "name": "bug",
                   "color": "#e5484d"
                 }
               ]
             },
             "team": {
+              "id": "team-acm",
               "key": "ACM"
             },
             "cycle": null,
             "project": null,
             "assignee": {
+              "id": "u-ada",
               "displayName": "Ada",
               "isMe": true
             }
@@ -267,11 +289,13 @@
               "nodes": []
             },
             "team": {
+              "id": "team-acm",
               "key": "ACM"
             },
             "cycle": null,
             "project": null,
             "assignee": {
+              "id": "u-ada",
               "displayName": "Ada",
               "isMe": true
             }
@@ -293,17 +317,20 @@
             "labels": {
               "nodes": [
                 {
+                  "id": "l-security",
                   "name": "security",
                   "color": "#30a46c"
                 }
               ]
             },
             "team": {
+              "id": "team-acm",
               "key": "ACM"
             },
             "cycle": null,
             "project": null,
             "assignee": {
+              "id": "u-ada",
               "displayName": "Ada",
               "isMe": true
             }
@@ -325,17 +352,20 @@
             "labels": {
               "nodes": [
                 {
+                  "id": "l-web",
                   "name": "web",
                   "color": "#ab4aba"
                 }
               ]
             },
             "team": {
+              "id": "team-acm",
               "key": "ACM"
             },
             "cycle": null,
             "project": null,
             "assignee": {
+              "id": "u-ada",
               "displayName": "Ada",
               "isMe": true
             }
@@ -357,17 +387,20 @@
             "labels": {
               "nodes": [
                 {
+                  "id": "l-infra",
                   "name": "infra",
                   "color": "#05a2c2"
                 }
               ]
             },
             "team": {
+              "id": "team-acm",
               "key": "ACM"
             },
             "cycle": null,
             "project": null,
             "assignee": {
+              "id": "u-ada",
               "displayName": "Ada",
               "isMe": true
             }
@@ -389,17 +422,20 @@
             "labels": {
               "nodes": [
                 {
+                  "id": "l-bug",
                   "name": "bug",
                   "color": "#e5484d"
                 }
               ]
             },
             "team": {
+              "id": "team-acm",
               "key": "ACM"
             },
             "cycle": null,
             "project": null,
             "assignee": {
+              "id": "u-ada",
               "displayName": "Ada",
               "isMe": true
             }
@@ -421,17 +457,20 @@
             "labels": {
               "nodes": [
                 {
+                  "id": "l-api",
                   "name": "api",
                   "color": "#3e63dd"
                 }
               ]
             },
             "team": {
+              "id": "team-acm",
               "key": "ACM"
             },
             "cycle": null,
             "project": null,
             "assignee": {
+              "id": "u-ada",
               "displayName": "Ada",
               "isMe": true
             }
@@ -453,17 +492,20 @@
             "labels": {
               "nodes": [
                 {
+                  "id": "l-security",
                   "name": "security",
                   "color": "#30a46c"
                 }
               ]
             },
             "team": {
+              "id": "team-acm",
               "key": "ACM"
             },
             "cycle": null,
             "project": null,
             "assignee": {
+              "id": "u-ada",
               "displayName": "Ada",
               "isMe": true
             }

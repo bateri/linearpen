@@ -1,9 +1,11 @@
-//! Linear: the questions the program asks it and how the answers are read. It reads, and writes one
-//! thing, the issue the person makes: the operations are in `query.rs`, all of them plain `query`
-//! but `IssueCreate`, and `run` refuses anything that is not listed there. `create` is the only
-//! function that sends the mutation, and sends it once. The way to Linear is `curl`
-//! (`transport.rs`). It knows nothing of the page; it takes and gives plain Rust values.
+//! Linear: the questions the program asks it and how the answers are read. It reads, and writes two
+//! things, the issue the person makes and the change the person makes to issues: the operations are
+//! in `query.rs`, all of them plain `query` but `IssueCreate` and `IssueBatchUpdate`, and `run`
+//! refuses anything that is not listed there. `create` and `change` are the only functions that send
+//! them, and each sends once. The way to Linear is `curl` (`transport.rs`). It knows nothing of the
+//! page; it takes and gives plain Rust values.
 
+mod change;
 mod error;
 mod key;
 mod new_issue;
@@ -11,9 +13,10 @@ pub mod query;
 pub mod transport;
 pub mod types;
 
+pub use change::Change;
 pub use error::{Error, plain, tidy};
 pub use key::{Key, KeyError};
-pub use new_issue::{Created, NewIssue, Options, Team};
+pub use new_issue::{Created, NewIssue, Options, StateChoice, Team};
 pub use transport::Transport;
 pub use types::{Issue, Priority, Viewer};
 
@@ -44,6 +47,9 @@ impl Scope {
 /// The most issues of one list that are taken, and how many are asked for at a time.
 pub const LIMIT: usize = 500;
 pub const PAGE: u32 = 100;
+
+/// The most issues one change is made to at once (Linear's own limit of a batch).
+pub const BATCH_MOST: usize = 50;
 
 /// One list of open issues.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -109,7 +115,7 @@ fn run<V: Serialize, T: DeserializeOwned>(
 ) -> Result<T, Error> {
     if !operation.allowed() {
         return Err(Error::Failed(format!(
-            "{} is not a query, and the one thing this program writes is a new issue",
+            "{} is not a query, and what this program writes is a new issue and the changes of issues",
             operation.name
         )));
     }
@@ -280,6 +286,49 @@ pub fn create(transport: &dyn Transport, key: &Key, input: &NewIssue) -> Result<
     )?;
     data.created()
         .ok_or_else(|| Error::Failed("Linear did not make the issue".to_owned()))
+}
+
+#[derive(Deserialize)]
+struct BatchData {
+    #[serde(rename = "issueBatchUpdate")]
+    batch: Option<BatchPayload>,
+}
+
+#[derive(Deserialize)]
+struct BatchPayload {
+    #[serde(default)]
+    success: bool,
+    #[serde(default)]
+    issues: Option<Vec<Issue>>,
+}
+
+/// Makes the change in the issues with Linear's ids `ids`, one field of them: the program's other
+/// write. It is sent once, whatever comes back, and gives the issues as Linear says they are now;
+/// what the person does of an answer that did not come is `Session::change`'s.
+pub fn change(
+    transport: &dyn Transport,
+    key: &Key,
+    ids: &[String],
+    change: &Change,
+) -> Result<Vec<Issue>, Error> {
+    if ids.is_empty() || ids.len() > BATCH_MOST {
+        return Err(Error::Failed(format!(
+            "from one to {BATCH_MOST} issues are changed at once"
+        )));
+    }
+    let data: BatchData = run(
+        transport,
+        key,
+        &query::ISSUE_BATCH_UPDATE,
+        Some(query::Batch {
+            ids,
+            input: change.input(),
+        }),
+    )?;
+    data.batch
+        .filter(|payload| payload.success)
+        .map(|payload| payload.issues.unwrap_or_default())
+        .ok_or_else(|| Error::Failed("Linear did not change the issues".to_owned()))
 }
 
 #[cfg(test)]

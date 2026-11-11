@@ -491,6 +491,18 @@ fn new_options_tell_the_teams_and_the_choices_of_one_and_a_new_draft_id() {
         .map(|state| state["name"].as_str().unwrap())
         .collect();
     assert_eq!(states, ["Backlog", "Todo", "In Progress"]);
+    // What a change can put an issue in: those, then Done and Canceled.
+    let all_states: Vec<&str> = first["allStates"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|state| state["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        all_states,
+        ["Backlog", "Todo", "In Progress", "Done", "Canceled"]
+    );
+    assert_eq!(first["allStates"][3]["kind"], "completed");
     assert_eq!(first["defaultState"], "s-todo");
     let labels: Vec<&str> = first["labels"]
         .as_array()
@@ -668,5 +680,154 @@ fn create_reads_its_params_before_it_sends_anything() {
     // And a key is needed.
     let home = Home::new();
     let heard = home.ask(&Script::new().call("create", make("t")));
+    assert!(heard[0].failed("no-key"), "{:?}", heard[0]);
+}
+
+/// The issue the changes are made to: ACM-412, which is the person's and is started.
+const CHANGED: &str = "issue-412";
+
+#[test]
+fn change_sends_the_one_mutation_once_with_the_key_on_stdin_alone_and_the_lists_tell_it_after() {
+    let home = Home::new();
+    let log = home.record(
+        &keyed()
+            .call("change", json!({ "ids": [CHANGED], "status": "s-done" }))
+            .host_args(&["--subscribe", "issues"])
+            .then(&["--then", "wait"])
+            .limit(6),
+    );
+    let heard = answers(&log);
+    assert!(!heard.is_empty(), "{log}");
+    let told = heard[0].result();
+    assert_eq!(told["issues"][0]["id"], CHANGED, "{told}");
+    assert_eq!(told["issues"][0]["listed"], false, "done leaves My issues");
+    let sent = asked_of(&home, "IssueBatchUpdate");
+    assert_eq!(sent.len(), 1, "{:?}", home.calls());
+    assert_eq!(sent[0].argv, ["--config", "-"]);
+    assert_eq!(sent[0].env_key, "unset");
+    assert!(sent[0].stdin.contains(KEY));
+    for part in [CHANGED, "stateId", "s-done"] {
+        assert!(sent[0].stdin.contains(part), "{part}: {}", sent[0].stdin);
+    }
+    // What the pen may not write is not in the request.
+    for word in ["description", "teamId", "\\\"team\\\":\\\"", "assigneeId"] {
+        assert!(!sent[0].stdin.contains(word), "{word}: {}", sent[0].stdin);
+    }
+    // Nothing else of the pen writes: every other request is a query, and the issue that was
+    // changed is not in the list that is told at last.
+    for call in home.calls() {
+        if !call
+            .stdin
+            .contains("\\\"operationName\\\":\\\"IssueBatchUpdate\\\"")
+        {
+            assert!(
+                !call.stdin.to_lowercase().contains("mutation"),
+                "{}",
+                call.stdin
+            );
+        }
+    }
+    let told = pushes(&log);
+    let last = told.last().expect("the lists were told");
+    assert!(
+        !last.to_string().contains("ACM-412"),
+        "the issue that is done is not in the list: {last}"
+    );
+    assert!(!log.contains(KEY), "the key is not in what the page heard");
+}
+
+#[test]
+fn a_title_that_is_changed_is_the_title_of_the_list_after() {
+    let home = Home::new();
+    let log = home.record(
+        &keyed()
+            .call(
+                "change",
+                json!({ "ids": [CHANGED], "title": "  Limit by key\nnot by IP " }),
+            )
+            .host_args(&["--subscribe", "issues"])
+            .then(&["--then", "wait"])
+            .limit(6),
+    );
+    assert!(!answers(&log).is_empty(), "{log}");
+    let sent = asked_of(&home, "IssueBatchUpdate");
+    assert_eq!(sent.len(), 1);
+    assert!(
+        sent[0].stdin.contains("Limit by key not by IP"),
+        "{}",
+        sent[0].stdin
+    );
+    let told = pushes(&log);
+    assert!(
+        told.last()
+            .is_some_and(|list| list.to_string().contains("Limit by key not by IP")),
+        "{told:?}"
+    );
+}
+
+#[test]
+fn a_change_whose_answer_is_lost_is_not_sent_again_and_is_an_error() {
+    let home = Home::new();
+    let heard = home.ask(
+        &keyed()
+            .env("STANDIN_CHANGE", "lost")
+            .call("change", json!({ "ids": [CHANGED], "priority": "urgent" })),
+    );
+    assert!(heard[0].failed("unreachable"), "{:?}", heard[0]);
+    assert!(!heard[0].message().contains(KEY));
+    assert_eq!(asked_of(&home, "IssueBatchUpdate").len(), 1, "sent once");
+    // The issue is asked for, so that what is shown is what Linear holds.
+    assert_eq!(asked_of(&home, "Issue").len(), 1);
+}
+
+#[test]
+fn a_change_linear_refuses_is_change_failed_and_the_words_do_not_hold_the_key() {
+    let home = Home::new();
+    let heard = home.ask(
+        &keyed()
+            .env("STANDIN_CHANGE", "refused")
+            .call("change", json!({ "ids": [CHANGED], "status": "s-other" })),
+    );
+    assert!(heard[0].failed("change-failed"), "{:?}", heard[0]);
+    let words = heard[0].message();
+    assert!(words.starts_with("Linear did not change it"), "{words}");
+    assert!(!words.contains(KEY));
+    assert_eq!(
+        asked_of(&home, "IssueBatchUpdate").len(),
+        1,
+        "never sent twice"
+    );
+}
+
+#[test]
+fn change_reads_its_params_before_it_sends_anything() {
+    let home = Home::new();
+    let many: Vec<String> = (0..51).map(|n| format!("issue-{n}")).collect();
+    let heard = home.ask(
+        &keyed()
+            .call("change", json!({ "ids": [], "status": "s-done" }))
+            .call("change", json!({ "ids": many, "status": "s-done" }))
+            .call("change", json!({ "ids": [CHANGED] }))
+            .call(
+                "change",
+                json!({ "ids": [CHANGED], "status": "s", "priority": "low" }),
+            )
+            .call("change", json!({ "ids": [CHANGED], "priority": "loud" }))
+            .call("change", json!({ "ids": ["has a space"], "status": "s" }))
+            .call("change", json!({ "ids": [CHANGED], "title": "  " }))
+            // The description and the team are not changed by any call.
+            .call("change", json!({ "ids": [CHANGED], "description": "x" }))
+            .call("change", json!({ "ids": [CHANGED], "team": "team-web" })),
+    );
+    for (n, answer) in heard.iter().enumerate() {
+        assert!(answer.failed("bad-params"), "{n}: {answer:?}");
+    }
+    assert!(
+        asked_of(&home, "IssueBatchUpdate").is_empty(),
+        "nothing was sent"
+    );
+    // And a key is needed.
+    let home = Home::new();
+    let heard = home.ask(&Script::new().call("change", json!({ "ids": [CHANGED], "status": "s" })));
     assert!(heard[0].failed("no-key"), "{:?}", heard[0]);
 }

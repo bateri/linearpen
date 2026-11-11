@@ -52,6 +52,7 @@ mod tests {
             "2026-11-01",
         );
         it.labels.push(crate::linear::types::Label {
+            id: "l-sec".to_owned(),
             name: "Security".to_owned(),
             color: "#30a46c".to_owned(),
         });

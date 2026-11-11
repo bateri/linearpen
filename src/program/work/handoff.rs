@@ -48,7 +48,7 @@ pub fn document(issues: &[Issue]) -> String {
             let _ = writeln!(text, "- Cycle: {cycle}");
         }
         if let Some(project) = &issue.project {
-            let _ = writeln!(text, "- Project: {project}");
+            let _ = writeln!(text, "- Project: {}", project.name);
         }
         if let Some(who) = &issue.assignee {
             let _ = writeln!(text, "- Assigned to: {}", who.display_name);

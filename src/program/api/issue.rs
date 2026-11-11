@@ -6,7 +6,7 @@ use std::sync::Arc;
 use pencere::Options;
 use serde::{Deserialize, Serialize};
 
-use super::issues::LabelMessage;
+use super::issues::{Ids, LabelMessage, ids, labels};
 use super::{Failure, call};
 use crate::linear::Issue;
 use crate::model::time::short_date;
@@ -39,6 +39,7 @@ struct CommentMessage {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct IssueMessage {
     id: String,
     identifier: String,
@@ -53,6 +54,8 @@ struct IssueMessage {
     project: Option<String>,
     /// "you", a name, or nothing.
     assignee: Option<String>,
+    #[serde(flatten)]
+    ids: Ids,
     comments: Vec<CommentMessage>,
     /// There is more in Linear than is told here: comments past the first fifty, or text cut.
     more: bool,
@@ -106,16 +109,9 @@ fn message(issue: &Issue) -> IssueMessage {
             name: issue.state.name.clone(),
             kind: issue.state.kind.name(),
         },
-        labels: issue
-            .labels
-            .iter()
-            .map(|label| LabelMessage {
-                name: label.name.clone(),
-                color: label.color.clone(),
-            })
-            .collect(),
+        labels: labels(issue),
         cycle: issue.cycle,
-        project: issue.project.clone(),
+        project: issue.project.as_ref().map(|project| project.name.clone()),
         assignee: issue.assignee.as_ref().map(|who| {
             if who.is_me {
                 "you".to_owned()
@@ -123,6 +119,7 @@ fn message(issue: &Issue) -> IssueMessage {
                 who.display_name.clone()
             }
         }),
+        ids: ids(issue),
         comments,
         more,
     }
@@ -164,6 +161,18 @@ pub fn calls(options: Options, session: &Arc<Session>) -> Options {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::linear::types::fixture_issue;
+
+    #[test]
+    fn the_issue_tells_the_ids_of_what_it_is_of_and_in() {
+        let value = serde_json::to_value(message(&fixture_issue())).unwrap();
+        assert_eq!(value["teamId"], "team-acm");
+        assert_eq!(value["stateId"], "s1");
+        assert_eq!(value["assigneeId"], "u-ada");
+        assert!(value["projectId"].is_null());
+        assert_eq!(value["labels"][0]["id"], "l-api");
+        assert_eq!(value["assignee"], "you");
+    }
 
     #[test]
     fn a_text_is_cut_on_a_character_and_says_so() {

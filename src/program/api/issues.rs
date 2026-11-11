@@ -17,11 +17,25 @@ use crate::session::{Session, State};
 
 #[derive(Debug, Serialize)]
 pub struct LabelMessage {
+    /// Linear's id of the label: what a change adds or removes it by.
+    pub id: String,
     pub name: String,
     pub color: String,
 }
 
+/// Linear's ids of what an issue is of and in, which the page names in a change and by which a menu
+/// marks what the issue has: the team, the state, the person and the project.
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Ids {
+    pub team_id: Option<String>,
+    pub state_id: String,
+    pub assignee_id: Option<String>,
+    pub project_id: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RowMessage {
     pub id: String,
     pub identifier: String,
@@ -31,6 +45,29 @@ pub struct RowMessage {
     pub labels: Vec<LabelMessage>,
     /// Whose it is, for the list of all issues: "you", a name, or nothing.
     pub assignee: Option<String>,
+    #[serde(flatten)]
+    pub ids: Ids,
+}
+
+pub fn ids(issue: &Issue) -> Ids {
+    Ids {
+        team_id: issue.team.as_ref().map(|team| team.id.clone()),
+        state_id: issue.state.id.clone(),
+        assignee_id: issue.assignee.as_ref().map(|who| who.id.clone()),
+        project_id: issue.project.as_ref().map(|project| project.id.clone()),
+    }
+}
+
+pub fn labels(issue: &Issue) -> Vec<LabelMessage> {
+    issue
+        .labels
+        .iter()
+        .map(|label| LabelMessage {
+            id: label.id.clone(),
+            name: label.name.clone(),
+            color: label.color.clone(),
+        })
+        .collect()
 }
 
 #[derive(Debug, Serialize)]
@@ -95,19 +132,13 @@ fn row(issue: &Issue, scope: Scope) -> RowMessage {
         title: issue.title.clone(),
         priority: issue.priority.name(),
         updated: short_date(&issue.updated_at),
-        labels: issue
-            .labels
-            .iter()
-            .map(|label| LabelMessage {
-                name: label.name.clone(),
-                color: label.color.clone(),
-            })
-            .collect(),
+        labels: labels(issue),
         assignee: match (scope, &issue.assignee) {
             (Scope::All, Some(who)) if who.is_me => Some("you".to_owned()),
             (Scope::All, Some(who)) => Some(who.display_name.clone()),
             _ => None,
         },
+        ids: ids(issue),
     }
 }
 
@@ -234,4 +265,22 @@ pub fn topic(options: Options, session: &Arc<Session>) -> Options {
                 ViewError::with_message("internal", format!("the issues cannot be watched: {why}"))
             })
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::linear::types::fixture_issue;
+
+    #[test]
+    fn a_row_tells_the_ids_of_what_the_issue_is_of_and_in() {
+        let value = serde_json::to_value(row(&fixture_issue(), Scope::Mine)).unwrap();
+        assert_eq!(value["teamId"], "team-acm");
+        assert_eq!(value["stateId"], "s1");
+        assert_eq!(value["assigneeId"], "u-ada");
+        assert!(value["projectId"].is_null());
+        assert_eq!(value["labels"][0]["id"], "l-api");
+        // Whose it is is said in the list of all issues alone; the id always.
+        assert!(value["assignee"].is_null());
+    }
 }

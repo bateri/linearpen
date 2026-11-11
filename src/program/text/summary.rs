@@ -128,6 +128,7 @@ mod tests {
             "2026-11-09",
         );
         a.labels.push(Label {
+            id: "l-api".to_owned(),
             name: "api".to_owned(),
             color: "#3e63dd".to_owned(),
         });
@@ -140,6 +141,7 @@ mod tests {
             "2026-10-01",
         );
         b.assignee = Some(Assignee {
+            id: "u-deniz".to_owned(),
             display_name: "Deniz".to_owned(),
             is_me: false,
         });
@@ -199,6 +201,7 @@ a note
             "2026-11-01",
         );
         a.labels.push(Label {
+            id: "l-bug".to_owned(),
             name: "bug\u{1b}[31m".to_owned(),
             color: "#ff0000".to_owned(),
         });

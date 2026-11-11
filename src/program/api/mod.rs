@@ -5,6 +5,7 @@
 //! A call's params are read before it runs (what does not fit is `bad-params`, and the work never
 //! runs). A call that panics is `internal`, by pencere.
 
+mod change;
 mod create;
 mod issue;
 mod issues;
@@ -37,6 +38,8 @@ enum Failure {
     StartFailed(String),
     /// An issue was to be made, and Linear did not make it: the words say why.
     CreateFailed(String),
+    /// A change was to be made to issues, and Linear did not make it: the words say why.
+    ChangeFailed(String),
 }
 
 impl From<Failure> for ViewError {
@@ -47,6 +50,7 @@ impl From<Failure> for ViewError {
             Failure::Unavailable(words) => Self::with_message("unavailable", words),
             Failure::StartFailed(words) => Self::with_message("start-failed", words),
             Failure::CreateFailed(words) => Self::with_message("create-failed", words),
+            Failure::ChangeFailed(words) => Self::with_message("change-failed", words),
             Failure::Linear(error) => Self::with_message(error.kind(), error.to_string()),
         }
     }
@@ -77,5 +81,6 @@ pub fn serve(options: Options, session: &Arc<Session>) -> Options {
     let options = issue::calls(options, session);
     let options = work::calls(options, session);
     let options = create::calls(options, session);
+    let options = change::calls(options, session);
     issues::topic(options, session)
 }

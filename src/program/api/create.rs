@@ -8,13 +8,13 @@ use pencere::Options;
 use serde::{Deserialize, Serialize};
 
 use super::{Failure, call};
-use crate::linear::{Created, Error, NewIssue, Priority, Team};
+use crate::linear::{Created, Error, NewIssue, Priority, StateChoice, Team};
 use crate::session::Session;
 use crate::state::draft;
 
 /// The longest title, in characters (Linear's own limit), the longest description, and the most
 /// labels one issue is given.
-const TITLE_MOST: usize = 255;
+pub(super) const TITLE_MOST: usize = 255;
 const DESCRIPTION_MOST: usize = 50_000;
 const LABELS_MOST: usize = 50;
 /// The longest id or key taken (Linear's ids are UUIDs, 36 characters).
@@ -69,14 +69,17 @@ struct OptionsMessage {
     /// The id of the team the choices are of.
     team: String,
     default_state: Option<String>,
+    /// The open states: what a new issue begins in.
     states: Vec<StateMessage>,
+    /// Every state an issue can be put in, the open ones and then done and canceled.
+    all_states: Vec<StateMessage>,
     labels: Vec<LabelMessage>,
     projects: Vec<ProjectMessage>,
     members: Vec<MemberMessage>,
 }
 
 /// Whether `text` is an id or a key of Linear: letters, digits, dashes and underscores.
-fn check_ref(what: &str, text: &str) -> Result<(), Failure> {
+pub(super) fn check_ref(what: &str, text: &str) -> Result<(), Failure> {
     if text.is_empty()
         || text.chars().count() > REF_MOST
         || !text
@@ -99,6 +102,14 @@ fn team_of<'a>(teams: &'a [Team], named: Option<&str>) -> Option<&'a Team> {
                 .find(|team| team.id == named || team.key.eq_ignore_ascii_case(named))
         })
         .or_else(|| teams.first())
+}
+
+fn state_message(state: &StateChoice) -> StateMessage {
+    StateMessage {
+        id: state.id.clone(),
+        name: state.name.clone(),
+        kind: state.kind.name(),
+    }
 }
 
 fn new_options(session: &Session, params: Which) -> Result<OptionsMessage, Failure> {
@@ -130,15 +141,8 @@ fn new_options(session: &Session, params: Which) -> Result<OptionsMessage, Failu
             })
             .collect(),
         default_state: options.default_state,
-        states: options
-            .states
-            .into_iter()
-            .map(|state| StateMessage {
-                id: state.id,
-                name: state.name,
-                kind: state.kind.name(),
-            })
-            .collect(),
+        states: options.states.iter().map(state_message).collect(),
+        all_states: options.all_states.iter().map(state_message).collect(),
         labels: options
             .labels
             .into_iter()

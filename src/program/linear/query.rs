@@ -1,14 +1,15 @@
 //! What is asked of Linear: every operation of the program, as constant text. The pen reads, and
-//! writes one thing: the issue the person makes. Every operation is a plain `query` except
-//! `IssueCreate`, and `ALLOWED_MUTATIONS` is the one list of what may be a `mutation`: the client
-//! refuses to send any other (`mod.rs`), and the tests scan `ALL` for one. Nothing from outside is
-//! put into the text: what varies goes in the `variables` of the request.
+//! writes two things: the issue the person makes, and the change the person makes to issues. Every
+//! operation is a plain `query` except `IssueCreate` and `IssueBatchUpdate`, and `ALLOWED_MUTATIONS`
+//! is the one list of what may be a `mutation`: the client refuses to send any other (`mod.rs`), and
+//! the tests scan `ALL` for one. Nothing from outside is put into the text: what varies goes in the
+//! `variables` of the request.
 
 use serde::Serialize;
 
 /// The mutations the program may send, by name: the one list of what it may write. Anything else
 /// that is a `mutation` is refused before it is sent, however it is named.
-pub const ALLOWED_MUTATIONS: [&str; 1] = ["IssueCreate"];
+pub const ALLOWED_MUTATIONS: [&str; 2] = ["IssueCreate", "IssueBatchUpdate"];
 
 /// One operation: its name (which the stand-in `curl` of the tests tells them apart by) and its text.
 #[derive(Debug, Clone, Copy)]
@@ -53,15 +54,16 @@ impl Operation {
     }
 }
 
-/// The issue fields of a row of the list. The description and the comments wait for the issue to be
+/// The issue fields of a row of the list, with the ids of what a change names (the team, the state,
+/// the labels, the project, the person). The description and the comments wait for the issue to be
 /// opened.
 macro_rules! issue_fields {
     () => {
         "id identifier title priority updatedAt url branchName \
          state { id name type position } \
-         labels(first: 10) { nodes { name color } } \
-         team { key } cycle { number } project { name } \
-         assignee { displayName isMe }"
+         labels(first: 10) { nodes { id name color } } \
+         team { id key } cycle { number } project { id name } \
+         assignee { id displayName isMe }"
     };
 }
 
@@ -140,9 +142,22 @@ pub const ISSUE_CREATE: Operation = Operation {
            success issue { id identifier } } }",
 };
 
+/// The other thing the pen writes: the change the person made to one issue or to several (one
+/// operation for both, so there is one way to change). What it may carry is `Change`'s and nothing
+/// else (`change.rs`). Sent by `linear::change` and by nothing else.
+pub const ISSUE_BATCH_UPDATE: Operation = Operation {
+    name: "IssueBatchUpdate",
+    text: concat!(
+        "mutation IssueBatchUpdate($ids: [UUID!]!, $input: IssueUpdateInput!) { \
+         issueBatchUpdate(ids: $ids, input: $input) { success issues { ",
+        issue_fields!(),
+        " } } }"
+    ),
+};
+
 /// Every operation there is, for the test that scans for a `mutation`.
 #[cfg(test)]
-pub const ALL: [Operation; 7] = [
+pub const ALL: [Operation; 8] = [
     VERIFY,
     MY_ISSUES,
     ALL_ISSUES,
@@ -150,6 +165,7 @@ pub const ALL: [Operation; 7] = [
     NEW_ISSUE_TEAMS,
     NEW_ISSUE_OPTIONS,
     ISSUE_CREATE,
+    ISSUE_BATCH_UPDATE,
 ];
 
 /// The variables of the question for one issue: Linear's id of it, or its identifier.
@@ -168,6 +184,13 @@ pub struct Team<'a> {
 #[derive(Debug, Serialize)]
 pub struct Create<'a> {
     pub input: &'a super::NewIssue,
+}
+
+/// The variables of `IssueBatchUpdate`: the issues by Linear's id, and what is changed in them.
+#[derive(Debug, Serialize)]
+pub struct Batch<'a> {
+    pub ids: &'a [String],
+    pub input: super::change::Input<'a>,
 }
 
 /// The variables of a page of issues.
@@ -212,8 +235,8 @@ impl Filter {
 mod tests {
     use super::*;
 
-    /// The guard: each operation is a plain query, or is the one mutation of the list; and it is
-    /// named by its text.
+    /// The guard: each operation is a plain query, or is a mutation of the list; and it is named by
+    /// its text.
     #[test]
     fn every_operation_reads_or_is_the_one_listed_write() {
         let mut writes = Vec::new();
@@ -242,9 +265,9 @@ mod tests {
                 writes.push(operation.name);
             }
         }
-        // The pen writes one thing, and the list says which.
-        assert_eq!(ALLOWED_MUTATIONS, ["IssueCreate"]);
-        assert_eq!(writes, ["IssueCreate"]);
+        // The pen writes two things, and the list says which.
+        assert_eq!(ALLOWED_MUTATIONS, ["IssueCreate", "IssueBatchUpdate"]);
+        assert_eq!(writes, ["IssueCreate", "IssueBatchUpdate"]);
     }
 
     /// A query added and left out of `ALL` would not be scanned: every `Operation` of this file is in it.
@@ -286,9 +309,20 @@ mod tests {
             "mutation IssueCreate { issueCreate { success } } query Q { viewer { id } }",
         );
         not_allowed("Live", "subscription Live { issueUpdated { id } }");
-        // The listed one is allowed and is not a query.
+        // The listed one under the name of the other, and the two in one text.
+        not_allowed("IssueCreate", ISSUE_BATCH_UPDATE.text);
+        not_allowed("IssueBatchUpdate", ISSUE_CREATE.text);
+        not_allowed(
+            "IssueBatchUpdate",
+            "mutation IssueBatchUpdate($ids: [UUID!]!, $input: IssueUpdateInput!) { \
+             issueBatchUpdate(ids: $ids, input: $input) { success } } \
+             mutation IssueArchive($id: String!) { issueArchive(id: $id) { success } }",
+        );
+        // The ones listed are allowed and are not queries.
         assert!(ISSUE_CREATE.allowed());
         assert!(!ISSUE_CREATE.reads_only());
+        assert!(ISSUE_BATCH_UPDATE.allowed());
+        assert!(!ISSUE_BATCH_UPDATE.reads_only());
         assert!(VERIFY.allowed());
         assert!(!VERIFY.is_listed_write());
     }

@@ -51,7 +51,7 @@ fn issue(n: usize) -> String {
         r#"{{"id":"i{n}","identifier":"ACM-{n}","title":"t{n}","priority":3,
         "updatedAt":"2026-11-09T14:20:00.000Z","url":"https://linear.app/x/{n}",
         "state":{{"id":"s","name":"Todo","type":"unstarted","position":0}},
-        "labels":{{"nodes":[]}},"team":{{"key":"ACM"}},"cycle":null,"project":null,"assignee":null}}"#
+        "labels":{{"nodes":[]}},"team":{{"id":"team-acm","key":"ACM"}},"cycle":null,"project":null,"assignee":null}}"#
     )
 }
 
@@ -298,10 +298,10 @@ fn a_mutation_that_is_not_listed_is_not_sent_at_all() {
     assert!(transport.sent().is_empty());
 }
 
-/// The one mutation leaves from `create` and from nowhere else: the places that name it are the
+/// Each mutation leaves from its own function and from nowhere else: the places that name it are the
 /// file that lists it and the one function that sends it.
 #[test]
-fn only_create_names_the_mutation() {
+fn only_create_and_change_name_the_mutations() {
     fn sources(dir: &std::path::Path, found: &mut Vec<(std::path::PathBuf, String)>) {
         for entry in std::fs::read_dir(dir).unwrap() {
             let path = entry.unwrap().path();
@@ -321,6 +321,7 @@ fn only_create_names_the_mutation() {
     for (path, text) in &found {
         let name = path.file_name().unwrap().to_str().unwrap();
         let uses = text.matches("ISSUE_CREATE").count();
+        let batches = text.matches("ISSUE_BATCH_UPDATE").count();
         match (
             path.parent()
                 .unwrap()
@@ -330,13 +331,16 @@ fn only_create_names_the_mutation() {
                 .unwrap(),
             name,
         ) {
-            // Where it is defined and listed (and its guards).
-            ("linear", "query.rs") => assert!(uses >= 1),
-            // Where it is sent: once.
-            ("linear", "mod.rs") => assert_eq!(uses, 1, "{}", path.display()),
-            // The tests of the client may name it.
+            // Where they are defined and listed (and their guards).
+            ("linear", "query.rs") => assert!(uses >= 1 && batches >= 1),
+            // Where each is sent: once.
+            ("linear", "mod.rs") => {
+                assert_eq!(uses, 1, "{}", path.display());
+                assert_eq!(batches, 1, "{}", path.display());
+            }
+            // The tests of the client may name them.
             ("linear", "tests.rs") => {}
-            _ => assert_eq!(uses, 0, "{} names the mutation", path.display()),
+            _ => assert_eq!(uses + batches, 0, "{} names a mutation", path.display()),
         }
     }
     // Nothing else posts a body to Linear but `run`, which reads the operation before it sends it,
@@ -352,6 +356,8 @@ fn only_create_names_the_mutation() {
         let makes = text.matches("linear::create(").count();
         let expected = usize::from(path.ends_with("program/session.rs"));
         assert_eq!(makes, expected, "{} makes an issue", path.display());
+        let changes = text.matches("linear::change(").count();
+        assert_eq!(changes, expected, "{} changes issues", path.display());
     }
 }
 
@@ -418,6 +424,20 @@ fn the_choices_are_the_open_states_in_order_the_labels_without_groups_the_projec
         ["Triage", "Backlog", "Todo", "In Review", "In Progress"]
     );
     assert_eq!(got.states[2].kind, types::StateKind::Unstarted);
+    // Every state an issue can be put in: then Done and Canceled, in the order of their kinds.
+    let all: Vec<&str> = got.all_states.iter().map(|s| s.name.as_str()).collect();
+    assert_eq!(
+        all,
+        [
+            "Triage",
+            "Backlog",
+            "Todo",
+            "In Review",
+            "In Progress",
+            "Done",
+            "Canceled"
+        ]
+    );
     // The team's labels and the workspace's, once each, by name whatever the case, with no group.
     let labels: Vec<&str> = got.labels.iter().map(|l| l.name.as_str()).collect();
     assert_eq!(labels, ["api", "bug", "Customer"]);
@@ -642,4 +662,139 @@ fn a_key_that_may_not_write_is_forbidden_not_refused() {
         create(&transport, &key(), &new_issue()),
         Err(Error::Forbidden)
     );
+}
+
+#[test]
+fn a_state_that_is_a_duplicate_is_not_offered_to_change_to() {
+    let body = r#"{"data":{"team":{"id":"team-acm","defaultIssueState":null,"states":{"nodes":[
+        {"id":"s-todo","name":"Todo","type":"unstarted","position":1},
+        {"id":"s-done","name":"Done","type":"completed","position":2},
+        {"id":"s-cancel","name":"Canceled","type":"canceled","position":3},
+        {"id":"s-dup","name":"Duplicate","type":"canceled","position":4},
+        {"id":"s-odd","name":"Odd","type":"duplicate","position":5}]},
+        "labels":{"nodes":[]},"projects":{"nodes":[]},"members":{"nodes":[]}},"issueLabels":{"nodes":[]}}}"#;
+    let got = asked_options(body);
+    let all: Vec<&str> = got.all_states.iter().map(|s| s.name.as_str()).collect();
+    assert_eq!(all, ["Todo", "Done", "Canceled"]);
+    let open: Vec<&str> = got.states.iter().map(|s| s.name.as_str()).collect();
+    assert_eq!(open, ["Todo"]);
+}
+
+/// What `IssueBatchUpdate` answers: the issues as they are now.
+fn changed_reply(success: bool, issues: &[usize]) -> Reply {
+    let nodes: Vec<String> = issues.iter().copied().map(issue).collect();
+    Reply {
+        status: 200,
+        body: format!(
+            r#"{{"data":{{"issueBatchUpdate":{{"success":{success},"issues":[{}]}}}}}}"#,
+            nodes.join(",")
+        ),
+    }
+}
+
+fn ids(of: &[&str]) -> Vec<String> {
+    of.iter().map(|id| (*id).to_owned()).collect()
+}
+
+#[test]
+fn a_change_is_sent_once_with_the_ids_and_its_one_field_as_variables() {
+    let transport = Scripted::new(vec![Ok(changed_reply(true, &[1, 2]))]);
+    let got = change(
+        &transport,
+        &key(),
+        &ids(&["i1", "i2"]),
+        &Change::State("s-done".to_owned()),
+    )
+    .unwrap();
+    assert_eq!(got.len(), 2);
+    assert_eq!(
+        got[0].team.as_ref().map(|t| t.id.as_str()),
+        Some("team-acm")
+    );
+    let sent = transport.sent();
+    assert_eq!(sent.len(), 1);
+    assert!(
+        sent[0].contains(r#""operationName":"IssueBatchUpdate""#),
+        "{}",
+        sent[0]
+    );
+    assert!(
+        sent[0].contains(r#""variables":{"ids":["i1","i2"],"input":{"stateId":"s-done"}}"#),
+        "{}",
+        sent[0]
+    );
+    // What the person wrote or chose is a variable, never a part of the text; and the key is not in it.
+    assert!(!sent[0].contains("lin_api"), "{}", sent[0]);
+}
+
+#[test]
+fn a_change_that_linear_does_not_make_is_an_error_and_is_not_sent_again() {
+    for reply in [
+        changed_reply(false, &[]),
+        Reply {
+            status: 200,
+            body: r#"{"data":{"issueBatchUpdate":null}}"#.to_owned(),
+        },
+        Reply {
+            status: 200,
+            body: r#"{"errors":[{"message":"state does not belong to the team"}],"data":null}"#
+                .to_owned(),
+        },
+    ] {
+        let transport = Scripted::new(vec![Ok(reply)]);
+        let got = change(
+            &transport,
+            &key(),
+            &ids(&["i1"]),
+            &Change::Title("x".to_owned()),
+        );
+        assert!(matches!(got, Err(Error::Failed(_))), "{got:?}");
+        assert_eq!(transport.sent().len(), 1, "never sent twice");
+    }
+    // No answer is the transport's error, and it is not sent again either.
+    let transport = Scripted::new(vec![Err(Error::Unreachable("timed out".to_owned()))]);
+    let got = change(
+        &transport,
+        &key(),
+        &ids(&["i1"]),
+        &Change::Title("x".to_owned()),
+    );
+    assert!(matches!(got, Err(Error::Unreachable(_))));
+    assert_eq!(transport.sent().len(), 1);
+}
+
+#[test]
+fn from_one_to_fifty_issues_are_changed_at_once_and_no_more() {
+    let transport = Scripted::new(vec![Ok(changed_reply(true, &[]))]);
+    let many: Vec<String> = (0..=BATCH_MOST).map(|n| format!("i{n}")).collect();
+    for bad in [Vec::new(), many.clone()] {
+        let got = change(&transport, &key(), &bad, &Change::Title("x".to_owned()));
+        assert!(matches!(got, Err(Error::Failed(_))), "{}", bad.len());
+    }
+    assert!(transport.sent().is_empty(), "nothing is sent");
+    let fifty = &many[..BATCH_MOST];
+    assert!(change(&transport, &key(), fifty, &Change::Title("x".to_owned())).is_ok());
+}
+
+#[test]
+fn no_change_asks_for_the_description_or_the_team_to_be_written() {
+    for change_made in [
+        Change::State("s".to_owned()),
+        Change::Priority(Priority::Low),
+        Change::Assignee(None),
+        Change::AddLabel("l".to_owned()),
+        Change::RemoveLabel("l".to_owned()),
+        Change::Project(None),
+        Change::Title("t".to_owned()),
+    ] {
+        let transport = Scripted::new(vec![Ok(changed_reply(true, &[1]))]);
+        change(&transport, &key(), &ids(&["i1"]), &change_made).unwrap();
+        let sent = transport.sent();
+        let variables = sent[0].split(r#""variables":"#).nth(1).unwrap();
+        assert!(!variables.contains("description"), "{variables}");
+        assert!(
+            !variables.to_ascii_lowercase().contains("teamid"),
+            "{variables}"
+        );
+    }
 }

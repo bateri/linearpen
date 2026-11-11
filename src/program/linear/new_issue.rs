@@ -61,6 +61,9 @@ pub struct Options {
     pub default_state: Option<String>,
     /// The open states: triage, backlog, unstarted, then started; within a kind by position.
     pub states: Vec<StateChoice>,
+    /// Every state an issue can be put in, as the same order goes on: the open ones, then completed
+    /// and canceled. A duplicate is not one (it wants the issue it duplicates).
+    pub all_states: Vec<StateChoice>,
     /// The team's labels and the workspace's, by name; no group.
     pub labels: Vec<LabelChoice>,
     /// The projects that are not finished or canceled, by name.
@@ -226,22 +229,30 @@ impl OptionsData {
     /// What can be chosen, or nothing where Linear has no such team.
     pub(super) fn options(self) -> Option<Options> {
         let team = self.team?;
-        // Only the open kinds are offered, in the order a person reads them: what has not been
-        // triaged, what waits, what is next, what is being done.
-        let open = |kind: StateKind| match kind {
+        // The kinds are offered in the order a person reads them: what has not been triaged, what
+        // waits, what is next, what is being done, what is done, what is dropped. A new issue begins
+        // in one of the first four; a duplicate is of no kind that is offered, and a state of the
+        // canceled kind that is named so is not either, for it wants the issue it duplicates.
+        let order = |kind: StateKind| match kind {
             StateKind::Triage => Some(0),
             StateKind::Backlog => Some(1),
             StateKind::Unstarted => Some(2),
             StateKind::Started => Some(3),
-            _ => None,
+            StateKind::Completed => Some(4),
+            StateKind::Canceled => Some(5),
+            StateKind::Other => None,
         };
-        let mut states: Vec<(u8, f64, StateChoice)> = team
+        let mut all: Vec<(u8, f64, StateChoice)> = team
             .states
             .nodes
             .into_iter()
+            .filter(|state| {
+                !(state.kind == StateKind::Canceled
+                    && state.name.trim().eq_ignore_ascii_case("duplicate"))
+            })
             .filter_map(|state| {
                 Some((
-                    open(state.kind)?,
+                    order(state.kind)?,
                     state.position,
                     StateChoice {
                         id: state.id,
@@ -251,12 +262,17 @@ impl OptionsData {
                 ))
             })
             .collect();
-        states.sort_by(|a, b| {
+        all.sort_by(|a, b| {
             a.0.cmp(&b.0)
                 .then(a.1.total_cmp(&b.1))
                 .then_with(|| a.2.id.cmp(&b.2.id))
         });
-        let states: Vec<StateChoice> = states.into_iter().map(|(_, _, state)| state).collect();
+        let all_states: Vec<StateChoice> = all.into_iter().map(|(_, _, state)| state).collect();
+        let states: Vec<StateChoice> = all_states
+            .iter()
+            .filter(|state| !matches!(state.kind, StateKind::Completed | StateKind::Canceled))
+            .cloned()
+            .collect();
         let first_of = |kind: StateKind| states.iter().find(|state| state.kind == kind);
         let default_state = team
             .default_issue_state
@@ -307,6 +323,7 @@ impl OptionsData {
             team: team.id,
             default_state,
             states,
+            all_states,
             labels,
             projects,
             members,

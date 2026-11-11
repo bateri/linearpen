@@ -150,6 +150,8 @@ pub struct State {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct Label {
+    /// Linear's id of the label: what a change adds or removes it by.
+    pub id: String,
     pub name: String,
     /// `#rrggbb`, Linear's own colour of the label.
     #[serde(default)]
@@ -159,6 +161,8 @@ pub struct Label {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Assignee {
+    /// Linear's id of the person: what a change gives the issue by.
+    pub id: String,
     pub display_name: String,
     #[serde(default)]
     pub is_me: bool,
@@ -188,13 +192,20 @@ fn nodes<'de, D: Deserializer<'de>, T: Deserialize<'de>>(from: D) -> Result<Vec<
     Ok(Option::<Nodes<T>>::deserialize(from)?.map_or_else(Vec::new, |n| n.nodes))
 }
 
-/// `{ key: "ACM" }`, read as the key.
-fn team_key<'de, D: Deserializer<'de>>(from: D) -> Result<Option<String>, D::Error> {
-    #[derive(Deserialize)]
-    struct Team {
-        key: String,
-    }
-    Ok(Option::<Team>::deserialize(from)?.map(|t| t.key))
+/// The team an issue is of: its id (a change that moves nothing between teams is told of one by it,
+/// and a menu is of the issue's team) and the key its identifier begins with.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct TeamRef {
+    pub id: String,
+    /// `ACM`.
+    pub key: String,
+}
+
+/// The project an issue is in, by Linear's id and by name.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct ProjectRef {
+    pub id: String,
+    pub name: String,
 }
 
 /// `{ number: 12 }`, read as the number.
@@ -208,15 +219,6 @@ fn cycle_number<'de, D: Deserializer<'de>>(from: D) -> Result<Option<u32>, D::Er
     Ok(Option::<Cycle>::deserialize(from)?
         .filter(|c| c.number >= 0.0 && c.number <= f64::from(u32::MAX))
         .map(|c| c.number as u32))
-}
-
-/// `{ name: "Billing" }`, read as the name.
-fn project_name<'de, D: Deserializer<'de>>(from: D) -> Result<Option<String>, D::Error> {
-    #[derive(Deserialize)]
-    struct Project {
-        name: String,
-    }
-    Ok(Option::<Project>::deserialize(from)?.map(|p| p.name))
 }
 
 /// An issue as the list needs it. The description and the comments are not here: they are asked for
@@ -238,12 +240,12 @@ pub struct Issue {
     pub state: State,
     #[serde(default, deserialize_with = "nodes")]
     pub labels: Vec<Label>,
-    #[serde(default, rename = "team", deserialize_with = "team_key")]
-    pub team: Option<String>,
+    #[serde(default)]
+    pub team: Option<TeamRef>,
     #[serde(default, rename = "cycle", deserialize_with = "cycle_number")]
     pub cycle: Option<u32>,
-    #[serde(default, rename = "project", deserialize_with = "project_name")]
-    pub project: Option<String>,
+    #[serde(default)]
+    pub project: Option<ProjectRef>,
     #[serde(default)]
     pub assignee: Option<Assignee>,
     /// Untrusted markdown. Only an issue asked for alone has it.
@@ -306,9 +308,9 @@ pub fn fixture_issue() -> Issue {
             "url": "https://linear.app/acme/issue/ACM-412/add-rate-limiting",
             "branchName": "ada/acm-412-add-rate-limiting",
             "state": {"id": "s1", "name": "In Progress", "type": "started", "position": 1},
-            "labels": {"nodes": [{"name": "api", "color": "#3e63dd"}]},
-            "team": {"key": "ACM"}, "cycle": {"number": 12}, "project": null,
-            "assignee": {"displayName": "Ada", "isMe": true},
+            "labels": {"nodes": [{"id": "l-api", "name": "api", "color": "#3e63dd"}]},
+            "team": {"id": "team-acm", "key": "ACM"}, "cycle": {"number": 12}, "project": null,
+            "assignee": {"id": "u-ada", "displayName": "Ada", "isMe": true},
             "comments": {"nodes": [{"body": "Redis is already there.",
                 "createdAt": "2026-11-06T09:00:00.000Z", "user": {"displayName": "Deniz"}}],
                 "pageInfo": {"hasNextPage": false}}
@@ -328,16 +330,22 @@ mod tests {
             "updatedAt": "2026-11-09T14:20:00.000Z", "url": "https://linear.app/acme/issue/ACM-412",
             "branchName": "acm-412-add-rate-limiting",
             "state": {"id": "s1", "name": "In Progress", "type": "started", "position": 1},
-            "labels": {"nodes": [{"name": "api", "color": "#3e63dd"}]},
-            "team": {"key": "ACM"}, "cycle": {"number": 7}, "project": null,
-            "assignee": {"displayName": "Ada", "isMe": true}
+            "labels": {"nodes": [{"id": "l-api", "name": "api", "color": "#3e63dd"}]},
+            "team": {"id": "team-acm", "key": "ACM"}, "cycle": {"number": 7}, "project": null,
+            "assignee": {"id": "u-ada", "displayName": "Ada", "isMe": true}
         }"##;
         let issue: Issue = serde_json::from_str(wire).unwrap();
         assert_eq!(issue.identifier, "ACM-412");
         assert_eq!(issue.priority, Priority::High);
         assert_eq!(issue.state.kind, StateKind::Started);
         assert_eq!(issue.labels[0].color, "#3e63dd");
-        assert_eq!(issue.team.as_deref(), Some("ACM"));
+        assert_eq!(issue.team.as_ref().map(|t| t.key.as_str()), Some("ACM"));
+        assert_eq!(issue.team.as_ref().map(|t| t.id.as_str()), Some("team-acm"));
+        assert_eq!(issue.labels[0].id, "l-api");
+        assert_eq!(
+            issue.assignee.as_ref().map(|a| a.id.as_str()),
+            Some("u-ada")
+        );
         assert_eq!(issue.cycle, Some(7));
         assert_eq!(issue.project, None);
         assert!(issue.assignee.is_some_and(|a| a.is_me));

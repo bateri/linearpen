@@ -17,12 +17,14 @@
    "labels": {
     "nodes": [
      {
+      "id": "l-api",
       "name": "api",
       "color": "#3e63dd"
      }
     ]
    },
    "team": {
+    "id": "team-acm",
     "key": "ACM"
    },
    "cycle": {
@@ -30,6 +32,7 @@
    },
    "project": null,
    "assignee": {
+    "id": "u-ada",
     "displayName": "Ada",
     "isMe": true
    },

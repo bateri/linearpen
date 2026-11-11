@@ -6,16 +6,20 @@
 //! and puts them in `State` as a whole; a failure leaves the lists as they were and says why. Whoever
 //! changes `State` bumps `generation` and wakes the topic's threads and the worker.
 //!
-//! The one thing the program writes, a new issue, is `create`: it sends once and, where no answer
-//! came, asks for the issue by the id of the draft before it says it failed.
+//! What the program writes is a new issue and the changes of issues. `create` sends once and, where
+//! no answer came, asks for the issue by the id of the draft before it says it failed. `change` sends
+//! once, writes what Linear answers into the lists and the issues kept (the lists are not asked for
+//! again), and where no answer came asks for the issues it named, one by one.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use crate::linear::types::StateKind;
 use crate::linear::{
-    self, Created, Error, Issue, Key, Listing, NewIssue, Options, Scope, Team, Transport, Viewer,
+    self, Change, Created, Error, Issue, Key, Listing, NewIssue, Options, Scope, Team, Transport,
+    Viewer,
 };
 use crate::state::Paths;
 use crate::state::credentials::{self, Problem, Source};
@@ -98,6 +102,59 @@ impl State {
         self.teams = None;
         self.choices.clear();
     }
+
+    /// Writes an issue as Linear says it is now into what is held: each list has it where it
+    /// belongs (the open issues in All, the open issues that are the person's in My issues) and
+    /// not where it does not, and the issue kept with its description is as it is now. Gives whether
+    /// the list the page is looking at holds it.
+    fn put(&mut self, issue: &Issue) -> bool {
+        let open = !matches!(issue.state.kind, StateKind::Completed | StateKind::Canceled);
+        let mine = open && issue.assignee.as_ref().is_some_and(|who| who.is_me);
+        if let Some(lists) = &mut self.lists {
+            let row = Issue {
+                description: None,
+                comments: None,
+                ..issue.clone()
+            };
+            place(&mut lists.all, &row, open);
+            place(&mut lists.mine, &row, mine);
+        }
+        // What is kept is by the id it was asked for by, which may be the identifier.
+        for kept in self.details.values_mut().filter(|kept| kept.id == issue.id) {
+            let (description, comments) = (kept.description.take(), kept.comments.take());
+            *kept = issue.clone();
+            if issue.description.is_none() {
+                kept.description = description;
+                kept.comments = comments;
+            }
+        }
+        match self.view.scope {
+            Scope::Mine => mine,
+            Scope::All => open,
+        }
+    }
+}
+
+/// `issue` in `listing` where it is `wanted`, in the place it was; out of it where it is not. One
+/// that is wanted and was not there is the newest, so it goes first.
+fn place(listing: &mut Listing, issue: &Issue, wanted: bool) {
+    let at = listing.issues.iter().position(|held| held.id == issue.id);
+    match (at, wanted) {
+        (Some(at), true) => listing.issues[at] = issue.clone(),
+        (Some(at), false) => {
+            listing.issues.remove(at);
+        }
+        (None, true) => listing.issues.insert(0, issue.clone()),
+        (None, false) => {}
+    }
+}
+
+/// An issue a change was made to, and whether the list the page is looking at holds it still (one
+/// that is done, or is another's in My issues, is no longer in it).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Changed {
+    pub id: String,
+    pub listed: bool,
 }
 
 struct Shared {
@@ -447,6 +504,72 @@ impl Session {
         }
     }
 
+    /// Makes `change` in the issues with Linear's ids `ids`, from one to fifty: the program's other
+    /// write. It is sent once. What Linear answers is written into the lists and the issues kept as
+    /// it is, and the topic is told; no list is asked for again. Where it did not come back whole
+    /// (no answer, or an error), or came back without one of the issues, each of those is asked for,
+    /// so that what is shown is what Linear holds; nothing is sent again, and the failure is told. A
+    /// key Linear does not take cannot have changed anything, and is not asked about.
+    pub fn change(&self, ids: &[String], change: &Change) -> Result<Vec<Changed>, Error> {
+        if ids.is_empty() || ids.len() > linear::BATCH_MOST {
+            return Err(Error::Failed(format!(
+                "from one to {} issues are changed at once",
+                linear::BATCH_MOST
+            )));
+        }
+        let key = self.key()?;
+        match linear::change(self.transport(), &key, ids, change) {
+            Ok(issues) => {
+                let missing: Vec<String> = ids
+                    .iter()
+                    .filter(|id| !issues.iter().any(|got| got.id.eq_ignore_ascii_case(id)))
+                    .cloned()
+                    .collect();
+                let mut told = Vec::new();
+                {
+                    let mut state = self.shared.lock();
+                    for issue in &issues {
+                        let listed = state.put(issue);
+                        told.push(Changed {
+                            id: issue.id.clone(),
+                            listed,
+                        });
+                    }
+                    self.shared.changed(&mut state);
+                }
+                told.extend(self.ask_again(&key, &missing));
+                Ok(told)
+            }
+            Err(failure @ (Error::Refused | Error::Forbidden)) => Err(failure),
+            Err(failure) => {
+                self.ask_again(&key, ids);
+                Err(failure)
+            }
+        }
+    }
+
+    /// Asks Linear for each of the issues `ids`, one after the other, and writes what it says into
+    /// what is held. It stops at the first that cannot be reached: the others would not be either.
+    fn ask_again(&self, key: &Key, ids: &[String]) -> Vec<Changed> {
+        let mut told = Vec::new();
+        for id in ids {
+            match linear::fetch_issue(self.transport(), key, id) {
+                Ok(issue) => {
+                    let mut state = self.shared.lock();
+                    let listed = state.put(&issue);
+                    self.shared.changed(&mut state);
+                    told.push(Changed {
+                        id: issue.id,
+                        listed,
+                    });
+                }
+                Err(Error::Unreachable(_) | Error::Refused | Error::Forbidden) => break,
+                Err(_) => {}
+            }
+        }
+        told
+    }
+
     /// A page that begins again numbers its `view` calls from the start: what was held of the last
     /// one's numbers is let go.
     pub fn forget_view_order(&self) {
@@ -622,7 +745,7 @@ mod tests {
             r#"{{"data":{{"issue":{{"id":"{id}","identifier":"ACM-900","title":"Fix the login","priority":0,
             "updatedAt":"2026-11-09T14:20:00.000Z","url":"https://linear.app/x/900",
             "state":{{"id":"s","name":"Todo","type":"unstarted","position":0}},
-            "labels":{{"nodes":[]}},"team":{{"key":"ACM"}},"cycle":null,"project":null,"assignee":null}}}}}}"#
+            "labels":{{"nodes":[]}},"team":{{"id":"team-acm","key":"ACM"}},"cycle":null,"project":null,"assignee":null}}}}}}"#
         ))
     }
 
@@ -736,6 +859,279 @@ mod tests {
         session.state().forget_choices();
         session.options("team-acm").unwrap();
         assert_eq!(sent.lock().unwrap().len(), 3);
+    }
+
+    /// An issue as Linear says it, in a state of `kind`, given to the person (`me`) or to Deniz.
+    fn wire(id: &str, title: &str, kind: &str, me: bool) -> String {
+        let (who, is_me) = if me {
+            ("u-ada", true)
+        } else {
+            ("u-deniz", false)
+        };
+        format!(
+            r##"{{"id":"{id}","identifier":"ACM-{id}","title":"{title}","priority":2,
+            "updatedAt":"2026-11-09T14:20:00.000Z","url":"https://linear.app/x/{id}",
+            "state":{{"id":"s-{kind}","name":"State {kind}","type":"{kind}","position":1}},
+            "labels":{{"nodes":[{{"id":"l-bug","name":"bug","color":"#eb5757"}}]}},
+            "team":{{"id":"team-acm","key":"ACM"}},"cycle":null,"project":null,
+            "assignee":{{"id":"{who}","displayName":"Someone","isMe":{is_me}}}}}"##
+        )
+    }
+
+    fn issue_of(wire: &str) -> Issue {
+        serde_json::from_str(wire).unwrap()
+    }
+
+    fn batch_reply(issues: &[String]) -> Result<Reply, Error> {
+        said(&format!(
+            r#"{{"data":{{"issueBatchUpdate":{{"success":true,"issues":[{}]}}}}}}"#,
+            issues.join(",")
+        ))
+    }
+
+    /// A session holding two issues in both lists (`a` and `b`, started, the person's), and what it
+    /// sends.
+    fn holding(replies: Vec<Result<Reply, Error>>) -> (Session, Arc<Mutex<Vec<String>>>) {
+        let (session, sent) = answered(replies);
+        let issues = vec![
+            issue_of(&wire("a", "Add it", "started", true)),
+            issue_of(&wire("b", "Fix it", "started", true)),
+        ];
+        let listing = Listing {
+            issues,
+            truncated: false,
+        };
+        session.shared.lock().lists = Some(Lists {
+            viewer: Viewer {
+                id: "u-ada".to_owned(),
+                name: "Ada".to_owned(),
+                organization: crate::linear::types::Organization {
+                    name: "Acme".to_owned(),
+                    url_key: "acme".to_owned(),
+                },
+            },
+            mine: listing.clone(),
+            all: listing,
+        });
+        (session, sent)
+    }
+
+    fn ids_of(listing: &Listing) -> Vec<&str> {
+        listing.issues.iter().map(|i| i.id.as_str()).collect()
+    }
+
+    fn strings(of: &[&str]) -> Vec<String> {
+        of.iter().map(|id| (*id).to_owned()).collect()
+    }
+
+    #[test]
+    fn an_issue_that_is_done_leaves_both_lists_and_the_counts_follow() {
+        let (session, sent) = holding(vec![batch_reply(&[wire("a", "Add it", "completed", true)])]);
+        let told = session
+            .change(&strings(&["a"]), &Change::State("s-completed".to_owned()))
+            .unwrap();
+        assert_eq!(
+            told,
+            [Changed {
+                id: "a".to_owned(),
+                listed: false
+            }]
+        );
+        let state = session.state();
+        let lists = state.lists.as_ref().unwrap();
+        assert_eq!(ids_of(&lists.mine), ["b"]);
+        assert_eq!(ids_of(&lists.all), ["b"]);
+        assert_eq!(sent.lock().unwrap().len(), 1, "no list is asked for again");
+    }
+
+    #[test]
+    fn an_issue_given_to_another_leaves_my_issues_and_stays_in_all() {
+        let (session, _) = holding(vec![
+            batch_reply(&[wire("a", "Add it", "started", false)]),
+            batch_reply(&[wire("b", "Fix it", "started", false)]),
+        ]);
+        let change = Change::Assignee(Some("u-deniz".to_owned()));
+        let mine = session.change(&strings(&["a"]), &change).unwrap();
+        assert!(!mine[0].listed, "the list in view is My issues");
+        {
+            let state = session.state();
+            let lists = state.lists.as_ref().unwrap();
+            assert_eq!(ids_of(&lists.mine), ["b"]);
+            assert_eq!(ids_of(&lists.all), ["a", "b"]);
+            assert_eq!(
+                lists.all.issues[0].assignee.as_ref().map(|a| a.id.as_str()),
+                Some("u-deniz")
+            );
+        }
+        session.state().view.scope = Scope::All;
+        let all = session.change(&strings(&["b"]), &change).unwrap();
+        assert!(all[0].listed, "All holds it still");
+    }
+
+    #[test]
+    fn a_change_of_state_moves_the_issue_to_its_new_group_in_place() {
+        let (session, _) = holding(vec![batch_reply(&[
+            wire("a", "Add it", "backlog", true),
+            wire("b", "Fix it", "backlog", true),
+        ])]);
+        let told = session
+            .change(
+                &strings(&["a", "b"]),
+                &Change::State("s-backlog".to_owned()),
+            )
+            .unwrap();
+        assert!(told.iter().all(|changed| changed.listed));
+        let state = session.state();
+        let lists = state.lists.as_ref().unwrap();
+        assert_eq!(ids_of(&lists.mine), ["a", "b"]);
+        assert!(
+            lists
+                .mine
+                .issues
+                .iter()
+                .all(|issue| issue.state.kind == crate::linear::types::StateKind::Backlog)
+        );
+    }
+
+    #[test]
+    fn the_topic_is_woken_by_a_change_and_the_issue_kept_keeps_its_description() {
+        let mut opened = issue_of(&wire("a", "Add it", "started", true));
+        opened.description = Some("The words".to_owned());
+        let (session, sent) = holding(vec![batch_reply(&[wire("a", "Added it", "started", true)])]);
+        session
+            .shared
+            .lock()
+            .details
+            .insert("a".to_owned(), opened.clone());
+        // It is kept by the identifier too, when the page asked for it by that.
+        session
+            .shared
+            .lock()
+            .details
+            .insert("ACM-a".to_owned(), opened);
+        let before = session.generation();
+        session
+            .change(&strings(&["a"]), &Change::Title("Added it".to_owned()))
+            .unwrap();
+        assert!(session.generation() > before);
+        for by in ["a", "ACM-a"] {
+            let kept = session.detail(by).unwrap();
+            assert_eq!(kept.title, "Added it");
+            assert_eq!(kept.description.as_deref(), Some("The words"));
+        }
+        assert_eq!(
+            sent.lock().unwrap().len(),
+            1,
+            "the kept issue is not asked for"
+        );
+    }
+
+    #[test]
+    fn from_one_to_fifty_issues_at_most_and_nothing_is_sent_for_more() {
+        let (session, sent) = holding(Vec::new());
+        let many: Vec<String> = (0..51).map(|n| format!("i{n}")).collect();
+        for bad in [Vec::new(), many] {
+            assert!(
+                session
+                    .change(&bad, &Change::Title("x".to_owned()))
+                    .is_err()
+            );
+        }
+        assert!(sent.lock().unwrap().is_empty());
+    }
+
+    /// No answer came: the change is not sent again, the issue is asked for, and what Linear says of
+    /// it is what the lists hold; the failure is told.
+    #[test]
+    fn a_change_with_no_answer_asks_for_the_issues_and_is_never_sent_twice() {
+        let found = said(&format!(
+            r#"{{"data":{{"issue":{}}}}}"#,
+            wire("a", "Add it", "completed", true)
+        ));
+        let (session, sent) = holding(vec![Err(Error::Unreachable("timed out".to_owned())), found]);
+        let failed = session
+            .change(&strings(&["a"]), &Change::State("s-completed".to_owned()))
+            .unwrap_err();
+        assert!(matches!(failed, Error::Unreachable(_)));
+        let sent = sent.lock().unwrap();
+        assert_eq!(sent.len(), 2);
+        assert!(sent[0].contains(r#""operationName":"IssueBatchUpdate""#));
+        assert!(sent[1].contains(r#""operationName":"Issue""#));
+        drop(sent);
+        // Linear did make it: the list says so.
+        let state = session.state();
+        assert_eq!(ids_of(&state.lists.as_ref().unwrap().mine), ["b"]);
+    }
+
+    #[test]
+    fn asking_again_stops_where_linear_cannot_be_reached() {
+        let (session, sent) = holding(vec![
+            Err(Error::Unreachable("down".to_owned())),
+            Err(Error::Unreachable("down".to_owned())),
+        ]);
+        let failed = session.change(&strings(&["a", "b"]), &Change::Title("x".to_owned()));
+        assert!(matches!(failed, Err(Error::Unreachable(_))));
+        assert_eq!(sent.lock().unwrap().len(), 2, "one change, one question");
+    }
+
+    #[test]
+    fn a_change_linear_says_it_did_not_make_leaves_the_lists_as_they_are() {
+        let still = said(&format!(
+            r#"{{"data":{{"issue":{}}}}}"#,
+            wire("a", "Add it", "started", true)
+        ));
+        let (session, sent) = holding(vec![
+            said(r#"{"errors":[{"message":"state does not belong to the team"}],"data":null}"#),
+            still,
+        ]);
+        let failed = session
+            .change(&strings(&["a"]), &Change::State("s-x".to_owned()))
+            .unwrap_err();
+        assert_eq!(
+            failed,
+            Error::Failed("Linear said: state does not belong to the team".to_owned())
+        );
+        assert_eq!(sent.lock().unwrap().len(), 2);
+        let state = session.state();
+        assert_eq!(ids_of(&state.lists.as_ref().unwrap().mine), ["a", "b"]);
+    }
+
+    #[test]
+    fn a_key_linear_does_not_take_has_not_changed_anything_and_is_not_asked_about() {
+        for refusal in [401, 403] {
+            let (session, sent) = holding(vec![Ok(Reply {
+                status: refusal,
+                body: String::new(),
+            })]);
+            assert!(
+                session
+                    .change(&strings(&["a"]), &Change::Title("x".to_owned()))
+                    .is_err()
+            );
+            assert_eq!(sent.lock().unwrap().len(), 1);
+        }
+    }
+
+    #[test]
+    fn an_issue_the_answer_leaves_out_is_asked_for() {
+        let found = said(&format!(
+            r#"{{"data":{{"issue":{}}}}}"#,
+            wire("b", "Fix it", "completed", true)
+        ));
+        let (session, sent) = holding(vec![
+            batch_reply(&[wire("a", "Add it", "completed", true)]),
+            found,
+        ]);
+        let told = session
+            .change(
+                &strings(&["a", "b"]),
+                &Change::State("s-completed".to_owned()),
+            )
+            .unwrap();
+        assert_eq!(told.len(), 2);
+        assert_eq!(sent.lock().unwrap().len(), 2);
+        let state = session.state();
+        assert!(ids_of(&state.lists.as_ref().unwrap().mine).is_empty());
     }
 
     #[test]
