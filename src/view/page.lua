@@ -466,8 +466,35 @@ local function keyboard_back(reply)
 	return u:focus(nil)
 end
 
+-- The keyboard on a control of the list's screen is there to press it and for nothing else: Tab
+-- brings it, Enter or Space presses. Any other key, and any command, is the list's and takes the
+-- keyboard back first, so that the arrows of a part of the scope never choose the scope and Enter
+-- after them opens the issue. Esc gives it back and does no more. The reply, and whether the key ends
+-- there.
+local STAYS = { tab = true, enter = true, [" "] = true, space = true }
+local MODS = { shift = true, control = true, alt = true, command = true, meta = true, caps_lock = true }
+local function keyboard_from_control(event)
+	local kind = event.type
+	if kind ~= "key" and kind ~= "command" then
+		return nil, false
+	end
+	if S.screen ~= "list" or modal() or form_open() or u.holder ~= "page" or u:target() == nil then
+		return nil, false
+	end
+	if kind == "key" and (STAYS[event.key] or MODS[event.key]) then
+		return nil, false
+	end
+	local mods = event.mods or {}
+	local plain = not (mods.command or mods.control or mods.alt or mods.shift)
+	return u:focus(nil), kind == "key" and event.key == "escape" and plain
+end
+
 local function handle(event)
 	local kind = event.type
+	local freed, ends = keyboard_from_control(event)
+	if ends then
+		return kit.take(freed)
+	end
 	if kind == "key" and S.screen == "list" and (new.is_open() or work.is_open()) and not modal() then
 		local stepped
 		if new.is_open() then
@@ -480,6 +507,7 @@ local function handle(event)
 		end
 	end
 	local reply, actions, taken = u:handle(event)
+	reply = b.merge(freed, reply)
 	if kind == "editor_ready" then
 		reply = b.merge(reply, new.ready(event))
 	end

@@ -2791,3 +2791,81 @@ fn after_a_press_on_the_scope_every_key_of_the_list_does_what_it_says() {
     // And after all of it the arrows and Enter are still the list's.
     the_keys_are_the_lists(&mut page, "every key");
 }
+
+// --- The keyboard after Tab -------------------------------------------------------------------------
+// Tab takes the keyboard to a control and Enter or Space presses it. Any other key is the list's
+// again: the arrows of a part of the scope do not choose the scope.
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn after_tab_the_arrows_are_the_lists_and_the_scope_stays() {
+    for keys in ["down", "up", "j", "right", "left", "home"] {
+        let (_linear, _session, mut page) = open_lists(WIDE);
+        page.press("down").expect("down");
+        page.advance(0.3).expect("a moment");
+        let before = cursor(&page);
+        page.press("tab").expect("tab");
+        page.advance(0.2).expect("a moment");
+        page.press(keys).expect("the key");
+        page.advance(0.4).expect("a moment");
+        assert!(
+            !page.says("ACM-417"),
+            "after tab, {keys} does not choose the scope: {}",
+            said(&page)
+        );
+        if keys != "right" && keys != "left" {
+            assert_ne!(cursor(&page), before, "after tab, {keys} moves the cursor");
+        }
+        the_keys_are_the_lists(&mut page, "tab and a key");
+    }
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn after_tab_escape_gives_the_keyboard_back_and_closes_nothing() {
+    let (_linear, _session, mut page) = open_lists(WIDE);
+    open_the_issue(&mut page);
+    page.press("tab").expect("tab");
+    page.advance(0.2).expect("a moment");
+    page.press("escape").expect("escape");
+    page.advance(0.3).expect("a moment");
+    assert!(
+        page.bounds("panel-close").is_some(),
+        "the first escape only gives the keyboard back"
+    );
+    let before = cursor(&page);
+    page.press("down").expect("down");
+    page.advance(0.3).expect("a moment");
+    assert_ne!(cursor(&page), before, "down moves the cursor");
+    assert!(!page.says("ACM-417"), "the scope stays: {}", said(&page));
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| page.bounds("panel-close").is_none())
+        .expect("the next escape closes the issue");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn after_tab_enter_presses_the_control_and_a_command_gives_the_keyboard_back() {
+    // Tab puts the keyboard on a control, and Enter is that control's: it does not open the issue.
+    let (_linear, _session, mut page) = open_lists(WIDE);
+    page.press("tab").expect("tab");
+    page.advance(0.2).expect("a moment");
+    page.press("enter").expect("enter");
+    page.advance(0.6).expect("a moment");
+    assert!(
+        page.bounds("panel-close").is_none(),
+        "enter pressed the control, not the list: {}",
+        said(&page)
+    );
+    // A command (x selects) is the list's, and after it so is Enter.
+    let (_linear, _session, mut page) = open_lists(WIDE);
+    page.press("tab").expect("tab");
+    page.advance(0.2).expect("a moment");
+    page.press("x").expect("x");
+    page.wait_for(WITHIN, |page| page.says("1 selected"))
+        .unwrap_or_else(|why| panic!("x selects: {why:?}: {}", said(&page)));
+    page.press("enter").expect("enter");
+    page.wait_for(WITHIN, |page| page.bounds("panel-close").is_some())
+        .unwrap_or_else(|why| panic!("enter opens the issue: {why:?}: {}", said(&page)));
+    assert!(!page.says("ACM-417"), "the scope stays: {}", said(&page));
+}
