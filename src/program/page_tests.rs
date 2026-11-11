@@ -1241,6 +1241,8 @@ pub(crate) struct Hands {
     split_says: Mutex<Option<String>>,
     ended: Mutex<bool>,
     ledger: Mutex<Option<Ledger>>,
+    /// What `bateri ls --json` says, where a test says it (else it says nothing).
+    ls_says: Mutex<Option<String>>,
 }
 
 impl Hands {
@@ -1251,7 +1253,21 @@ impl Hands {
             split_says: Mutex::new(None),
             ended: Mutex::new(false),
             ledger: Mutex::new(None),
+            ls_says: Mutex::new(None),
         })
+    }
+
+    /// From now on `bateri ls --json` says `text`.
+    pub(crate) fn set_ls(&self, text: &str) {
+        *self.ls_says.lock().unwrap() = Some(text.to_owned());
+    }
+
+    /// How many times `bateri ls` was run.
+    pub(crate) fn ls_calls(&self) -> usize {
+        self.asked()
+            .iter()
+            .filter(|line| line.starts_with("bateri ls "))
+            .count()
     }
 
     /// From now on what is run is written in `ledger` as it comes (`bateri split`).
@@ -1272,6 +1288,11 @@ impl Hands {
     /// The agent's pane ends.
     pub(crate) fn end(&self) {
         *self.ended.lock().unwrap() = true;
+    }
+
+    /// The panes made from now on do not end (until `end`).
+    pub(crate) fn begin_again(&self) {
+        *self.ended.lock().unwrap() = false;
     }
 }
 
@@ -1308,6 +1329,10 @@ impl crate::work::runner::Runner for Hands {
                 }
                 said(true, "", "")
             }
+            ("bateri", Some("ls")) => match self.ls_says.lock().unwrap().clone() {
+                Some(text) => said(true, &text, ""),
+                None => said(true, "", ""),
+            },
             ("bateri", Some("split" | "tab")) => match self.split_says.lock().unwrap().clone() {
                 Some(words) => said(false, "", &words),
                 None => said(true, "p41\n", ""),
@@ -1337,6 +1362,16 @@ pub(crate) struct Rig {
 }
 
 pub(crate) fn rig(linear: &Arc<Canned>, in_bateri: bool, agents: &[&str]) -> Rig {
+    rig_polling(linear, in_bateri, agents, Duration::from_secs(3))
+}
+
+/// The same, with the panes of the agents looked at every `poll`.
+pub(crate) fn rig_polling(
+    linear: &Arc<Canned>,
+    in_bateri: bool,
+    agents: &[&str],
+    poll: Duration,
+) -> Rig {
     use std::os::unix::fs::PermissionsExt;
     let bin = tempfile::tempdir().unwrap();
     for name in std::iter::once(&"bateri").chain(agents) {
@@ -1362,7 +1397,8 @@ pub(crate) fn rig(linear: &Arc<Canned>, in_bateri: bool, agents: &[&str]) -> Rig
             folder: Some(PathBuf::from("/work/acme-app/api")),
         },
         Arc::clone(&hands) as Arc<dyn crate::work::runner::Runner>,
-    );
+    )
+    .with_poll(poll);
     Rig {
         hands,
         session: Arc::new(session),
@@ -1379,8 +1415,18 @@ fn open_rig(size: (f32, f32), in_bateri: bool, agents: &[&str]) -> (Rig, Page) {
 
 /// The same, with Linear it is over, for a test that says what was written to it.
 fn open_machine(size: (f32, f32), in_bateri: bool, agents: &[&str]) -> (Arc<Canned>, Rig, Page) {
+    open_machine_polling(size, in_bateri, agents, Duration::from_secs(3))
+}
+
+/// The same, with the panes of the agents looked at every `poll`.
+fn open_machine_polling(
+    size: (f32, f32),
+    in_bateri: bool,
+    agents: &[&str],
+    poll: Duration,
+) -> (Arc<Canned>, Rig, Page) {
     let linear = Canned::new(Mode::Fine);
-    let rig = rig(&linear, in_bateri, agents);
+    let rig = rig_polling(&linear, in_bateri, agents, poll);
     let page = open(&rig.session, size, None, "ACM-412").expect("the page opens");
     (linear, rig, page)
 }
@@ -1661,6 +1707,51 @@ fn in_an_80_by_24_pane_the_form_takes_the_pane_and_keeps_start_inside_it() {
             "{name}: {at:?}"
         );
     }
+}
+
+/// What `bateri ls --json` says of the pane p41 when it last wrote `ago` seconds ago.
+pub(crate) fn ls_of_p41(ago: f64) -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs_f64();
+    serde_json::json!({ "terminals": [
+        { "id": "p41", "state": "running", "activity": "running", "program": "claude",
+          "exit": null, "output_at": now - ago, "label": "ACM-412" }
+    ] })
+    .to_string()
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn an_agent_that_has_stopped_is_said_so_in_its_row_and_is_at_work_again_when_it_writes() {
+    let (_linear, rig, mut page) =
+        open_machine_polling(WIDE, true, &["claude"], Duration::from_millis(20));
+    rig.hands.set_ls(&ls_of_p41(0.0));
+    open_form_with_status(&mut page, false);
+    page.press("mod+enter").expect("mod+enter");
+    form_done(&mut page);
+    // At work: the name, with its ring, and no word of stopping.
+    page.wait_for(WITHIN, |page| page.says("Claude"))
+        .unwrap_or_else(|why| panic!("the mark: {why:?}: {}", said(&page)));
+    assert!(!page.says("Claude idle"), "{}", said(&page));
+    // Silent for a minute: the ring is gone and the row says so.
+    rig.hands.set_ls(&ls_of_p41(60.0));
+    page.wait_for(WITHIN, |page| page.says("Claude idle"))
+        .unwrap_or_else(|why| panic!("the row says it has stopped: {why:?}: {}", said(&page)));
+    // It writes: the mark is the working one again.
+    rig.hands.set_ls(&ls_of_p41(1.0));
+    page.wait_for(WITHIN, |page| {
+        page.says("Claude") && !page.says("Claude idle")
+    })
+    .unwrap_or_else(|why| panic!("at work again: {why:?}: {}", said(&page)));
+    // And when the pane ends the mark goes, whichever it was.
+    rig.hands.set_ls(&ls_of_p41(60.0));
+    page.wait_for(WITHIN, |page| page.says("Claude idle"))
+        .expect("stopped again");
+    rig.hands.end();
+    page.wait_for(WITHIN, |page| !page.says("Claude"))
+        .unwrap_or_else(|why| panic!("the mark goes with the pane: {why:?}: {}", said(&page)));
 }
 
 /// Puts the cursor on the line that says `words`, going down from where it is.

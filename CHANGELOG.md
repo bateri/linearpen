@@ -45,6 +45,12 @@
   canceled issue is left as it is, and nothing is written if the pane was not made. A move Linear
   refuses does not stop the agent; the list says it did not happen. In a short pane the line
   under Folder is left out, so that Start stays on the page.
+- **A row says when its agent has stopped.** While an agent is on, linearpen asks bateri for the
+  panes every three seconds, and a pane that has written nothing for ten seconds is an agent that
+  is done or waits for you (they cannot be told apart): the row says `Claude idle`, in the warning
+  colour, in place of the ring and the name, and the ring is back when the pane writes. Where bateri
+  does not say (a list it cannot read, a pane it does not hold) the row stays as it was; nothing is
+  looked at while no agent is on.
 - **New issue.** `c` (or the button over the list) opens a form beside the list with a title, a
   description, and the values Linear's own form asks for: team (where there are several), status,
   priority, assignee (you, to begin with), labels and project, each a button that opens a menu of the

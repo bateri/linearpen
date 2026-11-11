@@ -271,7 +271,7 @@ mod tests {
 
     // --- `progress`: what a start moves in Linear ---------------------------------------------------
 
-    use crate::page_tests::{Canned, Change as Answer, Ledger, Mode, rig};
+    use crate::page_tests::{Canned, Change as Answer, Ledger, Mode, rig, rig_polling};
     use serde_json::json;
 
     fn hand(ids: &[&str], progress: bool) -> Hand {
@@ -415,5 +415,145 @@ mod tests {
             parse::<Hand>(more).is_err(),
             "no state is named by the page"
         );
+    }
+
+    // --- Looking at the panes: which agent has stopped ---------------------------------------------
+
+    /// Now, as `output_at` is told: seconds since the epoch.
+    fn now() -> f64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs_f64()
+    }
+
+    /// What `bateri ls --json` says of the pane p41 when it last wrote `ago` seconds ago.
+    fn ls_of(ago: f64) -> String {
+        json!({ "terminals": [
+            { "id": "p40", "state": "running", "activity": "running", "output_at": now() },
+            { "id": "p41", "state": "running", "activity": "running", "program": "claude",
+              "exit": null, "output_at": now() - ago, "label": "ACM-412" },
+        ] })
+        .to_string()
+    }
+
+    /// The machine, with the panes looked at every 15 ms, and an agent started on ACM-412.
+    fn watched() -> (crate::page_tests::Rig, Arc<Canned>) {
+        let linear = Canned::new(Mode::Fine);
+        let rig = rig_polling(
+            &linear,
+            true,
+            &["claude"],
+            std::time::Duration::from_millis(15),
+        );
+        rig.hands.set_ls(&ls_of(0.0));
+        start(&rig.session, hand(&["issue-412"], false)).unwrap();
+        (rig, linear)
+    }
+
+    /// Whether the issue is marked as one whose agent has stopped (`None` where it is not marked).
+    fn idle(rig: &crate::page_tests::Rig) -> Option<bool> {
+        rig.session
+            .state()
+            .working
+            .get("issue-412")
+            .map(|working| working.idle)
+    }
+
+    /// Waits until `what` holds, for a few seconds at most.
+    fn until(what: &str, mut holds: impl FnMut() -> bool) {
+        let end = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !holds() {
+            assert!(std::time::Instant::now() < end, "it did not come: {what}");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
+
+    #[test]
+    fn a_pane_that_wrote_lately_is_at_work_and_one_silent_for_ten_seconds_has_stopped_until_it_writes()
+     {
+        let (rig, _linear) = watched();
+        // The pane is looked at again and again, and it is at work.
+        until("the pane is looked at", || rig.hands.ls_calls() >= 3);
+        assert_eq!(idle(&rig), Some(false));
+        // Silent for a minute: the agent has stopped.
+        rig.hands.set_ls(&ls_of(60.0));
+        until("the agent has stopped", || idle(&rig) == Some(true));
+        // Nine seconds is not ten; and writing again takes the word back.
+        rig.hands.set_ls(&ls_of(9.0));
+        until("the agent is at work again", || idle(&rig) == Some(false));
+        rig.hands.set_ls(&ls_of(11.0));
+        until("the agent has stopped again", || idle(&rig) == Some(true));
+        rig.hands.set_ls(&ls_of(0.0));
+        until("the agent writes", || idle(&rig) == Some(false));
+        rig.hands.end();
+    }
+
+    #[test]
+    fn a_list_that_is_broken_empty_or_without_the_pane_says_nothing_and_the_mark_stays() {
+        let (rig, _linear) = watched();
+        let says_nothing = [
+            "not json at all".to_owned(),
+            String::new(),
+            r#"{"terminals":[]}"#.to_owned(),
+            r#"{"terminals":3}"#.to_owned(),
+            // The pane is not in the list, or has no time, or one that is no number.
+            json!({ "terminals": [{ "id": "p9", "output_at": 1 }] }).to_string(),
+            json!({ "terminals": [{ "id": "p41", "state": "running" }] }).to_string(),
+            json!({ "terminals": [{ "id": "p41", "output_at": "a minute ago" }] }).to_string(),
+            json!({ "terminals": [{ "id": "p41", "output_at": null }] }).to_string(),
+        ];
+        for text in says_nothing {
+            // First it has stopped, and then the list says nothing of it: it is at work as before.
+            rig.hands.set_ls(&ls_of(60.0));
+            until("the agent has stopped", || idle(&rig) == Some(true));
+            rig.hands.set_ls(&text);
+            until("the list said nothing", || idle(&rig) == Some(false));
+            // Never does the list take the mark away: it is there until the pane ends.
+            let calls = rig.hands.ls_calls();
+            until("it is looked at again", || {
+                rig.hands.ls_calls() >= calls + 3
+            });
+            assert_eq!(idle(&rig), Some(false), "{text}");
+        }
+        rig.hands.end();
+        until("the mark goes with the pane", || idle(&rig).is_none());
+    }
+
+    #[test]
+    fn nothing_is_looked_at_where_no_pane_is_watched_and_no_more_when_the_last_ends() {
+        let linear = Canned::new(Mode::Fine);
+        let rig = rig_polling(
+            &linear,
+            true,
+            &["claude"],
+            std::time::Duration::from_millis(15),
+        );
+        rig.hands.set_ls(&ls_of(0.0));
+        // A start that put no agent in a pane looks at nothing.
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        assert_eq!(rig.hands.ls_calls(), 0);
+        start(&rig.session, hand(&["issue-412"], false)).unwrap();
+        until("the pane is looked at", || rig.hands.ls_calls() >= 2);
+        rig.hands.end();
+        until("the mark goes", || idle(&rig).is_none());
+        // One more look may be on its way; after it no call is made.
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        let calls = rig.hands.ls_calls();
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        assert_eq!(
+            rig.hands.ls_calls(),
+            calls,
+            "the panes are looked at no more"
+        );
+        // A pane made after it is looked at again.
+        rig.hands.begin_again();
+        start(&rig.session, hand(&["issue-412"], false)).unwrap();
+        until("the new pane is looked at", || {
+            rig.hands.ls_calls() >= calls + 3
+        });
+        assert_eq!(idle(&rig), Some(false));
+        rig.hands.end();
+        until("the mark goes", || idle(&rig).is_none());
     }
 }

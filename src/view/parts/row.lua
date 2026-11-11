@@ -95,9 +95,9 @@ local function check(key, look)
 	return slot:child(row.box(name, look.marked))
 end
 
--- An issue: the box of a selection, its priority, its identifier, its title that gives way, its
--- labels, whose it is (in the list of all issues, where the page is wide enough) and the day it
--- changed. `o`: `labels` and `who` say whether there is room for them, `scope` the list shown.
+-- An issue: the box of a selection, its priority, its identifier, its title that gives way, the
+-- agent that is on it, its labels, whose it is (in the list of all issues, where the page is wide
+-- enough) and the day it changed. `o`: `labels` and `who` say whether there is room for them, `scope` the list shown.
 function row.issue(item, look, o)
 	local issue = item.row
 	local el = line(row.name(item.key), look):gap(10):label(issue.identifier .. ", " .. issue.title):selected(look.selected)
@@ -107,6 +107,23 @@ function row.issue(item, look, o)
 		b.div():w(SIZE.identifier):no_shrink():child(b.text(issue.identifier):text_size(SIZE.small):color("dim"):truncate())
 	)
 	el:child(b.text(issue.title):grow(1):min_w(0):truncate())
+	if look.working ~= nil and look.working.idle then
+		-- Its pane has written nothing for a while: the agent is done, or it waits for the person (which
+		-- of them cannot be told), so no ring and a word that is the person's to read.
+		local words = look.working.agent .. " has stopped: it is done, or it waits for you"
+		el:child(
+			b.div():row():items_center():no_shrink():label(words):tip(words):child(
+				b.text(look.working.agent .. " idle"):text_size(SIZE.small):color("warning"):no_shrink()
+			)
+		)
+	elseif look.working ~= nil then
+		-- An agent works on it: the one that does, after the title.
+		el:child(
+			b.div():row():items_center():gap(6):no_shrink():label("Worked on by " .. look.working.agent):child(
+				kit.spinner(12, "accent")
+			):child(b.text(look.working.agent):text_size(SIZE.small):color("accent"):no_shrink())
+		)
+	end
 	if o.labels then
 		for index, info in issue.labels do
 			if index > 3 then
@@ -120,14 +137,6 @@ function row.issue(item, look, o)
 			b.div():w(SIZE.who):no_shrink():row():justify_end():child(
 				b.text(issue.assignee or ""):text_size(SIZE.tiny):color("dim"):truncate()
 			)
-		)
-	end
-	if look.working ~= nil then
-		-- An agent works on it: the one that does, after the title.
-		el:child(
-			b.div():row():items_center():gap(6):no_shrink():label("Worked on by " .. look.working.agent):child(
-				kit.spinner(12, "accent")
-			):child(b.text(look.working.agent):text_size(SIZE.small):color("accent"):no_shrink())
 		)
 	end
 	if look.changing then

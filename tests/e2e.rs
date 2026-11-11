@@ -435,6 +435,46 @@ fn a_move_linear_refuses_leaves_the_start_whole_and_is_not_sent_again() {
 }
 
 #[test]
+fn a_pane_that_has_written_nothing_for_a_while_is_told_as_one_whose_agent_has_stopped() {
+    let home = Home::new();
+    // The pane does not end (its `wait` waits for this file to go), and the last time it wrote, as
+    // bateri's list tells it, is a minute ago.
+    let hold = home.path("hold");
+    std::fs::write(&hold, "").unwrap();
+    let wrote = home.path("output_at");
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    std::fs::write(&wrote, (now - 60).to_string()).unwrap();
+    let log = home.record(
+        &in_bateri()
+            .env("STANDIN_WAIT", hold.to_str().unwrap())
+            .env("STANDIN_OUTPUT_AT", wrote.to_str().unwrap())
+            .call("start", hand(&["issue-412"], ""))
+            .host_args(&["--subscribe", "issues"])
+            .then(&["--then", "wait"])
+            .limit(6),
+    );
+    let told = pushes(&log);
+    let working = |push: &serde_json::Value| push["working"]["issue-412"].clone();
+    assert!(
+        told.iter()
+            .any(|push| working(push)["idle"] == true && working(push)["agent"] == "Claude"),
+        "{told:?}"
+    );
+    // The looks are bateri's list and nothing else, and only that of it is read.
+    let looks = home.bateri_looks();
+    assert!(!looks.is_empty());
+    assert!(
+        looks.iter().all(|look| look == &["ls", "--json"]),
+        "{looks:?}"
+    );
+    assert!(!log.contains(common::KEY));
+    std::fs::remove_file(&hold).unwrap();
+}
+
+#[test]
 fn nothing_is_started_outside_bateri_and_nothing_is_asked_for_it() {
     let home = Home::new();
     // No BATERI_TAB_URL: this is no pane of bateri.

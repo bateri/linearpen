@@ -186,8 +186,24 @@ impl Home {
         self.path("bateri.log")
     }
 
-    /// The calls the stand-in `bateri` has had, in order: the arguments of each.
+    /// The calls the stand-in `bateri` has had, in order: the arguments of each. The look at the panes
+    /// (`ls --json`, every few seconds while an agent is on) is not one of them: `bateri_looks`.
     pub fn bateri_calls(&self) -> Vec<Vec<String>> {
+        self.bateri_record()
+            .into_iter()
+            .filter(|call| call.first().map(String::as_str) != Some("ls"))
+            .collect()
+    }
+
+    /// The looks at the panes the stand-in `bateri` has had: the arguments of each.
+    pub fn bateri_looks(&self) -> Vec<Vec<String>> {
+        self.bateri_record()
+            .into_iter()
+            .filter(|call| call.first().map(String::as_str) == Some("ls"))
+            .collect()
+    }
+
+    fn bateri_record(&self) -> Vec<Vec<String>> {
         let record = std::fs::read(self.bateri_log()).unwrap_or_default();
         let mut calls = Vec::new();
         let mut call = Vec::new();

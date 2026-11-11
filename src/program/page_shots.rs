@@ -14,7 +14,9 @@ use std::time::Duration;
 use pencere_drive::headless::Error;
 use pencere_drive::shot::{Fonts, Palette};
 
-use crate::page_tests::{Canned, Mode, PANE, Page, cursor, open, pressable, rig, session_over};
+use crate::page_tests::{
+    Canned, Mode, PANE, Page, cursor, ls_of_p41, open, pressable, rig, rig_polling, session_over,
+};
 
 /// A page as large as a terminal pane on a laptop.
 const BIG: (f32, f32) = (1280.0, 800.0);
@@ -265,6 +267,39 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     page.advance(0.4)?;
     save(&page, &fonts, Palette::Dark, "started.png");
     machine.hands.end();
+
+    // The same issues, handed over with their status left as it is, an agent in a pane that has been
+    // quiet for a minute: the rows say it has stopped.
+    let linear = Canned::new(Mode::Fine);
+    let machine = rig_polling(
+        &linear,
+        true,
+        &["claude", "codex", "cursor-agent"],
+        Duration::from_millis(20),
+    );
+    machine.hands.set_ls(&ls_of_p41(0.0));
+    let mut page = open(&machine.session, BIG, Some(&fonts), "ACM-412")?;
+    select_for_work(&mut page)?;
+    page.press("w")?;
+    page.wait_for(Duration::from_secs(20), |page| page.says("Unchanged"))?;
+    page.click("work-status/item/keep")?;
+    page.press("mod+enter")?;
+    page.wait_for(Duration::from_secs(20), |page| {
+        !page.says("Open in") && page.says("Claude")
+    })?;
+    machine.hands.set_ls(&ls_of_p41(60.0));
+    page.wait_for(Duration::from_secs(20), |page| page.says("Claude idle"))?;
+    for _ in 0..30 {
+        if cursor(&page).contains("ACM-398") {
+            break;
+        }
+        page.press("up")?;
+        page.advance(0.05)?;
+    }
+    page.advance(0.4)?;
+    save(&page, &fonts, Palette::Dark, "started-idle.png");
+    machine.hands.end();
+
     // (Linear is made again: the issue that was moved is in progress now, and has no Status to say.)
     let linear = Canned::new(Mode::Fine);
     let machine = rig(&linear, true, &["claude", "codex", "cursor-agent"]);

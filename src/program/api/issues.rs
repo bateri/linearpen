@@ -102,6 +102,8 @@ pub struct Counts {
 pub struct WorkingMessage {
     /// The name of the agent the issue was handed to.
     pub agent: &'static str,
+    /// Its pane has written nothing for a while: the agent is done, or waits for the person.
+    pub idle: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -223,6 +225,7 @@ pub fn snapshot(state: &State) -> Snapshot {
                     id.clone(),
                     WorkingMessage {
                         agent: working.agent,
+                        idle: working.idle,
                     },
                 )
             })

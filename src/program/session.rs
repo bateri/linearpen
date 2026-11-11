@@ -37,6 +37,9 @@ const DETAILS_KEPT: usize = 64;
 pub struct Working {
     pub agent: &'static str,
     pub pane: String,
+    /// The pane has written nothing for `bateri::IDLE_AFTER`: the agent is done, or waits for the
+    /// person (they cannot be told apart). Only the poll of the panes sets it.
+    pub idle: bool,
 }
 
 /// What the program needs to hand issues to an agent: what the machine says, and what runs the
@@ -44,7 +47,12 @@ pub struct Working {
 pub struct Work {
     pub setup: Setup,
     pub runner: Arc<dyn Runner>,
+    /// How often the panes of the agents are looked at, while there are any.
+    pub poll: Duration,
 }
+
+/// How often the panes of the agents are looked at.
+const POLL: Duration = Duration::from_secs(3);
 
 /// What the page is looking at.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -96,6 +104,8 @@ pub struct State {
     /// let go.
     stale: bool,
     worker: bool,
+    /// A thread is looking at the panes of the agents (it stops when there are none).
+    poller: bool,
     closed: bool,
 }
 
@@ -217,6 +227,44 @@ impl Shared {
     }
 }
 
+/// Looks at the panes that are watched, as often as `every`, and marks the issues of those that have
+/// written nothing for a while; ends where there is no pane to look at. Only marks: what the list
+/// cannot say (bateri does not answer, the pane is not in its list, no time is given of it) is that
+/// the agent is at work, as it was before, and no mark is ever taken away here.
+fn look_at_panes(shared: &Shared, runner: &dyn Runner, every: Duration) {
+    loop {
+        {
+            let mut state = shared.lock();
+            if state.closed || state.working.is_empty() {
+                state.poller = false;
+                return;
+            }
+        }
+        let seen = bateri::output_times(runner);
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0.0, |since| since.as_secs_f64());
+        {
+            let mut state = shared.lock();
+            let mut changed = false;
+            for working in state.working.values_mut() {
+                let idle = seen
+                    .as_ref()
+                    .and_then(|seen| seen.get(&working.pane))
+                    .is_some_and(|at| bateri::idle(*at, now));
+                if working.idle != idle {
+                    working.idle = idle;
+                    changed = true;
+                }
+            }
+            if changed {
+                shared.changed(&mut state);
+            }
+        }
+        thread::sleep(every);
+    }
+}
+
 /// Asks Linear for both lists.
 fn fetch_both(transport: &dyn Transport, key: &Key) -> Result<Lists, Error> {
     let mine = linear::fetch(transport, key, Scope::Mine)?;
@@ -307,6 +355,7 @@ impl Session {
                 refresh_wanted: false,
                 stale: false,
                 worker: false,
+                poller: false,
                 closed: false,
             }),
             wake: Condvar::new(),
@@ -317,6 +366,7 @@ impl Session {
         let work = Work {
             setup: Setup::default(),
             runner: Arc::new(System),
+            poll: POLL,
         };
         Self {
             shared,
@@ -328,7 +378,19 @@ impl Session {
     /// The session with what the machine says and what runs the commands (`bateri`, `git`).
     #[must_use]
     pub fn with_work(mut self, setup: Setup, runner: Arc<dyn Runner>) -> Self {
-        self.work = Work { setup, runner };
+        self.work = Work {
+            setup,
+            runner,
+            poll: POLL,
+        };
+        self
+    }
+
+    /// The same, with the panes looked at as often as `poll` (a test does not wait for seconds).
+    #[cfg(test)]
+    #[must_use]
+    pub fn with_poll(mut self, poll: Duration) -> Self {
+        self.work.poll = poll;
         self
     }
 
@@ -343,11 +405,13 @@ impl Session {
                     Working {
                         agent,
                         pane: pane.to_owned(),
+                        idle: false,
                     },
                 );
             }
             self.shared.changed(&mut state);
         }
+        self.poll();
         let shared = Arc::clone(&self.shared);
         let runner = Arc::clone(&self.work.runner);
         let pane = pane.to_owned();
@@ -365,6 +429,28 @@ impl Session {
             let mut state = self.shared.lock();
             state.working.retain(|_, working| working.pane != pane);
             self.shared.changed(&mut state);
+        }
+    }
+
+    /// Looks at the panes of the agents from now on, every `Work::poll`, until there is none: one
+    /// thread for all of them, and none where nothing is watched.
+    fn poll(&self) {
+        {
+            let mut state = self.shared.lock();
+            if state.poller {
+                return;
+            }
+            state.poller = true;
+        }
+        let shared = Arc::clone(&self.shared);
+        let runner = Arc::clone(&self.work.runner);
+        let every = self.work.poll;
+        let started = thread::Builder::new()
+            .name("linearpen-poll".to_owned())
+            .spawn(move || look_at_panes(&shared, runner.as_ref(), every));
+        if started.is_err() {
+            // The marks go on saying the agent is at work, which is all they said before.
+            self.shared.lock().poller = false;
         }
     }
 

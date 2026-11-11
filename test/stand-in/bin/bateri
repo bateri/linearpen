@@ -6,6 +6,9 @@
 #
 #   split, tab   say the id of the pane made, p41
 #   wait         returns at once, or, with STANDIN_WAIT set, when that file is gone
+#   ls --json    tells the terminals, p41 only, as bateri does (it says more of each than the pen reads);
+#                its `output_at` is what the file STANDIN_OUTPUT_AT holds, seconds since the epoch,
+#                read at each call, and is left out where there is no such file
 #
 #   STANDIN_BATERI=refuse   split and tab fail as bateri does where no app answers: exit 69
 if [ -n "${STANDIN_BATERI_LOG-}" ]; then
@@ -22,6 +25,15 @@ split | tab)
 		exit 69
 	fi
 	echo p41
+	;;
+ls)
+	at=""
+	if [ -n "${STANDIN_OUTPUT_AT-}" ] && [ -f "$STANDIN_OUTPUT_AT" ]; then
+		at=$(cat "$STANDIN_OUTPUT_AT")
+	fi
+	field=""
+	if [ -n "$at" ]; then field=",\"output_at\":$at"; fi
+	printf '{"terminals":[{"id":"p41","state":"running","activity":"running","program":"claude","exit":null%s,"label":"ACM-412"}]}\n' "$field"
 	;;
 wait)
 	if [ -n "${STANDIN_WAIT-}" ]; then

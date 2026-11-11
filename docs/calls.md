@@ -173,7 +173,8 @@ prompt (the agent's command line): only the file's path is, and for `worktree` a
 program's own that asks for one. No flag that lets the agent do what it
 would ask about is ever added. The key is not in the file.
 
-From here the issues of the call carry a mark in the topic (`working`) until the agent's pane ends.
+From here the issues of the call carry a mark in the topic (`working`) until the agent's pane ends,
+and the program looks at the panes (see `working`) for as long as there is one.
 Errors: `bad-params`, `no-key`, `refused`, `unreachable`, `failed` (the issues are asked of Linear
 for their text), `unavailable`, `start-failed`.
 
@@ -333,7 +334,7 @@ the lists came, asking failed). The same value `view` answers with.
       ] }
   ],
   "updated": 1762870000, "organization": "Acme", "person": "Ada",
-  "working": { "issue-412": { "agent": "Claude" } }
+  "working": { "issue-412": { "agent": "Claude", "idle": false } }
 }
 ```
 
@@ -358,4 +359,11 @@ the lists came, asking failed). The same value `view` answers with.
 - `updated`: when the lists came, seconds since the epoch; `organization` and `person` are the
   workspace's name and the person's. Both are null before the first answer.
 - `working`: the issues an agent was started on and whose pane has not ended, by Linear's id, with
-  the agent's name. It is not kept between runs.
+  the agent's name. It is not kept between runs. `idle` is true where the agent has stopped: it is
+  done, or it waits for the person (the two cannot be told apart). The program asks bateri
+  (`bateri ls --json`) every three seconds for as long as a pane is watched (and not at all when
+  none is), and an agent has stopped when its pane's `output_at` is more than ten seconds old. Only
+  the `id` and `output_at` of each terminal are read. Where the list cannot be read, has no such
+  terminal, or the terminal has no time that is a number, `idle` is false: the look only adds the
+  word and never takes the mark away, which goes when the pane ends. `idle` goes back to false when
+  the pane writes again.

@@ -106,8 +106,11 @@ folder or makes a new `git` worktree for the work, whether its pane splits to th
 opens a new tab, and whether the issues that have not begun move to the status of work in progress
 (`Status`: the name of your team's first such state, or `Unchanged`; the row is not there when every
 issue has begun). `⌘Enter` starts it, and each issue says which agent is on it until the pane ends.
+When the agent stops writing, the row says `Claude idle` where the ring was.
 
 <img src="docs/started.png" width="720" alt="linearpen: the issues an agent was started on, each marked with its name">
+
+<img src="docs/started-idle.png" width="720" alt="linearpen: the same issues once the agent has stopped writing, each marked Claude idle">
 
 How it starts one:
 
@@ -128,6 +131,11 @@ How it starts one:
   one goes and what its branch is called, and the agent reads them. It is asked to follow them and,
   where there are none, to use the branch Linear suggests, which the file gives for each issue
   (only where it is a name `git` would take). linearpen itself makes no folder and no branch.
+- While an agent is on, bateri is asked for its panes every three seconds (`bateri ls --json`, of which
+  only the id of a pane and when it last wrote are read). A pane that has written nothing for ten
+  seconds is an agent that has stopped, because it is done or because it waits for you: linearpen
+  cannot tell which, so the row says `Claude idle` and no more, and the ring comes back when the pane
+  writes. Where bateri does not say, the row stays as it was.
 - No option that lets an agent skip its questions is ever given.
 
 ### The keyboard, and the mouse
