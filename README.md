@@ -98,8 +98,10 @@ asks Linear what the issue holds now. The description and the team are never wri
 <img src="docs/work.png" width="720" alt="linearpen: three issues selected and the form that hands them to Claude">
 
 `x` selects an issue, Shift with the arrows selects more, `⌘A` selects what is shown. `w` opens a
-form for the issue under the cursor or for the ones selected: say what the agent should do, choose
-the agent (the ones of Claude, Codex and Cursor that are in your `PATH`), whether it works in this
+form for the issues selected, else for the issue that is open, else for the one under the cursor.
+Its button stands by what it works on: by the count of what is selected, in the panel of the issue
+that is open, or at the end of the head, where it names the issue under the cursor. In the form,
+say what the agent should do, choose the agent (the ones of Claude, Codex and Cursor that are in your `PATH`), whether it works in this
 folder or makes a new `git` worktree for the work, and whether its pane splits to the right or
 opens a new tab. `⌘Enter` starts it, and each issue says which agent is on it until the pane ends.
 

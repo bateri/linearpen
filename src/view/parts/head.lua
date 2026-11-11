@@ -132,16 +132,27 @@ local function refresh_button()
 	})
 end
 
--- The button that hands the issue the cursor is on, or the ones selected, to an agent.
-local function work_button()
-	local marked = list.marked()
+-- The button that hands issues to an agent, where it is the head's (the issue that is open has it
+-- in its own panel). It stands by what it works on: by the count of the issues selected ("marks"),
+-- or at the end of the head for the issue under the cursor, which it names. Where the cursor is on
+-- a group's head there is no issue to name, and it waits there, not to be pressed.
+local function work_button(target)
+	local suffix = not head.typing() and commands.label("work") or nil
+	if target == "marks" then
+		return kit.button("work", "Work on them", {
+			primary = true,
+			small = true,
+			suffix = suffix,
+			tip = "Hand the issues selected to an agent",
+		})
+	end
 	local item = list.current()
-	local can = marked > 0 or (item ~= nil and item.kind == "issue")
-	return kit.button("work", marked > 1 and ("Work on " .. marked .. " issues") or "Work on issue", {
+	local issue = target == "cursor" and item ~= nil and item.kind == "issue"
+	return kit.button("work", issue and ("Work on " .. item.row.identifier) or "Work on issue", {
 		primary = true,
-		suffix = not head.typing() and commands.label("work") or nil,
-		disabled = not can,
-		tip = can and "Hand it to an agent" or "Put the cursor on an issue first",
+		suffix = suffix,
+		disabled = not issue,
+		tip = issue and "Hand it to an agent" or "Put the cursor on an issue first",
 	})
 end
 
@@ -156,13 +167,19 @@ end
 
 function head.view()
 	local width = S.room
-	local narrow = width < SIZE.narrow
+	local marked = list.marked()
+	-- The filter has a row of its own where the head has no room for it: a narrow list, or one whose
+	-- head holds what is selected too.
+	local narrow = width < SIZE.narrow or (marked > 0 and width < 820)
+	local target = act.work_target ~= nil and act.work_target() or nil
 	local bar = b.div():row():items_center():gap(10):pt(SIZE.head_top):pb(SIZE.head_bottom):px(SIZE.pad):no_shrink()
 	bar:child(scope_control())
-	local marked = list.marked()
 	local words = matched_words()
 	if marked > 0 then
 		bar:child(b.text(marked .. " selected"):text_size(SIZE.small):color("accent"):no_shrink())
+		if target == "marks" then
+			bar:child(work_button(target))
+		end
 		-- With a panel open the Esc is the panel's: one key, one meaning at a time.
 		if not S.panel_open then
 			bar:child(kit.button("clear-selection", "Clear", { small = true, suffix = "Esc" }))
@@ -182,8 +199,9 @@ function head.view()
 	if not S.form_open and width >= SIZE.roomy then
 		bar:child(new_button())
 	end
-	if not S.form_open and list.count() > 0 then
-		bar:child(work_button())
+	-- (The issue that is open has its button in its panel, and what is selected has it by its count.)
+	if not S.form_open and list.count() > 0 and marked == 0 and not S.panel_open then
+		bar:child(work_button(target))
 	end
 	if not narrow then
 		return bar

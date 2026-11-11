@@ -9,7 +9,7 @@ local list = require("./list")
 local panel = require("./panel")
 local row = require("./row")
 
-local b, u, S, SIZE = kit.b, kit.u, kit.S, kit.SIZE
+local b, u, S, SIZE, act = kit.b, kit.u, kit.S, kit.SIZE, kit.act
 
 local work = {}
 
@@ -21,6 +21,8 @@ local W = {
 	serial = 0,
 	live = false,
 	fixed = {},
+	-- What is said of an issue the list does not hold (one that is open and left the list): by id.
+	rows = {},
 	asked = nil,
 	options = nil,
 	agent = nil,
@@ -58,16 +60,36 @@ local function chosen()
 	return W.options ~= nil and W.options.status == "ready" and W.options.data or nil
 end
 
--- Whether an issue can be handed over now: the cursor is on one, or some are selected.
-function work.workable()
-	if W.open then
-		return false
+-- What Work on is for, which is also where its button stands: "marks", the issues selected where
+-- they are seen (the button is by their count, in the head); "panel", the issue that is open (in
+-- its own panel); "cursor", the issue under the cursor (at the end of the head, and named). Where
+-- the issue has the whole pane what is selected is not on the page, and it is the issue.
+function work.target()
+	if list.marked() > 0 and not S.alone then
+		return "marks"
 	end
-	if list.marked() > 0 then
-		return true
+	if panel.is_open() then
+		return "panel"
 	end
 	local item = list.current()
-	return item ~= nil and item.kind == "issue"
+	if item ~= nil and item.kind == "issue" then
+		return "cursor"
+	end
+	return nil
+end
+
+-- Whether an issue can be handed over now.
+function work.workable()
+	return not W.open and work.target() ~= nil
+end
+
+-- For the head and the panel, which draw the button: what it is for, or nil where there is none
+-- (a form is open in its place).
+act.work_target = function()
+	if W.open or S.form_open then
+		return nil
+	end
+	return work.target()
 end
 
 -- Whether the agent can be started now.
@@ -122,17 +144,21 @@ end
 -- Opens the form for the issues selected, or the one the cursor is on. The reply that gives the
 -- keyboard to the words for the agent.
 function work.show()
-	if W.open or not work.workable() then
+	local target = work.target()
+	if W.open or target == nil then
 		return true
 	end
-	local marked = list.marked_ids()
-	local live = #marked > 0
-	local ids = marked
-	if not live then
+	local live = target == "marks"
+	local ids, rows = {}, {}
+	if target == "panel" then
+		local info = panel.info()
+		ids = { info.id }
+		rows[info.id] = { identifier = info.identifier, title = info.title }
+	elseif target == "cursor" then
 		ids = { list.current().row.id }
 	end
 	panel.close()
-	W.open, W.live, W.fixed = true, live, live and {} or ids
+	W.open, W.live, W.fixed, W.rows = true, live, ids, rows
 	W.serial += 1
 	-- (A start that is on its way is not forgotten: its answer comes to a form that may be gone.)
 	W.asked, W.options, W.error = nil, nil, nil
@@ -220,7 +246,7 @@ end
 
 -- An issue the form is for: its box (where they were selected, to let one go), identifier and title.
 local function issue_line(id)
-	local info = list.issue(id)
+	local info = list.issue(id) or W.rows[id]
 	if info == nil then
 		return nil
 	end
@@ -239,7 +265,7 @@ local function issues_box(ids, compact)
 	if compact then
 		local line = b.div():row():wrap():gap_x(14):gap_y(4):no_shrink()
 		for _, id in ids do
-			local info = list.issue(id)
+			local info = list.issue(id) or W.rows[id]
 			if info ~= nil then
 				local item = b.div():row():items_center():gap(7):no_shrink()
 				if W.live then

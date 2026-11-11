@@ -31,7 +31,8 @@ function panel.width(page)
 	if page < 760 then
 		return page
 	end
-	return math.floor(math.min(520, math.max(380, page * 0.44)) + 0.5)
+	-- (At least 420: the three buttons over an issue are whole in it.)
+	return math.floor(math.min(520, math.max(420, page * 0.44)) + 0.5)
 end
 
 function panel.is_open()
@@ -419,15 +420,24 @@ function panel.view(width)
 	local entry = P.kept[info.id]
 	local detail = entry ~= nil and entry.status == "ready" and entry.issue or nil
 	local top = b.div():col():no_shrink():pt(SIZE.head_top):px(SIZE.pad):pb(14)
-	top:child(
-		b.div():row():items_center():gap(8):no_shrink():child(
-			b.text(info.identifier):text_size(SIZE.small):color("dim")
-		):child(b.spacer()):child(kit.button("open-linear", "Open in Linear", {
-			suffix = commands.label("link"),
-			disabled = detail == nil,
-			tip = detail == nil and "Linear has not told where it is" or "Open the issue in your browser",
-		})):child(kit.button("panel-close", "Close", { suffix = "Esc" }))
-	)
+	-- What is done with the issue, over what it is: to work on it at the start of the line (as a
+	-- form has its own button), to leave it at the end. Where issues are selected and seen beside it,
+	-- Work on is theirs and stands by their count in the head, not here.
+	local buttons = b.div():row():items_center():gap(8):no_shrink()
+	if act.work_target ~= nil and act.work_target() == "panel" then
+		buttons:child(kit.button("work", "Work on issue", {
+			primary = true,
+			suffix = u.holder == "page" and commands.label("work") or nil,
+			tip = "Hand it to an agent",
+		}))
+	end
+	buttons:child(b.spacer()):child(kit.button("open-linear", "Open in Linear", {
+		suffix = commands.label("link"),
+		disabled = detail == nil,
+		tip = detail == nil and "Linear has not told where it is" or "Open the issue in your browser",
+	})):child(kit.button("panel-close", "Close", { suffix = "Esc" }))
+	top:child(buttons)
+	top:child(b.text(info.identifier):text_size(SIZE.small):color("dim"):mt(14):no_shrink())
 	local now = panel.info()
 	-- The title is the words, which a press turns into a field; a press while it is a field is its own.
 	local title = b.text(now.title):text_size(16):weight(700):wrap():no_shrink()
@@ -438,7 +448,7 @@ function panel.view(width)
 		:role("button")
 		:label("Edit the title")
 		:tip("Edit the title")
-		:mt(14)
+		:mt(3)
 		:mb(10)
 		:no_shrink()
 		:child(title)

@@ -26,8 +26,10 @@
   commands that the key line is made from, so a key is written once; words typed in the palette that
   are no command's filter the issues. In a narrow pane the card is one column, and the arrows and
   Page Up and Page Down scroll it.
-- **Work on an issue, or the ones you selected, with an agent.** `w` (or the button over the list)
-  opens a form beside the list: the issues, what to tell the agent, which agent (Claude, Codex or
+- **Work on an issue, or the ones you selected, with an agent.** `w` opens a form beside the list.
+  Its button stands by what it works on: by the count of what is selected (`Work on them`), in the
+  panel of the issue that is open (`Work on issue`), or at the end of the head, where it names the
+  issue under the cursor (`Work on ACM-412`). The form holds: the issues, what to tell the agent, which agent (Claude, Codex or
   Cursor, the ones in your `PATH`), whether it works in this folder or makes a new `git` worktree
   first (by the project's own rules for one; where it has none, on the branch Linear suggests, which
   the file of issues gives), and whether its pane splits to the right or opens a new tab. `Cmd Enter` starts it
