@@ -22,7 +22,8 @@
   selection, then the filter.
 - **A command palette (`Cmd K`) and a card of the keys (`?`).** Both are made from the one table of
   commands that the key line is made from, so a key is written once; words typed in the palette that
-  are no command's filter the issues.
+  are no command's filter the issues. In a narrow pane the card is one column, and the arrows and
+  Page Up and Page Down scroll it.
 - **Work on an issue, or the ones you selected, with an agent.** `w` (or the button over the list)
   opens a form beside the list: the issues, what to tell the agent, which agent (Claude, Codex or
   Cursor, the ones in your `PATH`), whether it works in this folder or in a new `git` worktree on the

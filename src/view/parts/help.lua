@@ -10,6 +10,9 @@ local help = {}
 
 local H = { open = false }
 
+-- The box of the card that scrolls.
+local SCROLL = "help/scroll"
+
 -- The groups of the card, in the order they stand in the table.
 local ORDER = { "Move", "Select", "Issue", "Work on", "Everywhere" }
 
@@ -43,7 +46,7 @@ local function line(command)
 end
 
 local function group(name)
-	local box = b.div():col():gap(7):mb(18)
+	local box = b.div():id("help/group/" .. name):col():gap(7):mb(18)
 	box:child(label(name))
 	for _, command in commands.all() do
 		if command.group == name then
@@ -66,9 +69,9 @@ function help.view(root)
 	head:child(kit.button("help-close", "Close", { suffix = "Esc" }))
 	body:child(head)
 	local columns = b.div():row():items_start():gap(28):w(inner)
-	if width >= 520 then
+	if width >= 620 then
 		-- The left groups have short words; the room they leave is the right's, whose longest line
-		-- is whole in a pane wide enough for the card.
+		-- is whole. A narrower card has one column, so that no line of it is cut.
 		local left_width = 210
 		local left = b.div():col():w(left_width):no_shrink()
 		local right = b.div():col():w(inner - 28 - left_width):no_shrink()
@@ -84,8 +87,36 @@ function help.view(root)
 		end
 		columns:child(single)
 	end
-	body:child(b.div():id("help/scroll"):scroll():max_h(math.max(S.height - 160, 160)):w(inner):child(columns))
+	body:child(b.div():id(SCROLL):scroll():max_h(math.max(S.height - 160, 160)):w(inner):child(columns))
 	root:child(u:modal("help", { width = width, label = "the keys", top = 40 }, body))
+end
+
+-- A key while the card is open: the arrows and Page Up and Page Down scroll a card taller than the
+-- pane, which the keyboard could not read to its end otherwise. (Space is the button's that has the
+-- keyboard, Close.) Whether the key was the card's.
+local STEPS = { down = 1, j = 1, up = -1, k = -1 }
+local PAGES = { page_down = 1, page_up = -1 }
+
+function help.key(event)
+	if not H.open then
+		return nil
+	end
+	local mods = event.mods or {}
+	if mods.command or mods.control or mods.alt or mods.shift then
+		return nil
+	end
+	local extent = b.layout.scroll_extent(SCROLL)
+	local room = extent ~= nil and extent.view or 0
+	local step = STEPS[event.key]
+	local by = step ~= nil and step * 44 or nil
+	if by == nil and PAGES[event.key] ~= nil then
+		by = PAGES[event.key] * math.max(room - 44, 44)
+	end
+	if by == nil then
+		return nil
+	end
+	kit.scroll_to(SCROLL, (kit.offset(SCROLL) or 0) + by, true)
+	return true
 end
 
 function help.action(action)

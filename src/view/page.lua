@@ -312,6 +312,9 @@ local function key(event)
 	then
 		return press(target)
 	end
+	if S.screen == "list" and help.is_open() then
+		return help.key(event)
+	end
 	if S.screen ~= "list" or modal() then
 		return nil
 	end

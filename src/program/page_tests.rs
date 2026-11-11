@@ -720,6 +720,46 @@ fn the_card_of_keys_lists_what_the_page_can_do_and_closes() {
 
 #[test]
 #[ignore = "opens the kit's interpreter: make test-page"]
+fn in_an_80_by_24_pane_the_card_of_keys_cuts_no_line_and_the_keyboard_scrolls_it() {
+    let (_linear, _session, mut page) = open_lists(PANE);
+    page.press("?").expect("?");
+    page.wait_for(WITHIN, |page| page.says("Keys"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    // One column: the longest line of the card is whole.
+    assert!(
+        page.says("Work on the issue, or the ones selected"),
+        "{}",
+        said(&page)
+    );
+    let (move_keys, issue_keys) = (
+        page.bounds("help/group/Move").expect("the first group"),
+        page.bounds("help/group/Issue").expect("a later group"),
+    );
+    assert!(issue_keys.y > move_keys.y, "one under the other");
+    assert!((issue_keys.x - move_keys.x).abs() < 0.5, "in one column");
+    // The card is taller than the pane: the arrows bring the rest of it, and take it back. (The
+    // card has come to rest first: it glides in.)
+    page.advance(0.6).expect("a moment");
+    let top = |page: &Page| page.bounds("help/group/Move").map(|at| at.y);
+    let before = top(&page).expect("the first group is in view");
+    page.press("down").expect("down");
+    page.advance(0.6).expect("a moment");
+    page.wait_for(WITHIN, |page| top(page).is_some_and(|y| y < before - 1.0))
+        .unwrap_or_else(|why| panic!("down scrolls the card: {why:?}: {:?}", top(&page)));
+    assert!(page.says("Keys"), "the card stays open: {}", said(&page));
+    page.press("up").expect("up");
+    page.advance(0.6).expect("a moment");
+    page.wait_for(WITHIN, |page| {
+        top(page).is_some_and(|y| (y - before).abs() < 1.0)
+    })
+    .unwrap_or_else(|why| panic!("up scrolls it back: {why:?}: {:?}", top(&page)));
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| !page.says("Select all"))
+        .expect("escape closes it");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
 fn in_a_narrow_pane_the_issue_takes_the_pane_and_the_way_back_is_one_press() {
     let (_linear, _session, mut page) = open_lists(PANE);
     open_the_issue(&mut page);

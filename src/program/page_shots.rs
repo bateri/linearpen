@@ -147,6 +147,11 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     page.wait_for(Duration::from_secs(20), |page| page.says("Keys"))?;
     page.advance(0.4)?;
     save(&page, &fonts, Palette::Dark, "keys.png");
+    let mut page = lists(PANE, &fonts)?;
+    page.press("?")?;
+    page.wait_for(Duration::from_secs(20), |page| page.says("Keys"))?;
+    page.advance(0.4)?;
+    save(&page, &fonts, Palette::Dark, "narrow-keys.png");
     let mut page = lists(BIG, &fonts)?;
     page.press("mod+k")?;
     page.wait_for(Duration::from_secs(20), |page| page.says("Do it"))?;
