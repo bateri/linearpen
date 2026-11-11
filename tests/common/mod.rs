@@ -179,6 +179,29 @@ impl Home {
         self.path("standin.log")
     }
 
+    /// The record the stand-in `bateri` writes.
+    pub fn bateri_log(&self) -> PathBuf {
+        self.path("bateri.log")
+    }
+
+    /// The calls the stand-in `bateri` has had, in order: the arguments of each.
+    pub fn bateri_calls(&self) -> Vec<Vec<String>> {
+        let record = std::fs::read(self.bateri_log()).unwrap_or_default();
+        let mut calls = Vec::new();
+        let mut call = Vec::new();
+        for word in record
+            .split(|byte| *byte == 0)
+            .filter(|word| !word.is_empty())
+        {
+            if word == [1] {
+                calls.push(std::mem::take(&mut call));
+            } else {
+                call.push(String::from_utf8_lossy(word).into_owned());
+            }
+        }
+        calls
+    }
+
     /// A command, in the environment of the tests.
     pub fn command(&self, program: impl AsRef<std::ffi::OsStr>) -> Command {
         let mut command = Command::new(program);
@@ -196,7 +219,8 @@ impl Home {
             .env("LINEARPEN_CONFIG_DIR", self.config_dir())
             .env("KABLO_DIR", self.path("kablo"))
             .env("LINEARPEN_API_URL", "http://127.0.0.1:9/graphql")
-            .env("STANDIN_LOG", self.log());
+            .env("STANDIN_LOG", self.log())
+            .env("STANDIN_BATERI_LOG", self.bateri_log());
         command
     }
 

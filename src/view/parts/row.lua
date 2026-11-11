@@ -70,6 +70,19 @@ function row.check_name(key)
 	return "check:" .. key
 end
 
+-- The box of a selection as it is drawn, named `name` for the pointer: ticked where `marked`.
+function row.box(name, marked)
+	local box = b.div():size(14, 14):rounded(4):no_shrink()
+	if marked then
+		box:bg("accent"):child(b.canvas({
+			b.path():move_to(3.6, 7.3):line_to(5.9, 9.6):line_to(10.4, 4.6):stroke(1.7, "background"),
+		}):size(14, 14))
+	else
+		box:border(1, b.alpha("foreground", u:hovered(name) and 0.8 or 0.45))
+	end
+	return box
+end
+
 -- The box of a selection: seen on the line the cursor is on, and on every line once one is selected;
 -- its place is kept where it is not seen, so that no line moves.
 local function check(key, look)
@@ -79,15 +92,7 @@ local function check(key, look)
 	end
 	local name = row.check_name(key)
 	slot:press(name):role("checkbox"):checked(look.marked):label("Select")
-	local box = b.div():size(14, 14):rounded(4):no_shrink()
-	if look.marked then
-		box:bg("accent"):child(b.canvas({
-			b.path():move_to(3.6, 7.3):line_to(5.9, 9.6):line_to(10.4, 4.6):stroke(1.7, "background"),
-		}):size(14, 14))
-	else
-		box:border(1, b.alpha("foreground", u:hovered(name) and 0.8 or 0.45))
-	end
-	return slot:child(box)
+	return slot:child(row.box(name, look.marked))
 end
 
 -- An issue: the box of a selection, its priority, its identifier, its title that gives way, its
@@ -115,6 +120,14 @@ function row.issue(item, look, o)
 			b.div():w(SIZE.who):no_shrink():row():justify_end():child(
 				b.text(issue.assignee or ""):text_size(SIZE.tiny):color("dim"):truncate()
 			)
+		)
+	end
+	if look.working ~= nil then
+		-- An agent works on it: the one that does, after the title.
+		el:child(
+			b.div():row():items_center():gap(6):no_shrink():label("Worked on by " .. look.working.agent):child(
+				kit.spinner(12, "accent")
+			):child(b.text(look.working.agent):text_size(SIZE.small):color("accent"):no_shrink())
 		)
 	end
 	el:child(

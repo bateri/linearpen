@@ -16,6 +16,7 @@
 //!   model/    the list: filtered, grouped and sorted; knows nothing of the page
 //!   state/    the key and the files kept between runs; knows nothing of the page
 //!   text/     the issues as text for a terminal that shows no views; knows nothing of the page
+//!   work/     handing issues to an agent in a pane of bateri; knows nothing of the page
 
 mod api;
 mod command_line;
@@ -29,6 +30,7 @@ mod page_tests;
 mod session;
 mod state;
 mod text;
+mod work;
 
 use std::process::ExitCode;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -42,6 +44,8 @@ use session::{REFRESH_EVERY, Session};
 use state::Paths;
 use state::credentials;
 use text::summary::Summary;
+use work::Setup;
+use work::runner::System;
 
 /// The words under the text of a terminal that shows no views.
 const NO_VIEWS: &str = "This terminal shows no views. linearpen opens as a Linear client in a terminal that\nhosts pencere (bateri); run it there, or over ssh from one.";
@@ -133,12 +137,18 @@ fn session() -> Arc<Session> {
     let transport: Arc<dyn Transport> = Arc::new(Curl::new(
         lookup("LINEARPEN_API_URL").unwrap_or_else(|| DEFAULT_URL.to_owned()),
     ));
-    Arc::new(Session::new(
-        transport,
-        Paths::resolve(&lookup),
-        lookup("LINEAR_API_KEY").as_deref(),
-        REFRESH_EVERY,
-    ))
+    Arc::new(
+        Session::new(
+            transport,
+            Paths::resolve(&lookup),
+            lookup("LINEAR_API_KEY").as_deref(),
+            REFRESH_EVERY,
+        )
+        .with_work(
+            Setup::resolve(&lookup, std::env::current_dir().ok()),
+            Arc::new(System),
+        ),
+    )
 }
 
 fn main() -> ExitCode {

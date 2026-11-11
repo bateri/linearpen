@@ -9,6 +9,7 @@ mod issue;
 mod issues;
 mod params;
 mod session;
+mod work;
 
 use std::sync::Arc;
 
@@ -29,6 +30,10 @@ enum Failure {
     NoKey(String),
     /// Linear is not reached, did not accept the key, or answered what was not asked.
     Linear(Error),
+    /// An agent cannot be started from here: bateri or the agent is not there.
+    Unavailable(String),
+    /// An agent was to be started, and was not.
+    StartFailed(String),
 }
 
 impl From<Failure> for ViewError {
@@ -36,6 +41,8 @@ impl From<Failure> for ViewError {
         match failure {
             Failure::BadParams(words) => Self::with_message("bad-params", words),
             Failure::NoKey(words) => Self::with_message("no-key", words),
+            Failure::Unavailable(words) => Self::with_message("unavailable", words),
+            Failure::StartFailed(words) => Self::with_message("start-failed", words),
             Failure::Linear(error) => Self::with_message(error.kind(), error.to_string()),
         }
     }
@@ -64,5 +71,6 @@ fn call<P: DeserializeOwned + 'static, T: Serialize + 'static>(
 pub fn serve(options: Options, session: &Arc<Session>) -> Options {
     let options = session::calls(options, session);
     let options = issue::calls(options, session);
+    let options = work::calls(options, session);
     issues::topic(options, session)
 }

@@ -14,6 +14,7 @@ local palette = require("./parts/palette")
 local panel = require("./parts/panel")
 local screens = require("./parts/screens")
 local status = require("./parts/status")
+local work = require("./parts/work")
 
 local b, u, S, SIZE, act, lib = kit.b, kit.u, kit.S, kit.SIZE, kit.act, kit.lib
 
@@ -25,11 +26,16 @@ local function modal()
 	return palette.is_open() or help.is_open()
 end
 
+-- While the form for an agent is open its fields have the keyboard, and a command that is a plain key
+-- (a letter, a digit, an arrow) is not done: the key is the field's. ⌘K and ⌘Enter are not letters.
 commands.when.list = function()
-	return S.screen == "list" and not modal()
+	return S.screen == "list" and not modal() and not work.is_open()
 end
 commands.when.keyed = function()
-	return (S.screen == "list" or S.screen == "failed") and not modal()
+	return (S.screen == "list" or S.screen == "failed") and not modal() and not work.is_open()
+end
+commands.when.chord = function()
+	return S.screen == "list" and not modal()
 end
 commands.when.idle = function()
 	return commands.when.list() and not head.typing()
@@ -37,10 +43,23 @@ end
 commands.when.issue = function()
 	return commands.when.list() and panel.detail() ~= nil
 end
+commands.when.workable = function()
+	return commands.when.idle() and work.workable()
+end
+commands.when.startable = function()
+	return S.screen == "list" and not modal() and work.startable()
+end
 
 local cmds = lib.commands(commands.for_library())
 
-act.open_issue = panel.show
+-- An issue opens beside the list, unless the form that hands issues to an agent is open: that one is
+-- not put away by a press on a line.
+act.open_issue = function(item)
+	if work.is_open() then
+		return true
+	end
+	return panel.show(item)
+end
 
 -- --- Which screen -----------------------------------------------------------------------------------
 
@@ -102,11 +121,19 @@ local function problem()
 	})
 end
 
+-- What stands beside the list: the form that hands issues to an agent, or the issue.
+local function side(width)
+	if work.is_open() then
+		return work.view(width)
+	end
+	return panel.view(width)
+end
+
 -- The list with its head, and beside it (or, in a pane too narrow for both, over it) the issue.
 local function listing()
 	local over = S.panel_open and S.width < 760
 	if over then
-		return b.div():row():grow(1):min_h(0):child(panel.view(S.width))
+		return b.div():row():grow(1):min_h(0):child(side(S.width))
 	end
 	local left = b.div():col():grow(1):min_w(0):min_h(0)
 	left:child(head.view())
@@ -117,7 +144,7 @@ local function listing()
 	left:child(body())
 	local row = b.div():row():grow(1):min_h(0):child(left)
 	if S.panel_open then
-		row:child(panel.view(panel.width(S.width)))
+		row:child(side(panel.width(S.width)))
 	end
 	return row
 end
@@ -126,7 +153,8 @@ local function render(size, now, reduce_motion)
 	u:begin(size, now, reduce_motion)
 	S.now, S.width, S.height = now, size.w, size.h
 	S.screen = screen()
-	S.panel_open = S.screen == "list" and panel.is_open()
+	S.work_open = S.screen == "list" and work.is_open()
+	S.panel_open = S.screen == "list" and (panel.is_open() or work.is_open())
 	S.room = (S.panel_open and S.width >= 760) and S.width - panel.width(S.width) or S.width
 	local root = b.div():size_full():col():bg("background"):color("foreground"):family("terminal")
 	if S.screen == "boot" then
@@ -171,6 +199,10 @@ local function command(id)
 		return head.focus()
 	elseif id == "refresh" then
 		act.refresh()
+	elseif id == "work" then
+		return work.show()
+	elseif id == "start" then
+		return work.start()
 	elseif id == "palette" then
 		palette.show()
 	elseif id == "help" then
@@ -191,6 +223,8 @@ local function press(id)
 		act.connect(screens.field.value)
 	elseif id == "create-key" then
 		return { link = screens.KEYS_URL }
+	elseif id == "work" then
+		return work.show()
 	elseif id == "open-linear" then
 		return panel.link()
 	elseif id == "panel-close" then
@@ -201,6 +235,11 @@ local function press(id)
 		list.clear_marks()
 	elseif id == "help-close" then
 		help.hide()
+	else
+		local reply = work.press(id)
+		if reply ~= nil then
+			return reply
+		end
 	end
 	return true
 end
@@ -213,6 +252,9 @@ local function on_action(action)
 	end
 	if reply == nil then
 		reply = help.action(action)
+	end
+	if reply == nil then
+		reply = work.action(action)
 	end
 	if reply ~= nil then
 		return reply
@@ -232,9 +274,11 @@ local function on_action(action)
 	return true
 end
 
--- Esc closes what is on top: the issue, then the selection, then the filter.
+-- Esc closes what is on top: the form for an agent or the issue, then the selection, then the filter.
 local function back()
-	if panel.is_open() then
+	if work.is_open() then
+		work.close()
+	elseif panel.is_open() then
 		panel.close()
 	elseif list.marked() > 0 then
 		list.clear_marks()
@@ -257,6 +301,10 @@ local function key(event)
 	if S.screen ~= "list" or modal() then
 		return nil
 	end
+	if work.is_open() then
+		-- The form takes Tab and Esc whoever holds the keyboard, and the list's keys are not its own.
+		return work.key(event)
+	end
 	if u.holder ~= "page" then
 		-- In the field the arrows are the list's and the words stay in it.
 		return list.key(event, true) or nil
@@ -271,7 +319,15 @@ end
 local function shape(event)
 	local over = b.layout.hit({ x = event.x, y = event.y })
 	local wanted = nil
-	if over ~= nil and (kit.buttons[over] or string.sub(over, 1, 4) == "row:" or string.sub(over, 1, 6) == "check:") then
+	if
+		over ~= nil
+		and (
+			kit.buttons[over]
+			or string.sub(over, 1, 4) == "row:"
+			or string.sub(over, 1, 6) == "check:"
+			or string.sub(over, 1, 11) == "work-check:"
+		)
+	then
 		wanted = "pointer"
 	end
 	if wanted == S.cursor then
@@ -283,6 +339,7 @@ end
 
 -- The issue open follows the cursor where the cursor is on an issue.
 local function follow()
+	work.sync()
 	if not panel.is_open() then
 		return
 	end
@@ -294,6 +351,12 @@ end
 
 local function handle(event)
 	local kind = event.type
+	if kind == "key" and S.screen == "list" and work.is_open() and not modal() then
+		local stepped = work.tab(event)
+		if stepped ~= nil then
+			return kit.take(stepped)
+		end
+	end
 	local reply, actions, taken = u:handle(event)
 	for _, action in actions do
 		reply = b.merge(reply, on_action(action))
@@ -315,7 +378,12 @@ local function handle(event)
 	elseif kind == "release" then
 		local armed, over = S.armed, b.layout.hit({ x = event.x, y = event.y })
 		S.armed = nil
-		if armed ~= nil and armed == over and kit.buttons[armed] and (event.button or "left") == "left" then
+		if
+			armed ~= nil
+			and armed == over
+			and (kit.buttons[armed] or string.sub(armed, 1, 11) == "work-check:")
+			and (event.button or "left") == "left"
+		then
 			reply = b.merge(reply, press(armed))
 		elseif not taken then
 			reply = b.merge(reply, markdown.handle(event))

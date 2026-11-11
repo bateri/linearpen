@@ -25,7 +25,46 @@ local function hint(ids, words)
 	return row:child(b.text(words))
 end
 
+-- The two keys at the end of the line: the palette and the card of keys.
+function status.finish()
+	local finish = {}
+	if S.width >= 620 then
+		finish[#finish + 1] = {
+			key = "palette",
+			words = hint({ "palette" }, "commands"),
+			press = true,
+			tip = "Find a command",
+			priority = 2,
+		}
+	end
+	finish[#finish + 1] = {
+		key = "help",
+		words = hint({ "help" }, "keys"),
+		press = true,
+		tip = "Show the keys",
+		priority = 9,
+	}
+	return finish
+end
+
+-- What the keyboard does in the form that hands issues to an agent.
+local function work_hints()
+	return {
+		{ key = "next_field", words = hint({ "next_field" }, "next field"), priority = 8 },
+		{
+			key = "choose",
+			words = b.div():row():items_center():gap(5):no_shrink():child(u:kbd("left")):child(u:kbd("right")):child(
+				b.text("choose")
+			),
+			priority = 6,
+		},
+	}
+end
+
 function status.view()
+	if S.work_open then
+		return u:status("status", { start = work_hints(), finish = status.finish() })
+	end
 	local start = {
 		{ key = "move", words = hint({ "up", "down" }, "move"), priority = 8 },
 		{ key = "select", words = hint({ "select" }, "select"), priority = 6 },
@@ -46,23 +85,7 @@ function status.view()
 	if S.room < SIZE.wide then
 		start[#start + 1] = { key = "refresh", words = hint({ "refresh" }, "refresh"), priority = 3 }
 	end
-	local finish = {}
-	if S.width >= 620 then
-		finish[#finish + 1] = {
-			key = "palette",
-			words = hint({ "palette" }, "commands"),
-			press = true,
-			tip = "Find a command",
-			priority = 2,
-		}
-	end
-	finish[#finish + 1] = {
-		key = "help",
-		words = hint({ "help" }, "keys"),
-		press = true,
-		tip = "Show the keys",
-		priority = 9,
-	}
+	local finish = status.finish()
 	return u:status("status", { start = start, finish = finish })
 end
 

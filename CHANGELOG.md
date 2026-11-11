@@ -22,6 +22,15 @@
 - **A command palette (`Cmd K`) and a card of the keys (`?`).** Both are made from the one table of
   commands that the key line is made from, so a key is written once; words typed in the palette that
   are no command's filter the issues.
+- **Work on an issue, or the ones you selected, with an agent.** `w` (or the button over the list)
+  opens a form beside the list: the issues, what to tell the agent, which agent (Claude, Codex or
+  Cursor, the ones in your `PATH`), whether it works in this folder or in a new `git` worktree on the
+  issue's branch, and whether its pane splits to the right or opens a new tab. `Cmd Enter` starts it
+  in a pane of bateri, and each issue says which agent works on it until the pane ends. The issues
+  are written, with their descriptions and comments, to a file only you can read, under
+  `~/.local/state/linearpen/work`; the agent is told where the file is and that other people wrote
+  it, and is started with no option that lets it skip its questions. Nothing is started outside a
+  bateri pane, and the form says why.
 - **`linearpen --text` prints your open Linear issues.** Two lists, My issues and All issues, each
   grouped by the state the issues are in (started, then not started, then the backlog and triage),
   the issue updated last first. It is also what linearpen prints in a terminal that shows no views.

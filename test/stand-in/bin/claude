@@ -1,0 +1,4 @@
+#!/bin/sh
+# Stands in for an agent in the tests (claude, codex and cursor-agent are this file): it is found in
+# the PATH, which is all the pen asks of it; it does nothing and is never run by the tests.
+echo "stand-in agent: not run" >&2

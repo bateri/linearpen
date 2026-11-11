@@ -731,3 +731,365 @@ fn in_a_narrow_pane_the_issue_takes_the_pane_and_the_way_back_is_one_press() {
     page.wait_for(WITHIN, |page| page.says("ACM-398"))
         .expect("the list is back");
 }
+
+// --- Handing issues to an agent ------------------------------------------------------------------
+
+/// What runs `git` and `bateri` in a test: nothing runs. It answers as they would and keeps what it
+/// was asked; `bateri wait` returns when the test lets the agent end.
+pub(crate) struct Hands {
+    asked: Mutex<Vec<String>>,
+    repo: Mutex<bool>,
+    split_says: Mutex<Option<String>>,
+    ended: Mutex<bool>,
+}
+
+impl Hands {
+    fn new() -> Arc<Self> {
+        Arc::new(Self {
+            asked: Mutex::new(Vec::new()),
+            repo: Mutex::new(true),
+            split_says: Mutex::new(None),
+            ended: Mutex::new(false),
+        })
+    }
+
+    /// What was run, a line each (`bateri wait p41` is one of them).
+    fn asked(&self) -> Vec<String> {
+        self.asked.lock().unwrap().clone()
+    }
+
+    /// The agent's pane ends.
+    pub(crate) fn end(&self) {
+        *self.ended.lock().unwrap() = true;
+    }
+}
+
+impl crate::work::runner::Runner for Hands {
+    fn run(
+        &self,
+        program: &str,
+        args: &[String],
+        _: Option<&std::path::Path>,
+    ) -> std::io::Result<crate::work::runner::Ran> {
+        use crate::work::runner::Ran;
+        self.asked
+            .lock()
+            .unwrap()
+            .push(format!("{program} {}", args.join(" ")));
+        let said = |ok: bool, out: &str, err: &str| {
+            Ok(Ran {
+                ok,
+                out: out.to_owned(),
+                err: err.to_owned(),
+            })
+        };
+        let first = args.first().map(String::as_str);
+        match (program, first) {
+            ("bateri", Some("wait")) => {
+                while !*self.ended.lock().unwrap() {
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+                said(true, "", "")
+            }
+            ("bateri", Some("split" | "tab")) => match self.split_says.lock().unwrap().clone() {
+                Some(words) => said(false, "", &words),
+                None => said(true, "p41\n", ""),
+            },
+            ("git", Some("rev-parse"))
+                if args.get(1).map(String::as_str) == Some("--show-toplevel") =>
+            {
+                if *self.repo.lock().unwrap() {
+                    said(true, "/work/acme-app\n", "")
+                } else {
+                    said(false, "", "fatal: not a git repository")
+                }
+            }
+            ("git", Some("rev-parse")) => said(false, "", ""),
+            _ => said(true, "", ""),
+        }
+    }
+}
+
+/// A machine for the page to hand issues over on: bateri and two agents in a `PATH`, the pen
+/// begun in `/work/acme-app/api`, a folder for the files, and `Hands` for the commands.
+pub(crate) struct Rig {
+    pub(crate) hands: Arc<Hands>,
+    pub(crate) session: Arc<Session>,
+    _state: tempfile::TempDir,
+    _bin: tempfile::TempDir,
+}
+
+pub(crate) fn rig(linear: &Arc<Canned>, in_bateri: bool, agents: &[&str]) -> Rig {
+    use std::os::unix::fs::PermissionsExt;
+    let bin = tempfile::tempdir().unwrap();
+    for name in std::iter::once(&"bateri").chain(agents) {
+        let file = bin.path().join(name);
+        std::fs::write(&file, "#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let state = tempfile::tempdir().unwrap();
+    let hands = Hands::new();
+    let session = Session::new(
+        Arc::clone(linear) as Arc<dyn Transport>,
+        Paths {
+            config: None,
+            state: Some(state.path().to_owned()),
+        },
+        Some("lin_api_test"),
+        Duration::from_secs(3600),
+    )
+    .with_work(
+        crate::work::Setup {
+            path: vec![bin.path().to_owned()],
+            in_bateri,
+            folder: Some(PathBuf::from("/work/acme-app/api")),
+        },
+        Arc::clone(&hands) as Arc<dyn crate::work::runner::Runner>,
+    );
+    Rig {
+        hands,
+        session: Arc::new(session),
+        _state: state,
+        _bin: bin,
+    }
+}
+
+/// The page over a rig, with the cursor on the first issue.
+fn open_rig(size: (f32, f32), in_bateri: bool, agents: &[&str]) -> (Rig, Page) {
+    let linear = Canned::new(Mode::Fine);
+    let rig = rig(&linear, in_bateri, agents);
+    let page = open(&rig.session, size, None, "ACM-412").expect("the page opens");
+    (rig, page)
+}
+
+/// Opens the form with `w` and waits until the program has said what can be chosen.
+fn open_form(page: &mut Page) {
+    page.press("w").expect("w");
+    page.wait_for(WITHIN, |page| page.says("Open in"))
+        .unwrap_or_else(|why| panic!("the form opens: {why:?}: {}", said(page)));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn w_opens_the_form_and_start_hands_the_issue_to_the_agent_and_marks_it_until_the_pane_ends() {
+    let (rig, mut page) = open_rig(WIDE, true, &["claude", "codex"]);
+    assert!(page.says("Work on issue"), "the button: {}", said(&page));
+    open_form(&mut page);
+    for words in [
+        "Agent",
+        "Claude",
+        "Codex",
+        "This folder",
+        "Split right",
+        "New tab",
+        "Start Claude",
+    ] {
+        assert!(page.says(words), "{words}: {}", said(&page));
+    }
+    // An agent that is not installed is not offered.
+    assert!(!page.says("Cursor"), "{}", said(&page));
+    page.type_text("Look at the middleware")
+        .expect("the words are typed");
+    page.press("mod+enter").expect("mod+enter");
+    page.wait_for(WITHIN, |page| !page.says("Open in") && page.says("Claude"))
+        .unwrap_or_else(|why| {
+            panic!(
+                "the form is done and the row is marked: {why:?}: {}",
+                said(&page)
+            )
+        });
+    let asked = rig.hands.asked();
+    let split = asked
+        .iter()
+        .find(|line| line.starts_with("bateri split"))
+        .unwrap_or_else(|| panic!("a pane was asked for: {asked:?}"));
+    assert!(
+        split.starts_with("bateri split --right --cwd /work/acme-app/api --label ACM-412 -- claude Work on the Linear issues in "),
+        "{split}"
+    );
+    assert!(split.ends_with("Look at the middleware"), "{split}");
+    // The issue's text is in the file, not in the line.
+    assert!(!split.contains("What we want"), "{split}");
+    // The row says who works on it, until the pane's program ends.
+    assert!(page.says("ACM-412"), "{}", said(&page));
+    rig.hands.end();
+    page.wait_for(WITHIN, |page| !page.says("Claude"))
+        .unwrap_or_else(|why| panic!("the mark goes: {why:?}: {}", said(&page)));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn what_is_selected_is_what_the_form_is_for_and_a_box_lets_one_go() {
+    let (rig, mut page) = open_rig(WIDE, true, &["claude"]);
+    page.press("x").expect("x");
+    page.press("shift+down").expect("shift+down");
+    page.wait_for(WITHIN, |page| page.says("Work on 2 issues"))
+        .unwrap_or_else(|why| panic!("the button says how many: {why:?}: {}", said(&page)));
+    page.click("work").expect("the header button is pressed");
+    page.wait_for(WITHIN, |page| page.says("Open in"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    assert!(page.says("Work on 2 issues"), "{}", said(&page));
+    // The one box lets ACM-398 go; the selection in the list follows.
+    page.click("work-check:issue-398")
+        .expect("the box is pressed");
+    page.wait_for(WITHIN, |page| page.says("1 selected"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    page.press("mod+enter").expect("mod+enter");
+    page.wait_for(WITHIN, |page| !page.says("Open in"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    // Started: what was selected is let go of.
+    page.wait_for(WITHIN, |page| !page.says("selected"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    assert!(
+        rig.hands
+            .asked()
+            .iter()
+            .any(|line| line.starts_with("bateri split"))
+    );
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn tab_goes_on_to_the_next_field_arrows_choose_and_escape_puts_the_form_away() {
+    let (rig, mut page) = open_rig(WIDE, true, &["claude", "codex"]);
+    open_form(&mut page);
+    // From the words for the agent, Tab goes to the agents; the arrow chooses Codex.
+    page.press("tab").expect("tab");
+    page.press("right").expect("right");
+    page.wait_for(WITHIN, |page| page.says("Start Codex"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    // The pointer chooses too, and the new tab is a way to open it.
+    page.click("work-place/item/tab")
+        .expect("the segment is pressed");
+    page.press("mod+enter").expect("mod+enter");
+    page.wait_for(WITHIN, |_| {
+        rig.hands
+            .asked()
+            .iter()
+            .any(|line| line.starts_with("bateri tab --cwd"))
+    })
+    .unwrap_or_else(|why| panic!("{why:?}: {:?}", rig.hands.asked()));
+    assert!(
+        rig.hands
+            .asked()
+            .iter()
+            .any(|line| line.contains(" -- codex ")),
+        "{:?}",
+        rig.hands.asked()
+    );
+    // Escape puts the form away (it is a form again, from the key).
+    rig.hands.end();
+    page.wait_for(WITHIN, |page| !page.says("Open in"))
+        .expect("the form is done");
+    open_form(&mut page);
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| !page.says("Open in"))
+        .expect("escape closes the form");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_new_worktree_is_offered_in_a_repository_and_the_reason_is_said_outside_one() {
+    let (rig, mut page) = open_rig(WIDE, true, &["claude"]);
+    open_form(&mut page);
+    assert!(page.says("New worktree"), "{}", said(&page));
+    page.click("work-folder/item/worktree")
+        .expect("the segment is pressed");
+    // (The note is one line, and the kit cuts what does not fit, so the start of the name is said.)
+    page.wait_for(WITHIN, |page| page.says("branch ada/acm-412-add-rate"))
+        .unwrap_or_else(|why| panic!("the branch is said: {why:?}: {}", said(&page)));
+    page.press("mod+enter").expect("mod+enter");
+    page.wait_for(WITHIN, |_| {
+        rig.hands
+            .asked()
+            .iter()
+            .any(|line| line.starts_with("bateri split"))
+    })
+    .unwrap_or_else(|why| panic!("{why:?}: {:?}", rig.hands.asked()));
+    let asked = rig.hands.asked();
+    assert!(
+        asked.iter().any(|line| line
+            == "git worktree add -b ada/acm-412-add-rate-limiting-to-the-public-api /work/acme-app-acm-412 HEAD"),
+        "{asked:?}"
+    );
+    assert!(
+        asked
+            .iter()
+            .any(|line| line.starts_with("bateri split --right --cwd /work/acme-app-acm-412 ")),
+        "{asked:?}"
+    );
+    // Outside a repository there is no such choice, and the page says why.
+    let (rig, mut page) = open_rig(WIDE, true, &["claude"]);
+    *rig.hands.repo.lock().unwrap() = false;
+    open_form(&mut page);
+    assert!(!page.says("New worktree"), "{}", said(&page));
+    // (A note that wraps is told in the pieces of its lines.)
+    assert!(
+        page.says("No new worktree: this folder is not in a git"),
+        "{}",
+        said(&page)
+    );
+    assert!(page.says("repository"), "{}", said(&page));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn where_nothing_can_be_started_the_form_says_why_and_start_does_nothing() {
+    // Not in bateri.
+    let (rig, mut page) = open_rig(WIDE, false, &["claude"]);
+    open_form(&mut page);
+    assert!(page.says("not in a bateri pane"), "{}", said(&page));
+    page.press("mod+enter").expect("mod+enter");
+    page.click("work-start").ok();
+    page.advance(0.5).expect("a moment");
+    assert!(
+        rig.hands
+            .asked()
+            .iter()
+            .all(|line| !line.starts_with("bateri")),
+        "{:?}",
+        rig.hands.asked()
+    );
+    // No agent.
+    let (_rig, mut page) = open_rig(WIDE, true, &[]);
+    open_form(&mut page);
+    assert!(page.says("No agent is installed"), "{}", said(&page));
+    assert!(page.says("None installed"), "{}", said(&page));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn where_bateri_makes_no_pane_the_form_stays_and_says_so() {
+    let (rig, mut page) = open_rig(WIDE, true, &["claude"]);
+    *rig.hands.split_says.lock().unwrap() =
+        Some("bateri: the bateri app is not connected".to_owned());
+    open_form(&mut page);
+    page.press("mod+enter").expect("mod+enter");
+    page.wait_for(WITHIN, |page| page.says("not connected"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    assert!(
+        page.says("Open in"),
+        "the form is still open: {}",
+        said(&page)
+    );
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn in_an_80_by_24_pane_the_form_takes_the_pane_and_keeps_start_inside_it() {
+    let (_rig, mut page) = open_rig(PANE, true, &["claude", "codex"]);
+    // The button is in the head, which has room for it.
+    let button = page.bounds("work").expect("the button is laid out");
+    assert!(button.x + button.w <= PANE.0 + 0.5, "{button:?}");
+    open_form(&mut page);
+    assert!(!page.says("ACM-398"), "the list gives way: {}", said(&page));
+    for name in ["work-close", "work-start"] {
+        let at = page
+            .bounds(name)
+            .unwrap_or_else(|| panic!("{name} is laid out"));
+        assert!(
+            at.x >= 0.0 && at.x + at.w <= PANE.0 + 0.5 && at.y + at.h <= PANE.1 + 0.5,
+            "{name}: {at:?}"
+        );
+    }
+}

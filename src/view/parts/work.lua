@@ -1,0 +1,463 @@
+-- Handing issues to an agent: beside the list (or over it, in a narrow pane) a form with the issues,
+-- what to tell the agent, which agent, where it works and where its pane goes. The program does the
+-- work (`work_options`, `start`: the file of issues, the worktree, the pane of bateri); the page
+-- asks it what can be chosen and what the person chose.
+
+local kit = require("../lib/kit")
+local commands = require("./commands")
+local list = require("./list")
+local panel = require("./panel")
+local row = require("./row")
+
+local b, u, S, SIZE = kit.b, kit.u, kit.S, kit.SIZE
+
+local work = {}
+
+-- The form: whether it is open; the issues (those selected, as they are selected, or the one the
+-- cursor was on); what the program said can be chosen; what was chosen; the words of why the last
+-- start did not.
+local W = {
+	open = false,
+	serial = 0,
+	live = false,
+	fixed = {},
+	asked = nil,
+	options = nil,
+	agent = nil,
+	folder = "here",
+	place = "split",
+	starting = false,
+	error = nil,
+}
+work.state = W
+
+local AGENT, FOLDER, PLACE = "work-agent", "work-folder", "work-place"
+
+-- The editor of the words for the agent: another each time the form opens, so that it begins empty.
+local function prompt_name()
+	return "work-prompt" .. W.serial
+end
+
+function work.is_open()
+	return W.open
+end
+
+-- The issues the form is for, by Linear's id.
+function work.ids()
+	if W.live then
+		return list.marked_ids()
+	end
+	return W.fixed
+end
+
+-- What the program said can be chosen, once it has.
+local function chosen()
+	return W.options ~= nil and W.options.status == "ready" and W.options.data or nil
+end
+
+-- Whether an issue can be handed over now: the cursor is on one, or some are selected.
+function work.workable()
+	if W.open then
+		return false
+	end
+	if list.marked() > 0 then
+		return true
+	end
+	local item = list.current()
+	return item ~= nil and item.kind == "issue"
+end
+
+-- Whether the agent can be started now.
+function work.startable()
+	local options = chosen()
+	return W.open
+		and not W.starting
+		and options ~= nil
+		and options.unavailable == nil
+		and W.agent ~= nil
+		and #work.ids() > 0
+end
+
+-- Asks the program what can be chosen for the issues (the first names the branch of a worktree).
+local function ask(ids)
+	local first = ids[1]
+	if first == nil or W.asked == first then
+		return
+	end
+	W.asked = first
+	W.options = { status = "loading" }
+	kit.call("work_options", { ids = ids }, function(result, err)
+		if W.asked ~= first then
+			return true
+		end
+		if err then
+			W.options = { status = "failed", error = err.message or err.code }
+			return true
+		end
+		W.options = { status = "ready", data = result }
+		local known = false
+		for _, agent in result.agents do
+			known = known or agent.id == W.agent
+		end
+		if not known then
+			W.agent = result.agents[1] ~= nil and result.agents[1].id or nil
+		end
+		if W.folder == "worktree" and not result.worktree.available then
+			W.folder = "here"
+		end
+		return true
+	end)
+end
+
+-- Keeps what is asked of the program to the issues the form is for.
+function work.sync()
+	if W.open then
+		ask(work.ids())
+	end
+end
+
+-- Opens the form for the issues selected, or the one the cursor is on. The reply that gives the
+-- keyboard to the words for the agent.
+function work.show()
+	if W.open or not work.workable() then
+		return true
+	end
+	local marked = list.marked_ids()
+	local live = #marked > 0
+	local ids = marked
+	if not live then
+		ids = { list.current().row.id }
+	end
+	panel.close()
+	W.open, W.live, W.fixed = true, live, live and {} or ids
+	W.serial += 1
+	W.asked, W.options, W.starting, W.error = nil, nil, false, nil
+	work.sync()
+	return u:focus(prompt_name())
+end
+
+function work.close()
+	W.open = false
+end
+
+-- Hands the issues over, with the words of the editor, to the program.
+function work.start()
+	if not work.startable() then
+		return true
+	end
+	local name = prompt_name()
+	local length = b.layout.editor_length(name) or 0
+	local words = b.layout.editor_text(name, 1, length + 1) or ""
+	W.starting, W.error = true, nil
+	kit.call("start", {
+		ids = work.ids(),
+		prompt = words,
+		agent = W.agent,
+		folder = W.folder,
+		open = W.place,
+	}, function(_, err)
+		W.starting = false
+		if err then
+			W.error = err.message or err.code
+			return true
+		end
+		-- It is on its way: the form is done, and what was selected was for it.
+		W.open = false
+		list.clear_marks()
+		return u:focus(nil)
+	end)
+	return true
+end
+
+-- --- The form ------------------------------------------------------------------------------------
+
+local LABEL = 66
+
+-- A row of the form: what is chosen and the control that chooses it.
+local function field(label, control)
+	return b.div():row():items_center():gap(12):no_shrink():child(
+		b.div():w(LABEL):no_shrink():child(b.text(label):color("dim"):text_size(SIZE.small))
+	):child(control)
+end
+
+-- A line under a control: wrapped where it is words, or kept to one line where it is a name that is
+-- cut short (`one_line`).
+local function note(words, one_line)
+	local text = b.text(words):text_size(SIZE.small):color("dim"):min_w(0):grow(1)
+	text = one_line and text:truncate() or text:wrap()
+	return b.div():row():gap(12):no_shrink():child(b.div():w(LABEL):no_shrink()):child(text)
+end
+
+-- The box that lets an issue go from the form (and from the selection).
+local function leave_box(id, info)
+	local name = "work-check:" .. id
+	return b.div():size(14, 14):no_shrink():press(name):role("checkbox"):checked(true):label("Leave out " .. info.identifier):child(
+		row.box(name, true)
+	)
+end
+
+-- An issue the form is for: its box (where they were selected, to let one go), identifier and title.
+local function issue_line(id)
+	local info = list.issue(id)
+	if info == nil then
+		return nil
+	end
+	local line = b.div():row():items_center():gap(10):h(26):no_shrink()
+	if W.live then
+		line:child(leave_box(id, info))
+	end
+	line:child(b.text(info.identifier):text_size(SIZE.small):color("dim"):no_shrink())
+	line:child(b.text(info.title):grow(1):min_w(0):truncate())
+	return line
+end
+
+-- The issues: a line each, and in a short pane one line of identifiers.
+local function issues_box(ids, compact)
+	local box = b.div():col():no_shrink()
+	if compact then
+		local line = b.div():row():wrap():gap_x(14):gap_y(4):no_shrink()
+		for _, id in ids do
+			local info = list.issue(id)
+			if info ~= nil then
+				local item = b.div():row():items_center():gap(7):no_shrink()
+				if W.live then
+					item:child(leave_box(id, info))
+				end
+				line:child(item:child(b.text(info.identifier):text_size(SIZE.small)))
+			end
+		end
+		return box:child(line)
+	end
+	for _, id in ids do
+		local line = issue_line(id)
+		if line ~= nil then
+			box:child(line)
+		end
+	end
+	return box
+end
+
+-- The words for the agent: an editor the host keeps, that wraps, in a box of the field's look.
+local function prompt_box(compact)
+	local t = u.theme
+	local name = u:field(prompt_name())
+	local ringed = u:keyboard() == name
+	local editor = b.editor(name, {
+		wrap = true,
+		gutter = false,
+		padding = 8,
+		line_height = 1.5,
+		hint = "Tell the agent what to do (optional)",
+		-- Tab is the page's: it goes on to the next field.
+		keymap = { tab = false, ["shift+tab"] = false },
+	}):grow(1):min_h(0):label("What the agent is to do")
+	return b.div()
+		:h(compact and 64 or 118)
+		:no_shrink()
+		:rounded(t.radius.control)
+		:bg(t.field)
+		:border(1, ringed and t.ring or t.line)
+		:motion({ seconds = t.motion, color = true })
+		:child(editor)
+end
+
+local function agents_control(options)
+	local items = {}
+	for _, agent in options.agents do
+		items[#items + 1] = { key = agent.id, title = agent.name }
+	end
+	if #items == 0 then
+		return b.text("None installed"):color("dim"):text_size(SIZE.small)
+	end
+	return u:segments(AGENT, { value = W.agent, items = items })
+end
+
+local function folder_control(options)
+	local items = {
+		{ key = "here", title = "This folder", tip = "Work in " .. (options.folder.name or "the folder linearpen began in") },
+	}
+	if options.worktree.available then
+		items[#items + 1] = {
+			key = "worktree",
+			title = "New worktree",
+			tip = "Work on a branch of its own, in a folder beside the repository",
+		}
+	end
+	return u:segments(FOLDER, { value = W.folder, items = items })
+end
+
+local function place_control()
+	return u:segments(PLACE, {
+		value = W.place,
+		items = {
+			{ key = "split", title = "Split right", tip = "Open the agent in a pane to the right of this one" },
+			{ key = "tab", title = "New tab", tip = "Open the agent in a tab of its own" },
+		},
+	})
+end
+
+local function start_label()
+	local options = chosen()
+	if options ~= nil then
+		for _, agent in options.agents do
+			if agent.id == W.agent then
+				return "Start " .. agent.name
+			end
+		end
+	end
+	return "Start"
+end
+
+-- The button that starts the agent, and why it cannot (words), where it cannot.
+local function start_button()
+	local options = chosen()
+	local why = nil
+	if options ~= nil and options.unavailable ~= nil then
+		why = options.unavailable
+	elseif #work.ids() == 0 then
+		why = "No issue is chosen"
+	end
+	local button = kit.button("work-start", start_label(), {
+		primary = true,
+		suffix = commands.label("start"),
+		busy = W.starting,
+		disabled = not work.startable() or W.starting,
+		tip = why or "Start the agent in a new pane",
+	})
+	return button, why
+end
+
+local function title_words(count)
+	if count > 1 then
+		return "Work on " .. count .. " issues"
+	end
+	return "Work on issue"
+end
+
+function work.view(width)
+	local ids = work.ids()
+	local compact = S.height < SIZE.short
+	local options = chosen()
+	local content = b.div():col():grow(1):min_w(0):min_h(0):pt(SIZE.head_top):px(SIZE.pad):gap(compact and 8 or 12)
+	content:child(
+		b.div():row():items_center():gap(8):no_shrink():child(
+			b.text(title_words(#ids)):text_size(15):weight(700)
+		):child(b.spacer()):child(kit.button("work-close", "Close", { suffix = "Esc" }))
+	)
+	content:child(issues_box(ids, compact))
+	content:child(prompt_box(compact))
+	if W.options == nil or W.options.status == "loading" then
+		content:child(b.div():row():items_center():gap(8):no_shrink():child(kit.spinner(14, "quiet")):child(
+			b.text("Looking at what can be chosen"):color("dim"):text_size(SIZE.small)
+		))
+	elseif options == nil then
+		content:child(
+			b.text(W.options.error or "The program did not say what can be chosen"):color("warning"):wrap():text_size(SIZE.small)
+		)
+	else
+		content:child(field("Agent", agents_control(options)))
+		content:child(field("Folder", folder_control(options)))
+		if W.folder == "worktree" and options.worktree.branch ~= nil then
+			content:child(note("branch " .. options.worktree.branch, true))
+		elseif not options.worktree.available and options.worktree.reason ~= nil then
+			content:child(note("No new worktree: " .. options.worktree.reason))
+		end
+		content:child(field("Open in", place_control()))
+	end
+	local button, why = start_button()
+	local foot = b.div():row():items_center():gap(12):no_shrink():child(button)
+	if why ~= nil and options ~= nil and options.unavailable ~= nil then
+		foot:child(b.text(why):text_size(SIZE.small):color("warning"):wrap():min_w(0):grow(1))
+	end
+	content:child(foot)
+	if W.error ~= nil then
+		content:child(b.text(W.error):text_size(SIZE.small):color("warning"):wrap())
+	end
+	local side = b.div():row():w(width):no_shrink():min_h(0)
+	if width < S.width then
+		side:child(b.div():w(1):bg(b.alpha("foreground", 0.23)):no_shrink())
+	end
+	return side:child(b.div():id("work-scroll"):scroll():col():grow(1):min_w(0):min_h(0):pb(SIZE.pad):child(content))
+end
+
+-- --- What the person does ------------------------------------------------------------------------
+
+-- A press on one of the form's own buttons or boxes. The reply, or nil where it was not the form's.
+function work.press(id)
+	if id == "work-close" then
+		work.close()
+		return u:focus(nil)
+	elseif id == "work-start" then
+		return work.start()
+	elseif string.sub(id, 1, 11) == "work-check:" then
+		list.toggle_mark("i:" .. string.sub(id, 12))
+		return true
+	end
+	return nil
+end
+
+-- What a control of the form chose. The reply, or nil where it was not the form's.
+function work.action(action)
+	if action.kind ~= "select" then
+		return nil
+	end
+	if action.from == AGENT then
+		W.agent = action.key
+	elseif action.from == FOLDER then
+		W.folder = action.key
+	elseif action.from == PLACE then
+		W.place = action.key
+	else
+		return nil
+	end
+	return true
+end
+
+-- What Tab goes through, in order, as it stands now: the words for the agent, the choice made in each
+-- control (the one of its parts that is in the order of the keyboard), and the button that starts.
+local function order()
+	local names = { u:field(prompt_name()) }
+	local controls = { { AGENT, W.agent }, { FOLDER, W.folder }, { PLACE, W.place } }
+	for _, control in controls do
+		local name = control[2] ~= nil and u:name(control[1], "item", control[2]) or nil
+		if name ~= nil and b.layout.bounds(name) ~= nil then
+			names[#names + 1] = name
+		end
+	end
+	if b.layout.bounds("work-start") ~= nil then
+		names[#names + 1] = "work-start"
+	end
+	return names
+end
+
+-- Tab (and Shift Tab) goes on to the next field of the form, and round: the library goes through the
+-- whole page, and the form is a place of its own. The reply, or nil where the key is not Tab.
+function work.tab(event)
+	local mods = event.mods or {}
+	if event.key ~= "tab" or mods.command or mods.control or mods.alt then
+		return nil
+	end
+	local names = order()
+	local at = 0
+	local now = u:target()
+	for index, name in names do
+		if name == now then
+			at = index
+		end
+	end
+	local step = mods.shift and -1 or 1
+	return u:focus(names[((at - 1 + step) % #names) + 1])
+end
+
+-- Esc, which the form takes whoever holds the keyboard. (The arrows choose in a control that has the
+-- keyboard.)
+function work.key(event)
+	local mods = event.mods or {}
+	if event.key == "escape" and not (mods.command or mods.control or mods.alt or mods.shift) then
+		work.close()
+		return u:focus(nil)
+	end
+	return nil
+end
+
+return work

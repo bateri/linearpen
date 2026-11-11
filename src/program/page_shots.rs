@@ -13,7 +13,7 @@ use std::time::Duration;
 use pencere_drive::headless::Error;
 use pencere_drive::shot::{Fonts, Palette};
 
-use crate::page_tests::{Canned, Mode, PANE, Page, open, session_over};
+use crate::page_tests::{Canned, Mode, PANE, Page, open, rig, session_over};
 
 /// A page as large as a terminal pane on a laptop.
 const BIG: (f32, f32) = (1280.0, 800.0);
@@ -104,6 +104,42 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     page.wait_for(Duration::from_secs(20), |page| page.says("3 selected"))?;
     page.advance(0.4)?;
     save(&page, &fonts, Palette::Dark, "select.png");
+
+    // Issues handed to an agent: the form (on a machine that has bateri and three agents), and the
+    // list after the start, where each issue says who works on it.
+    let linear = Canned::new(Mode::Fine);
+    let machine = rig(&linear, true, &["claude", "codex", "cursor-agent"]);
+    let mut page = open(&machine.session, BIG, Some(&fonts), "ACM-412")?;
+    page.press("x")?;
+    page.press("shift+down")?;
+    page.press("shift+down")?;
+    page.press("w")?;
+    page.wait_for(Duration::from_secs(20), |page| page.says("Open in"))?;
+    page.type_text(
+        "Start with the rate limiter. The two others touch the same middleware, so do them in the same branch and say what you left out.",
+    )?;
+    page.click("work-folder/item/worktree")?;
+    page.wait_for(Duration::from_secs(20), |page| page.says("ada/acm-412"))?;
+    page.advance(0.4)?;
+    save(&page, &fonts, Palette::Dark, "work.png");
+    page.press("mod+enter")?;
+    page.wait_for(Duration::from_secs(20), |page| {
+        !page.says("Open in") && page.says("Claude")
+    })?;
+    page.advance(0.4)?;
+    save(&page, &fonts, Palette::Dark, "started.png");
+    machine.hands.end();
+    let machine = rig(&linear, true, &["claude", "codex", "cursor-agent"]);
+    let mut page = open(&machine.session, PANE, Some(&fonts), "ACM-412")?;
+    page.press("x")?;
+    page.press("shift+down")?;
+    page.press("shift+down")?;
+    page.press("w")?;
+    page.wait_for(Duration::from_secs(20), |page| page.says("Open in"))?;
+    page.type_text("Start with the rate limiter.")?;
+    page.advance(0.4)?;
+    save(&page, &fonts, Palette::Dark, "narrow-work.png");
+    machine.hands.end();
 
     // The card of keys, and the palette.
     let mut page = lists(BIG, &fonts)?;

@@ -124,6 +124,19 @@ local function refresh_button()
 	})
 end
 
+-- The button that hands the issue the cursor is on, or the ones selected, to an agent.
+local function work_button()
+	local marked = list.marked()
+	local item = list.current()
+	local can = marked > 0 or (item ~= nil and item.kind == "issue")
+	return kit.button("work", marked > 1 and ("Work on " .. marked .. " issues") or "Work on issue", {
+		primary = true,
+		suffix = not head.typing() and commands.label("work") or nil,
+		disabled = not can,
+		tip = can and "Hand it to an agent" or "Put the cursor on an issue first",
+	})
+end
+
 function head.view()
 	local width = S.room
 	local narrow = width < SIZE.narrow
@@ -133,7 +146,7 @@ function head.view()
 	local words = matched_words()
 	if marked > 0 then
 		bar:child(b.text(marked .. " selected"):text_size(SIZE.small):color("accent"):no_shrink())
-		-- With an issue open the Esc is the issue's: one key, one meaning at a time.
+		-- With a panel open the Esc is the panel's: one key, one meaning at a time.
 		if not S.panel_open then
 			bar:child(kit.button("clear-selection", "Clear", { small = true, suffix = "Esc" }))
 		end
@@ -146,6 +159,9 @@ function head.view()
 	end
 	if width >= SIZE.wide then
 		bar:child(refresh_button())
+	end
+	if not S.work_open then
+		bar:child(work_button())
 	end
 	if not narrow then
 		return bar

@@ -128,8 +128,8 @@ fn message(issue: &Issue) -> IssueMessage {
     }
 }
 
-fn issue(session: &Session, params: Lookup) -> Result<IssueMessage, Failure> {
-    let id = params.id;
+/// Whether `id` is Linear's id of an issue or its identifier.
+pub(super) fn check_id(id: &str) -> Result<(), Failure> {
     if id.is_empty()
         || id.chars().count() > ID_MOST
         || !id
@@ -140,6 +140,12 @@ fn issue(session: &Session, params: Lookup) -> Result<IssueMessage, Failure> {
             "id is Linear's id of an issue or its identifier, up to {ID_MOST} letters, digits and dashes"
         )));
     }
+    Ok(())
+}
+
+fn issue(session: &Session, params: Lookup) -> Result<IssueMessage, Failure> {
+    let id = params.id;
+    check_id(&id)?;
     if session.state().key.is_none() {
         return Err(Failure::NoKey(
             "there is no key to ask Linear with".to_owned(),

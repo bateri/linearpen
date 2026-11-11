@@ -265,6 +265,27 @@ pub struct Connection {
     pub page_info: PageInfo,
 }
 
+/// An issue, as the tests of other parts make one: ACM-412, with a comment.
+#[cfg(test)]
+pub fn fixture_issue() -> Issue {
+    serde_json::from_str(
+        r##"{
+            "id": "issue-412", "identifier": "ACM-412", "title": "Add rate limiting", "priority": 2,
+            "updatedAt": "2026-11-09T14:20:00.000Z",
+            "url": "https://linear.app/acme/issue/ACM-412/add-rate-limiting",
+            "branchName": "ada/acm-412-add-rate-limiting",
+            "state": {"id": "s1", "name": "In Progress", "type": "started", "position": 1},
+            "labels": {"nodes": [{"name": "api", "color": "#3e63dd"}]},
+            "team": {"key": "ACM"}, "cycle": {"number": 12}, "project": null,
+            "assignee": {"displayName": "Ada", "isMe": true},
+            "comments": {"nodes": [{"body": "Redis is already there.",
+                "createdAt": "2026-11-06T09:00:00.000Z", "user": {"displayName": "Deniz"}}],
+                "pageInfo": {"hasNextPage": false}}
+        }"##,
+    )
+    .expect("the fixture issue")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

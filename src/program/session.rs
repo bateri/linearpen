@@ -14,12 +14,28 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use crate::linear::{self, Error, Issue, Key, Listing, Scope, Transport, Viewer};
 use crate::state::Paths;
 use crate::state::credentials::{self, Problem, Source};
+use crate::work::runner::{Runner, System};
+use crate::work::{Setup, bateri};
 
 /// How long the lists are left before they are asked for again, while the page is open.
 pub const REFRESH_EVERY: Duration = Duration::from_secs(300);
 
 /// How many opened issues are kept before they are let go of.
 const DETAILS_KEPT: usize = 64;
+
+/// The agent an issue was handed to, and the pane it works in.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Working {
+    pub agent: &'static str,
+    pub pane: String,
+}
+
+/// What the program needs to hand issues to an agent: what the machine says, and what runs the
+/// commands.
+pub struct Work {
+    pub setup: Setup,
+    pub runner: Arc<dyn Runner>,
+}
 
 /// What the page is looking at.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,6 +69,8 @@ pub struct State {
     /// When the lists were told, seconds since the epoch.
     pub updated: Option<u64>,
     pub view: View,
+    /// The issues an agent was started on whose pane has not ended, by Linear's id.
+    pub working: HashMap<String, Working>,
     /// Issues opened, as Linear told them (with their description and comments), by id: they are
     /// kept for the run, so that an issue seen again is not asked for again.
     details: HashMap<String, Issue>,
@@ -72,9 +90,11 @@ struct Shared {
 pub struct Session {
     shared: Arc<Shared>,
     pub paths: Paths,
+    pub work: Work,
 }
 
-fn now_seconds() -> u64 {
+/// Now, seconds since the epoch.
+pub fn now_seconds() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |since| since.as_secs())
@@ -178,6 +198,7 @@ impl Session {
                     filter: String::new(),
                     closed: HashMap::new(),
                 },
+                working: HashMap::new(),
                 details: HashMap::new(),
                 generation: 0,
                 refresh_wanted: false,
@@ -188,7 +209,72 @@ impl Session {
             transport,
             every,
         });
-        Self { shared, paths }
+        // Nothing is started until the machine is said (`with_work`): no bateri, no agent.
+        let work = Work {
+            setup: Setup::default(),
+            runner: Arc::new(System),
+        };
+        Self {
+            shared,
+            paths,
+            work,
+        }
+    }
+
+    /// The session with what the machine says and what runs the commands (`bateri`, `git`).
+    #[must_use]
+    pub fn with_work(mut self, setup: Setup, runner: Arc<dyn Runner>) -> Self {
+        self.work = Work { setup, runner };
+        self
+    }
+
+    /// The issue with Linear's `id` as the lists hold it, with no asking of Linear.
+    pub fn listed(&self, id: &str) -> Option<Issue> {
+        let state = self.shared.lock();
+        let lists = state.lists.as_ref()?;
+        lists
+            .mine
+            .issues
+            .iter()
+            .chain(&lists.all.issues)
+            .find(|issue| issue.id == id)
+            .cloned()
+    }
+
+    /// An agent was started on the issues `ids`, in `pane`: they carry its mark until the pane's
+    /// program ends, which a thread waits for.
+    pub fn watch(&self, ids: &[String], agent: &'static str, pane: &str) {
+        {
+            let mut state = self.shared.lock();
+            for id in ids {
+                state.working.insert(
+                    id.clone(),
+                    Working {
+                        agent,
+                        pane: pane.to_owned(),
+                    },
+                );
+            }
+            self.shared.changed(&mut state);
+        }
+        let shared = Arc::clone(&self.shared);
+        let runner = Arc::clone(&self.work.runner);
+        let pane = pane.to_owned();
+        let waited = pane.clone();
+        let started = thread::Builder::new()
+            .name("linearpen-wait".to_owned())
+            .spawn(move || {
+                bateri::wait(runner.as_ref(), &waited);
+                let mut state = shared.lock();
+                state.working.retain(|_, working| working.pane != waited);
+                shared.changed(&mut state);
+            });
+        if started.is_err() {
+            // Nothing will say when it ends: no mark is better than one that stays.
+            let mut state = self.shared.lock();
+            state.working.retain(|_, working| working.pane != pane);
+            self.shared.changed(&mut state);
+        }
     }
 
     pub fn state(&self) -> MutexGuard<'_, State> {

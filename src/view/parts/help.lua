@@ -11,7 +11,7 @@ local help = {}
 local H = { open = false }
 
 -- The groups of the card, in the order they stand in the table.
-local ORDER = { "Move", "Select", "Issue", "Everywhere" }
+local ORDER = { "Move", "Select", "Issue", "Work on", "Everywhere" }
 
 function help.is_open()
 	return H.open

@@ -19,8 +19,10 @@ local S = {
 	height = 700,
 	-- The room the list has: the page's width, less what an issue beside it takes.
 	room = 1000,
-	-- An issue is open beside the list (or over it).
+	-- An issue, or the hand-over to an agent, is open beside the list (or over it).
 	panel_open = false,
+	-- The hand-over is the one open.
+	work_open = false,
 	-- What `boot` said, and why there is none.
 	boot = nil,
 	boot_error = nil,

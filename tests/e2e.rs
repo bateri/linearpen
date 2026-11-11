@@ -264,3 +264,179 @@ fn a_terminal_without_pencere_is_given_the_text_and_the_words_that_say_why() {
         ran.stderr
     );
 }
+
+/// A start of `ids` on the agent `claude`, here, in a split.
+fn hand(ids: &[&str], prompt: &str) -> serde_json::Value {
+    json!({ "ids": ids, "prompt": prompt, "agent": "claude", "folder": "here", "open": "split" })
+}
+
+/// A script that is run in a pane of bateri, which is where an agent can be started.
+fn in_bateri() -> Script {
+    keyed().env("BATERI_TAB_URL", "unix:/not-a-real-pane")
+}
+
+#[test]
+fn an_agent_is_started_in_a_pane_that_is_given_the_file_of_the_issues_and_not_their_text() {
+    let home = Home::new();
+    let heard =
+        home.ask(&in_bateri().call("start", hand(&["issue-412"], "Start with the limiter.")));
+    let started = heard[0].result();
+    assert_eq!(started["pane"], "p41");
+    let context = std::path::PathBuf::from(started["context"].as_str().unwrap());
+    // The file is the person's alone, and holds the issue and the sentence that frames it.
+    let mode = |path: &std::path::Path| {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+    };
+    assert_eq!(mode(&context), 0o600);
+    assert_eq!(mode(context.parent().unwrap()), 0o700);
+    assert!(
+        context.starts_with(home.path("state/linearpen/work")),
+        "{context:?}"
+    );
+    let file = std::fs::read_to_string(&context).unwrap();
+    assert!(file.contains("written by other people"), "{file}");
+    assert!(
+        file.contains("## ACM-412: Add rate limiting to the public API"),
+        "{file}"
+    );
+    assert!(file.contains("**What we want**"), "{file}");
+    assert!(file.contains("Deniz"), "{file}");
+    assert!(!file.contains(common::KEY), "the key is not in the file");
+    // bateri was asked for a pane to the right, in the folder the pen began in, with the program
+    // after the dashes: its prompt names the file and is not the issue's text.
+    let calls = home.bateri_calls();
+    // The pane, and then the wait for its end (a thread's, so it may not be in the record yet).
+    assert!(calls.len() <= 2, "{calls:?}");
+    if let Some(wait) = calls.get(1) {
+        assert_eq!(wait, &["wait", "p41"]);
+    }
+    let call = &calls[0];
+    assert_eq!(&call[..2], ["split", "--right"]);
+    assert_eq!(call[2], "--cwd");
+    assert_eq!(
+        std::path::Path::new(&call[3]).canonicalize().unwrap(),
+        home.dir.path().canonicalize().unwrap()
+    );
+    assert_eq!(&call[4..8], ["--label", "ACM-412", "--", "claude"]);
+    assert_eq!(call.len(), 9, "{call:?}");
+    let prompt = &call[8];
+    assert!(prompt.contains(context.to_str().unwrap()), "{prompt}");
+    assert!(prompt.ends_with("Start with the limiter."), "{prompt}");
+    assert!(!prompt.contains("What we want"), "{prompt}");
+    assert!(
+        !call
+            .iter()
+            .any(|word| word.contains("--focus") || word.contains(common::KEY)),
+        "{call:?}"
+    );
+}
+
+#[test]
+fn nothing_is_started_outside_bateri_and_nothing_is_asked_for_it() {
+    let home = Home::new();
+    // No BATERI_TAB_URL: this is no pane of bateri.
+    let heard = home.ask(&keyed().call("start", hand(&["issue-412"], "")));
+    assert!(heard[0].failed("unavailable"), "{:?}", heard[0]);
+    assert!(heard[0].message().contains("bateri pane"), "{:?}", heard[0]);
+    assert!(home.bateri_calls().is_empty());
+    assert!(
+        home.calls()
+            .iter()
+            .all(|call| !call.stdin.contains("operationName")),
+        "Linear was not asked for the issue's text"
+    );
+    assert!(!home.path("state").exists(), "no file was written");
+}
+
+#[test]
+fn a_start_that_asks_for_what_the_program_does_not_take_is_refused_before_it_runs() {
+    let home = Home::new();
+    let ids: Vec<String> = (0..26).map(|n| format!("issue-{n}")).collect();
+    let heard = home.ask(
+        &in_bateri()
+            .call("start", json!({ "ids": ["issue-412"], "agent": "gemini", "folder": "here", "open": "split" }))
+            .call("start", json!({ "ids": ["issue-412"], "agent": "claude", "folder": "elsewhere", "open": "split" }))
+            .call("start", json!({ "ids": ids, "agent": "claude", "folder": "here", "open": "split" }))
+            .call("start", json!({ "ids": ["a", "a"], "agent": "claude", "folder": "here", "open": "split" }))
+            .call("start", json!({ "ids": ["issue-412"], "agent": "claude", "folder": "here", "open": "split", "yolo": true }))
+            .call("start", hand(&["issue-412"], &"x".repeat(4_001))),
+    );
+    for (index, answer) in heard.iter().enumerate() {
+        assert!(answer.failed("bad-params"), "{index}: {answer:?}");
+    }
+    assert!(home.bateri_calls().is_empty());
+}
+
+#[test]
+fn where_bateri_makes_no_pane_the_start_says_so_in_its_words() {
+    let home = Home::new();
+    let heard = home.ask(
+        &in_bateri()
+            .env("STANDIN_BATERI", "refuse")
+            .call("start", hand(&["issue-412"], "")),
+    );
+    assert!(heard[0].failed("start-failed"), "{:?}", heard[0]);
+    assert!(
+        heard[0].message().contains("not connected"),
+        "{:?}",
+        heard[0]
+    );
+}
+
+#[test]
+fn the_options_say_which_agents_are_there_and_what_a_worktree_would_need() {
+    let home = Home::new();
+    // Only claude, bateri and curl are found in this PATH (and the system's, for `git`).
+    let only = home.path("only-bin");
+    std::fs::create_dir(&only).unwrap();
+    for name in ["bateri", "claude", "curl"] {
+        // A stand-in finds its files from where it is, so it is run from where it is.
+        let wrapper = only.join(name);
+        std::fs::write(
+            &wrapper,
+            format!(
+                "#!/bin/sh\nexec {} \"$@\"\n",
+                common::stand_in_bin().join(name).display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(
+            &wrapper,
+            std::os::unix::fs::PermissionsExt::from_mode(0o755),
+        )
+        .unwrap();
+    }
+    let path = format!("{}:/usr/bin:/bin", only.display());
+    let heard = home.ask(
+        &in_bateri()
+            .env("PATH", &path)
+            .call("work_options", json!({ "ids": ["issue-412"] })),
+    );
+    let options = heard[0].result();
+    assert_eq!(
+        options["agents"],
+        json!([{ "id": "claude", "name": "Claude" }])
+    );
+    assert_eq!(options["unavailable"], serde_json::Value::Null);
+    assert_eq!(
+        options["folder"]["name"].as_str().unwrap(),
+        home.dir.path().file_name().unwrap().to_str().unwrap()
+    );
+    // The pen's folder is not in a git repository: no worktree, and the reason is said.
+    assert_eq!(options["worktree"]["available"], false);
+    assert!(
+        options["worktree"]["reason"]
+            .as_str()
+            .is_some_and(|why| why.contains("git repository")),
+        "{options}"
+    );
+    // Outside bateri nothing can be started, and the options say why.
+    let heard = home.ask(&keyed().call("work_options", json!({ "ids": ["issue-412"] })));
+    assert!(
+        heard[0].result()["unavailable"]
+            .as_str()
+            .unwrap()
+            .contains("bateri pane")
+    );
+}

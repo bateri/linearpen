@@ -116,6 +116,12 @@ function list.clear_marks()
 	table.clear(L.marks)
 end
 
+-- The line of the issue with Linear's `id`, or nil.
+function list.issue(id)
+	local item = L.items[L.at["i:" .. id] or 0]
+	return item ~= nil and item.row or nil
+end
+
 function list.count()
 	return #L.items
 end
@@ -286,6 +292,7 @@ function list.view(room, panel_open)
 			selected = selected,
 			hovered = u:hovered(name),
 			marked = L.marks[item.key] == true,
+			working = item.kind == "issue" and S.issues.working ~= nil and S.issues.working[item.row.id] or nil,
 			check = any or selected or u:hovered(name) or u:hovered(row.check_name(item.key)),
 		}
 		if item.kind == "group" then

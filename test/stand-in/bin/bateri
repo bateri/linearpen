@@ -1,0 +1,35 @@
+#!/bin/sh
+# Stands in for bateri in the tests: nothing here reaches a bateri app or opens a pane.
+#
+# It records each call in $STANDIN_BATERI_LOG: every argument followed by a NUL, then a byte 1 and a
+# NUL where the call ends (a prompt holds line breaks, so a line is not an argument).
+#
+#   split, tab   say the id of the pane made, p41
+#   wait         returns at once, or, with STANDIN_WAIT set, when that file is gone
+#
+#   STANDIN_BATERI=refuse   split and tab fail as bateri does where no app answers: exit 69
+if [ -n "${STANDIN_BATERI_LOG-}" ]; then
+	{
+		printf '%s\0' "$@"
+		printf '\001\0'
+	} >>"$STANDIN_BATERI_LOG"
+fi
+
+case "${1-}" in
+split | tab)
+	if [ "${STANDIN_BATERI-}" = refuse ]; then
+		echo "bateri: the bateri app is not connected" >&2
+		exit 69
+	fi
+	echo p41
+	;;
+wait)
+	if [ -n "${STANDIN_WAIT-}" ]; then
+		while [ -e "$STANDIN_WAIT" ]; do sleep 0.05; done
+	fi
+	;;
+*)
+	echo "stand-in bateri: a command it does not know" >&2
+	exit 64
+	;;
+esac

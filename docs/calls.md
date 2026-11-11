@@ -10,8 +10,10 @@ answers is `src/program/api/`; the page's own side is `src/view/parts/`.
 the call takes: a member it does not know, a value out of range; the words say which), `not-found`
 (no such call), `internal` (the program failed), `no-key` (there is no key to ask Linear with),
 `refused` (Linear did not accept the key), `unreachable` (Linear was not reached: `curl` is not
-installed, or the network, the name or the time failed) and `failed` (Linear answered, but not with
-what was asked). The words of an error are for the person and never hold the key.
+installed, or the network, the name or the time failed), `failed` (Linear answered, but not with
+what was asked), `unavailable` (an agent cannot be started from here: bateri or the agent is not
+there) and `start-failed` (it was tried and did not start: the words say why). The words of an error
+are for the person and never hold the key.
 
 The pen only reads: nothing here changes anything in Linear.
 
@@ -86,6 +88,67 @@ for the description and 2 000 for a comment). `assignee` is `"you"`, a name or n
 cycle's number or null. `at` is the day as the list writes it. Errors: `bad-params`, `no-key`,
 `refused`, `unreachable`, `failed` (also where Linear has no such issue).
 
+### `work_options`
+
+What the person can choose from when they hand issues to an agent, and what cannot be chosen and
+why. Params: `{ "ids": ["issue-412", "issue-405"] }`, one to twenty-five ids of the list's issues, in
+the order they are to be handed over; the first names the branch of a new worktree. Nothing is
+started. The first issue is the one of the lists; Linear is asked for it only where the lists do not
+have it (they may not have come).
+
+```json
+{
+  "agents": [{ "id": "claude", "name": "Claude" }, { "id": "codex", "name": "Codex" }],
+  "unavailable": null,
+  "folder": { "name": "acme-app" },
+  "worktree": { "available": true, "branch": "ada/acm-412-add-rate-limiting", "reason": null }
+}
+```
+
+- `agents`: the agents found in the `PATH` (`claude`, `codex`, `cursor-agent`; ids `claude`, `codex`,
+  `cursor`), in that order. None is listed that is not installed.
+- `unavailable`: null, or why nothing can be started now: the pen does not run in a bateri pane
+  (`BATERI_TAB_URL` is not set), `bateri` is not in the `PATH`, or there is no agent.
+- `folder.name`: the name of the folder the pen was started in, which is where "This folder" is.
+- `worktree`: whether "New worktree" can be chosen. Where it can, `branch` is the branch the agent
+  works on (Linear's branch name for the first issue, or its identifier in lower case where Linear
+  has none). Where it cannot, `reason` says why (the folder is not in a git repository, the name
+  Linear gives is not one `git` takes), and `branch` is null.
+
+Errors: `bad-params`, `no-key`, `refused`, `unreachable`, `failed` (where Linear is asked).
+
+### `start`
+
+Hands the issues to an agent in a pane of bateri. The program writes the issues, with their
+descriptions and comments, to a file of its own and starts the agent with a prompt that names the
+file. It answers when the pane is made. Params:
+
+```json
+{ "ids": ["issue-412", "issue-405"], "prompt": "Start with the rate limiter.",
+  "agent": "claude", "folder": "here", "open": "split" }
+```
+
+- `ids`: one to twenty-five Linear ids of issues, the first the one that names the worktree.
+- `prompt`: what the person wrote for the agent, up to 4 000 characters; it may be empty.
+- `agent`: `claude`, `codex` or `cursor`. `folder`: `here` (the folder the pen was started in) or
+  `worktree` (a new `git` worktree beside the repository, on the branch `work_options` told).
+  `open`: `split` (a pane to the right of this one) or `tab` (a new tab). The new pane is not given
+  the focus.
+
+```json
+{ "pane": "p41", "folder": "/Users/ada/acme-app", "context": "/Users/ada/.local/state/linearpen/work/20261111T031500Z-ACM-412/issues.md" }
+```
+
+The file is `$XDG_STATE_HOME/linearpen/work/<UTC time>-<first identifier>/issues.md` (the
+directories `0700`, the file `0600`); it says in its first lines that the text under them was
+written by others and holds no instructions for the agent. The text of an issue is never in the
+prompt (the agent's command line): only the file's path is. No flag that lets the agent do what it
+would ask about is ever added. The key is not in the file.
+
+From here the issues of the call carry a mark in the topic (`working`) until the agent's pane ends.
+Errors: `bad-params`, `no-key`, `refused`, `unreachable`, `failed` (the issues are asked of Linear
+for their text), `unavailable`, `start-failed`.
+
 ### `refresh`
 
 Asks Linear for both lists again. It answers at once with `{}`; the topic tells the lists when they
@@ -112,7 +175,8 @@ the lists came, asking failed). The same value `view` answers with.
           "labels": [{ "name": "api", "color": "#3e63dd" }], "assignee": null }
       ] }
   ],
-  "updated": 1762870000, "organization": "Acme", "person": "Ada"
+  "updated": 1762870000, "organization": "Acme", "person": "Ada",
+  "working": { "issue-412": { "agent": "Claude" } }
 }
 ```
 
@@ -132,3 +196,5 @@ the lists came, asking failed). The same value `view` answers with.
 - A label's `color` is Linear's own (`#rrggbb`): data, not a role of the theme.
 - `updated`: when the lists came, seconds since the epoch; `organization` and `person` are the
   workspace's name and the person's. Both are null before the first answer.
+- `working`: the issues an agent was started on and whose pane has not ended, by Linear's id, with
+  the agent's name. It is not kept between runs.

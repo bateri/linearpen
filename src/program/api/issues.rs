@@ -1,6 +1,7 @@
 //! The list the page draws: what the person is looking at (the scope, the filter, the groups folded)
 //! made from the two lists the session holds, as the topic `issues` and the answer of `view`.
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -61,6 +62,12 @@ pub struct Counts {
 }
 
 #[derive(Debug, Serialize)]
+pub struct WorkingMessage {
+    /// The name of the agent the issue was handed to.
+    pub agent: &'static str,
+}
+
+#[derive(Debug, Serialize)]
 pub struct Snapshot {
     /// There are lists to show (the first answer of Linear has come).
     pub loaded: bool,
@@ -77,6 +84,8 @@ pub struct Snapshot {
     pub updated: Option<u64>,
     pub organization: Option<String>,
     pub person: Option<String>,
+    /// The issues an agent works on, by Linear's id.
+    pub working: BTreeMap<String, WorkingMessage>,
 }
 
 fn row(issue: &Issue, scope: Scope) -> RowMessage {
@@ -175,6 +184,18 @@ pub fn snapshot(state: &State) -> Snapshot {
             .as_ref()
             .map(|lists| lists.viewer.organization.name.clone()),
         person: state.lists.as_ref().map(|lists| lists.viewer.name.clone()),
+        working: state
+            .working
+            .iter()
+            .map(|(id, working)| {
+                (
+                    id.clone(),
+                    WorkingMessage {
+                        agent: working.agent,
+                    },
+                )
+            })
+            .collect(),
     }
 }
 
