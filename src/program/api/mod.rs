@@ -5,6 +5,7 @@
 //! A call's params are read before it runs (what does not fit is `bad-params`, and the work never
 //! runs). A call that panics is `internal`, by pencere.
 
+mod issue;
 mod issues;
 mod params;
 mod session;
@@ -62,5 +63,6 @@ fn call<P: DeserializeOwned + 'static, T: Serialize + 'static>(
 /// The calls and the topic the page may use, answered from `session`.
 pub fn serve(options: Options, session: &Arc<Session>) -> Options {
     let options = session::calls(options, session);
+    let options = issue::calls(options, session);
     issues::topic(options, session)
 }

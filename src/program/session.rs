@@ -11,12 +11,15 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use crate::linear::{self, Error, Key, Listing, Scope, Transport, Viewer};
+use crate::linear::{self, Error, Issue, Key, Listing, Scope, Transport, Viewer};
 use crate::state::Paths;
 use crate::state::credentials::{self, Problem, Source};
 
 /// How long the lists are left before they are asked for again, while the page is open.
 pub const REFRESH_EVERY: Duration = Duration::from_secs(300);
+
+/// How many opened issues are kept before they are let go of.
+const DETAILS_KEPT: usize = 64;
 
 /// What the page is looking at.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,6 +53,9 @@ pub struct State {
     /// When the lists were told, seconds since the epoch.
     pub updated: Option<u64>,
     pub view: View,
+    /// Issues opened, as Linear told them (with their description and comments), by id: they are
+    /// kept for the run, so that an issue seen again is not asked for again.
+    details: HashMap<String, Issue>,
     generation: u64,
     refresh_wanted: bool,
     worker: bool,
@@ -172,6 +178,7 @@ impl Session {
                     filter: String::new(),
                     closed: HashMap::new(),
                 },
+                details: HashMap::new(),
                 generation: 0,
                 refresh_wanted: false,
                 worker: false,
@@ -232,6 +239,30 @@ impl Session {
             state.error = None;
         }
         self.start();
+    }
+
+    /// The issue with Linear's `id` (or its identifier), with its description and comments: from
+    /// what was kept, else asked of Linear (without holding the state while it is).
+    pub fn detail(&self, id: &str) -> Result<Issue, Error> {
+        let key = {
+            let state = self.shared.lock();
+            if let Some(kept) = state.details.get(id) {
+                return Ok(kept.clone());
+            }
+            state.key.clone()
+        };
+        let Some(key) = key else {
+            return Err(Error::Failed(
+                "there is no key to ask Linear with".to_owned(),
+            ));
+        };
+        let issue = linear::fetch_issue(self.shared.transport.as_ref(), &key, id)?;
+        let mut state = self.shared.lock();
+        if state.details.len() >= DETAILS_KEPT {
+            state.details.clear();
+        }
+        state.details.insert(id.to_owned(), issue.clone());
+        Ok(issue)
     }
 
     /// Changes what the page is looking at, and wakes whoever shows it.

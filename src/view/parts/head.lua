@@ -4,6 +4,7 @@
 
 local kit = require("../lib/kit")
 local commands = require("./commands")
+local list = require("./list")
 
 local b, u, S, SIZE, act = kit.b, kit.u, kit.S, kit.SIZE, kit.act
 
@@ -124,12 +125,19 @@ local function refresh_button()
 end
 
 function head.view()
-	local width = S.width
+	local width = S.room
 	local narrow = width < SIZE.narrow
 	local bar = b.div():row():items_center():gap(10):pt(SIZE.head_top):pb(SIZE.head_bottom):px(SIZE.pad):no_shrink()
 	bar:child(scope_control())
+	local marked = list.marked()
 	local words = matched_words()
-	if words ~= nil then
+	if marked > 0 then
+		bar:child(b.text(marked .. " selected"):text_size(SIZE.small):color("accent"):no_shrink())
+		-- With an issue open the Esc is the issue's: one key, one meaning at a time.
+		if not S.panel_open then
+			bar:child(kit.button("clear-selection", "Clear", { small = true, suffix = "Esc" }))
+		end
+	elseif words ~= nil then
 		bar:child(b.text(words):text_size(SIZE.small):color("dim"):no_shrink())
 	end
 	bar:child(b.spacer())

@@ -121,6 +121,49 @@ fn the_view_call_takes_a_scope_a_filter_and_the_groups_folded_and_refuses_the_re
 }
 
 #[test]
+fn the_issue_call_brings_the_description_and_the_comments_oldest_first() {
+    let home = Home::new();
+    let heard = home.ask(
+        &keyed()
+            .call("issue", json!({ "id": "issue-412" }))
+            .call("issue", json!({ "id": "has a space" }))
+            .call("issue", json!({ "id": "issue-412", "more": 1 })),
+    );
+    let issue = heard[0].result();
+    assert_eq!(issue["identifier"], "ACM-412");
+    assert_eq!(issue["state"]["name"], "In Progress");
+    assert_eq!(issue["priority"], "high");
+    assert_eq!(issue["assignee"], "you");
+    assert!(
+        issue["description"]
+            .as_str()
+            .is_some_and(|text| text.contains("**What we want**"))
+    );
+    let comments = issue["comments"].as_array().unwrap();
+    assert_eq!(comments[0]["author"], "Deniz");
+    assert_eq!(comments[1]["author"], "Mert");
+    assert_eq!(comments[1]["at"], "Nov 8");
+    assert_eq!(issue["more"], false);
+    assert!(heard[1].failed("bad-params"), "{:?}", heard[1]);
+    assert!(heard[2].failed("bad-params"), "{:?}", heard[2]);
+    // The first call asked Linear once with the id as a variable; the key is not in what came back.
+    let asked: Vec<_> = home
+        .calls()
+        .into_iter()
+        .filter(|call| call.stdin.contains("operationName"))
+        .collect();
+    assert_eq!(asked.len(), 1, "{asked:?}");
+    assert!(asked[0].stdin.contains("issue-412"));
+}
+
+#[test]
+fn the_issue_call_needs_a_key() {
+    let home = Home::new();
+    let heard = home.ask(&Script::new().call("issue", json!({ "id": "issue-412" })));
+    assert!(heard[0].failed("no-key"), "{:?}", heard[0]);
+}
+
+#[test]
 fn connect_keeps_the_key_linear_takes_with_a_closed_file_and_refuses_what_is_not_one() {
     let home = Home::new();
     let heard = home.ask(

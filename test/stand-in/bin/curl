@@ -54,6 +54,7 @@ case "$config" in
 	;;
 *operationName*AllIssues*) file=all-issues.json ;;
 *operationName*Verify*) file=verify.json ;;
+*operationName*Issue*) file=issue.json ;;
 *)
 	echo "stand-in curl: a query it does not know" >&2
 	exit 2

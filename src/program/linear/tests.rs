@@ -232,3 +232,48 @@ fn a_mutation_is_not_sent_at_all() {
     assert!(matches!(got, Err(Error::Failed(_))));
     assert!(transport.sent().is_empty());
 }
+
+#[test]
+fn one_issue_comes_with_its_description_and_comments_and_the_id_is_a_variable() {
+    let body = format!(
+        r#"{{"data":{{"issue":{}}}}}"#,
+        issue(7).replacen(
+            r#""team":"#,
+            r#""description":"The words","comments":{"nodes":[{"body":"b","createdAt":"2026-11-06T09:12:00.000Z","user":null}],"pageInfo":{"hasNextPage":true,"endCursor":"c"}},"team":"#,
+            1
+        )
+    );
+    let transport = Scripted::new(vec![Ok(Reply { status: 200, body })]);
+    let found = fetch_issue(&transport, &key(), "abc-123").unwrap();
+    assert_eq!(found.description.as_deref(), Some("The words"));
+    let comments = found.comments.unwrap();
+    assert_eq!(comments.nodes.len(), 1);
+    assert!(comments.nodes[0].user.is_none());
+    assert!(comments.page_info.has_next_page);
+    let sent = transport.sent();
+    assert!(
+        sent[0].contains(r#""operationName":"Issue""#),
+        "{}",
+        sent[0]
+    );
+    // What the person's page names is a variable, not a part of the text.
+    assert!(
+        sent[0].contains(r#""variables":{"id":"abc-123"}"#),
+        "{}",
+        sent[0]
+    );
+    assert!(!sent[0].to_lowercase().contains("mutation"));
+}
+
+#[test]
+fn an_issue_that_is_not_there_is_said() {
+    let reply = Reply {
+        status: 200,
+        body: r#"{"data":{"issue":null}}"#.to_owned(),
+    };
+    let transport = Scripted::always(reply, 1);
+    assert!(matches!(
+        fetch_issue(&transport, &key(), "nope"),
+        Err(Error::Failed(_))
+    ));
+}

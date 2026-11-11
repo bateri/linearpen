@@ -16,7 +16,7 @@ pub use types::{Issue, Viewer};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
-use query::{Filter, Operation, Page};
+use query::{Filter, Lookup, Operation, Page};
 use types::Connection;
 
 /// Which issues: the ones assigned to the person, or all of the workspace's.
@@ -211,6 +211,18 @@ pub fn fetch(transport: &dyn Transport, key: &Key, scope: Scope) -> Result<Fetch
             }
         }
     }
+}
+
+#[derive(Deserialize)]
+struct IssueData {
+    issue: Option<Issue>,
+}
+
+/// One issue with its description and its first comments.
+pub fn fetch_issue(transport: &dyn Transport, key: &Key, id: &str) -> Result<Issue, Error> {
+    let data: IssueData = run(transport, key, &query::ISSUE, Some(Lookup { id }))?;
+    data.issue
+        .ok_or_else(|| Error::Failed("Linear has no such issue".to_owned()))
 }
 
 #[cfg(test)]

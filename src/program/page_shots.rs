@@ -78,6 +78,45 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     page.advance(0.4)?;
     save(&page, &fonts, Palette::Dark, "filter.png");
 
+    // An issue open beside the list: in the colours of a dark and of a light terminal, and in an
+    // 80 by 24 pane, where it takes the whole of it.
+    let mut page = lists(BIG, &fonts)?;
+    page.press("enter")?;
+    page.wait_for(Duration::from_secs(20), |page| {
+        page.says("600 requests a minute")
+    })?;
+    page.advance(0.4)?;
+    save(&page, &fonts, Palette::Dark, "issue.png");
+    save(&page, &fonts, Palette::Light, "light-issue.png");
+    let mut page = lists(PANE, &fonts)?;
+    page.press("enter")?;
+    page.wait_for(Duration::from_secs(20), |page| {
+        page.says("600 requests a minute")
+    })?;
+    page.advance(0.4)?;
+    save(&page, &fonts, Palette::Dark, "narrow-issue.png");
+
+    // Issues selected, to be taken to an agent.
+    let mut page = lists(BIG, &fonts)?;
+    page.press("x")?;
+    page.press("shift+down")?;
+    page.press("shift+down")?;
+    page.wait_for(Duration::from_secs(20), |page| page.says("3 selected"))?;
+    page.advance(0.4)?;
+    save(&page, &fonts, Palette::Dark, "select.png");
+
+    // The card of keys, and the palette.
+    let mut page = lists(BIG, &fonts)?;
+    page.press("?")?;
+    page.wait_for(Duration::from_secs(20), |page| page.says("Keys"))?;
+    page.advance(0.4)?;
+    save(&page, &fonts, Palette::Dark, "keys.png");
+    let mut page = lists(BIG, &fonts)?;
+    page.press("mod+k")?;
+    page.wait_for(Duration::from_secs(20), |page| page.says("Do it"))?;
+    page.advance(0.4)?;
+    save(&page, &fonts, Palette::Dark, "palette.png");
+
     // Nothing assigned to the person.
     let linear = Canned::new(Mode::NothingAssigned);
     let session = session_over(&linear, Some("lin_api_test"), None);

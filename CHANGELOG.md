@@ -11,6 +11,17 @@
 - **Connect, loading, error and empty screens.** Without a key the pane asks for one (the field
   hides what you type) and keeps it where `LINEAR_API_KEY` is not set; a key Linear refuses is
   said there, and one Linear cannot be asked about leaves a way to try again.
+- **Enter opens an issue beside the list.** The panel shows what the list does not carry: the
+  description (as markdown, with its links opening only where you press them), the comments oldest
+  first, the cycle, the project and who it is assigned to. `Open in Linear` (`o`) opens it in your
+  browser and `Close` (`Esc`) puts it away; the panel follows the cursor, asks Linear once for each
+  issue, and takes the whole of a pane too narrow for both.
+- **Select issues.** `x` or the box of a line selects it, Shift with the arrows selects more, and
+  `Cmd A` selects every issue that is shown. `Esc` closes what is on top: the issue, then the
+  selection, then the filter.
+- **A command palette (`Cmd K`) and a card of the keys (`?`).** Both are made from the one table of
+  commands that the key line is made from, so a key is written once; words typed in the palette that
+  are no command's filter the issues.
 - **`linearpen --text` prints your open Linear issues.** Two lists, My issues and All issues, each
   grouped by the state the issues are in (started, then not started, then the backlog and triage),
   the issue updated last first. It is also what linearpen prints in a terminal that shows no views.

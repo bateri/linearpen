@@ -1,0 +1,61 @@
+{
+ "data": {
+  "issue": {
+   "id": "issue-412",
+   "identifier": "ACM-412",
+   "title": "Add rate limiting to the public API",
+   "priority": 2.0,
+   "updatedAt": "2026-11-09T14:20:00.000Z",
+   "url": "https://linear.app/acme/issue/ACM-412/add-rate-limiting-to-the-public-api",
+   "branchName": "ada/acm-412-add-rate-limiting-to-the-public-api",
+   "state": {
+    "id": "state-progress",
+    "name": "In Progress",
+    "type": "started",
+    "position": 1.0
+   },
+   "labels": {
+    "nodes": [
+     {
+      "name": "api",
+      "color": "#3e63dd"
+     }
+    ]
+   },
+   "team": {
+    "key": "ACM"
+   },
+   "cycle": {
+    "number": 12
+   },
+   "project": null,
+   "assignee": {
+    "displayName": "Ada",
+    "isMe": true
+   },
+   "description": "The public API has no limit per key. On Nov 3 one customer\u2019s import script took the read replicas down.\n\n**What we want**\n\n- A limit per API key, 600 requests a minute unless the plan says more\n- `429` with a `Retry-After` header\n- The limit shown on the usage page (ACM-371)\n",
+   "comments": {
+    "nodes": [
+     {
+      "body": "Redis is already there for the sessions. A sliding window in a Lua script would do.",
+      "createdAt": "2026-11-06T09:12:00.000Z",
+      "user": {
+       "displayName": "Deniz"
+      }
+     },
+     {
+      "body": "Keep a fallback for when Redis is down. We cannot fail closed on reads.",
+      "createdAt": "2026-11-08T16:40:00.000Z",
+      "user": {
+       "displayName": "Mert"
+      }
+     }
+    ],
+    "pageInfo": {
+     "hasNextPage": false,
+     "endCursor": null
+    }
+   }
+  }
+ }
+}

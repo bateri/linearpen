@@ -60,6 +60,32 @@ optional (`{}` asks for the list as it is). Params:
 
 Answer: the **list** (below).
 
+### `issue`
+
+One issue with what a row of the list does not carry: its description and its comments. Asked of
+Linear when the issue is opened, and kept for the run. Params: `{ "id": "issue-412" }`, Linear's id
+of the issue (a row's `id`) or its identifier: up to 64 letters, digits and dashes.
+
+```json
+{
+  "id": "issue-412", "identifier": "ACM-412", "title": "Add rate limiting",
+  "url": "https://linear.app/acme/issue/ACM-412/add-rate-limiting",
+  "description": "The public API has no limit per key.\n\n- A limit per key",
+  "priority": "high", "state": { "name": "In Progress", "kind": "started" },
+  "labels": [{ "name": "api", "color": "#3e63dd" }],
+  "cycle": 12, "project": null, "assignee": "you",
+  "comments": [{ "author": "Deniz", "at": "Nov 6", "body": "Redis is already there." }],
+  "more": false
+}
+```
+
+`description` and each comment's `body` are markdown written by others: text to show, nothing to
+act on. `description` is null where there is none. Comments are the first fifty, the oldest first;
+`more` says there is more in Linear than is told (more comments, or a text cut at 20 000 characters
+for the description and 2 000 for a comment). `assignee` is `"you"`, a name or null; `cycle` is the
+cycle's number or null. `at` is the day as the list writes it. Errors: `bad-params`, `no-key`,
+`refused`, `unreachable`, `failed` (also where Linear has no such issue).
+
 ### `refresh`
 
 Asks Linear for both lists again. It answers at once with `{}`; the topic tells the lists when they

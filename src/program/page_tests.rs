@@ -32,6 +32,7 @@ const MY_ISSUES: &str = include_str!("../../test/stand-in/my-issues.json");
 const MY_ISSUES_EMPTY: &str = include_str!("../../test/stand-in/my-issues-empty.json");
 const ALL_ISSUES: &str = include_str!("../../test/stand-in/all-issues.json");
 const VERIFY: &str = include_str!("../../test/stand-in/verify.json");
+const ISSUE: &str = include_str!("../../test/stand-in/issue.json");
 const REFUSED: &str = include_str!("../../test/stand-in/refused.json");
 
 /// How Linear answers in a test.
@@ -87,7 +88,7 @@ impl Canned {
 
 impl Transport for Canned {
     fn post(&self, key: &Key, body: &str) -> Result<Reply, LinearError> {
-        let name = ["Verify", "MyIssues", "AllIssues"]
+        let name = ["Verify", "MyIssues", "AllIssues", "Issue"]
             .into_iter()
             .find(|name| body.contains(&format!(r#""operationName":"{name}""#)))
             .unwrap_or("Other");
@@ -110,6 +111,7 @@ impl Transport for Canned {
                 "Verify" => reply(200, VERIFY),
                 "MyIssues" => reply(200, MY_ISSUES),
                 "AllIssues" => reply(200, ALL_ISSUES),
+                "Issue" => reply(200, ISSUE),
                 _ => Err(LinearError::Failed(
                     "a query the test does not know".to_owned(),
                 )),
@@ -495,4 +497,237 @@ fn letters_typed_in_the_filter_are_its_own_and_the_buttons_answer_the_keyboard()
     page.press("enter").expect("enter");
     page.wait_for(WITHIN, |_| linear.times("MyIssues") == 3)
         .expect("Enter on the button asked Linear once more");
+}
+
+/// Opens the issue under the cursor with Enter, and waits for what the program tells of it.
+fn open_the_issue(page: &mut Page) {
+    page.press("enter").expect("enter");
+    page.wait_for(WITHIN, |page| page.says("API key"))
+        .unwrap_or_else(|why| panic!("the description comes: {why:?}: {}", said(page)));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn enter_opens_the_issue_beside_the_list_and_escape_closes_it() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    assert!(page.bounds("panel-close").is_none(), "{}", said(&page));
+    open_the_issue(&mut page);
+    // What the row did not carry: the description, the comments, the cycle and the way out.
+    for words in [
+        "600 requests a minute",
+        "COMMENTS",
+        "Cycle 12",
+        "Open in Linear",
+        "Close",
+    ] {
+        assert!(page.says(words), "{words}: {}", said(&page));
+    }
+    // The list stays beside it.
+    assert!(page.says("ACM-398"), "{}", said(&page));
+    assert_eq!(linear.times("Issue"), 1);
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| page.bounds("panel-close").is_none())
+        .expect("the issue is closed");
+    assert!(page.says("ACM-398"), "{}", said(&page));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_double_press_on_an_issue_opens_it_and_the_button_closes_it() {
+    let (_linear, _session, mut page) = open_lists(WIDE);
+    page.double_click("row:i:issue-412")
+        .expect("the line is pressed twice");
+    page.wait_for(WITHIN, |page| page.says("600 requests a minute"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    page.click("panel-close").expect("the button is pressed");
+    page.wait_for(WITHIN, |page| page.bounds("panel-close").is_none())
+        .expect("the issue is closed");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_issue_open_follows_the_cursor_and_is_asked_once_for_each_issue() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    open_the_issue(&mut page);
+    page.press("down").expect("down");
+    cursor_on(&mut page, "ACM-398");
+    page.wait_for(WITHIN, |_| linear.times("Issue") == 2)
+        .expect("the program is asked for the next issue");
+    page.press("up").expect("up");
+    cursor_on(&mut page, "ACM-412");
+    page.advance(0.5).expect("a moment");
+    // The first is kept: no second asking for it.
+    assert_eq!(linear.times("Issue"), 2);
+    // A group's head has no issue: the one open stays.
+    page.press("home").expect("home");
+    cursor_on(&mut page, "In Progress");
+    assert!(page.bounds("panel-close").is_some(), "{}", said(&page));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_link_of_the_issue_opens_by_the_key_and_by_the_button() {
+    let (_linear, _session, mut page) = open_lists(WIDE);
+    // No issue open, no link.
+    page.press("o").expect("o");
+    assert!(page.links().is_empty(), "{:?}", page.links());
+    open_the_issue(&mut page);
+    let url = "https://linear.app/acme/issue/ACM-412/add-rate-limiting-to-the-public-api";
+    page.press("o").expect("o");
+    page.wait_for(WITHIN, |page| page.links().len() == 1)
+        .expect("the key opens the issue in Linear");
+    assert_eq!(page.links()[0], url);
+    page.click("open-linear").expect("the button is pressed");
+    page.wait_for(WITHIN, |page| page.links().len() == 2)
+        .expect("the button opens it too");
+    assert_eq!(page.links()[1], url);
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn x_selects_the_line_shift_arrows_select_more_and_escape_clears() {
+    let (_linear, _session, mut page) = open_lists(WIDE);
+    assert!(!page.says("selected"), "{}", said(&page));
+    page.press("x").expect("x");
+    page.wait_for(WITHIN, |page| page.says("1 selected"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    // The cursor stays where it was: x does not move it.
+    assert!(cursor(&page).contains("ACM-412"), "{}", cursor(&page));
+    page.press("x").expect("x again");
+    page.wait_for(WITHIN, |page| !page.says("selected"))
+        .expect("x takes it off");
+    page.press("shift+down").expect("shift+down");
+    page.press("shift+down").expect("shift+down");
+    page.wait_for(WITHIN, |page| page.says("3 selected"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| !page.says("selected"))
+        .expect("escape clears the selection");
+    page.press("x").expect("x");
+    page.click("clear-selection")
+        .expect("the button is pressed");
+    page.wait_for(WITHIN, |page| !page.says("selected"))
+        .expect("the button clears it");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_box_of_a_line_selects_it_and_the_selection_keeps_to_the_list_that_is_shown() {
+    let (_linear, _session, mut page) = open_lists(WIDE);
+    // The box shows where the pointer is over the line.
+    page.hover("row:i:issue-398")
+        .expect("the pointer is over the line");
+    page.click("check:i:issue-398").expect("the box is pressed");
+    page.wait_for(WITHIN, |page| page.says("1 selected"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    // A filter that lets it through keeps it; one that does not, takes it away.
+    page.press("/").expect("slash");
+    page.type_text("rate").expect("the filter is typed");
+    page.wait_for(WITHIN, |page| page.says("1 of 14"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    assert!(!page.says("selected"), "{}", said(&page));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn command_a_selects_every_issue_shown_but_not_in_the_filter_field() {
+    let (_linear, _session, mut page) = open_lists(WIDE);
+    page.press("mod+a").expect("mod+a");
+    page.wait_for(WITHIN, |page| page.says("selected"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    // The folded backlog's issues are not shown, so they are not chosen: twelve of the fourteen.
+    assert!(page.says("12 selected"), "{}", said(&page));
+    page.press("escape").expect("escape");
+    page.press("/").expect("slash");
+    page.type_text("bug").expect("the filter is typed");
+    page.press("mod+a").expect("mod+a in the field");
+    page.advance(0.3).expect("a moment");
+    assert!(!page.says("selected"), "{}", said(&page));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_palette_finds_a_command_and_does_it_and_takes_words_as_a_filter() {
+    let (_linear, _session, mut page) = open_lists(WIDE);
+    page.press("mod+k").expect("mod+k");
+    page.wait_for(WITHIN, |page| page.says("Do it"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    for words in ["Show all issues", "Ask Linear again", "Select the issue"] {
+        assert!(page.says(words), "{words}: {}", said(&page));
+    }
+    // The cursor's own keys are on the card, not here.
+    assert!(!page.says("Next issue"), "{}", said(&page));
+    // No issue is open: no link to follow.
+    assert!(!page.says("Open in Linear"), "{}", said(&page));
+    page.type_text("show all").expect("the query is typed");
+    page.press("enter").expect("enter");
+    page.wait_for(WITHIN, |page| page.says("ACM-417") && !page.says("Do it"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    // Words that are no command's are a filter.
+    page.press("mod+k").expect("mod+k");
+    page.wait_for(WITHIN, |page| page.says("Do it"))
+        .expect("the palette opens again");
+    page.type_text("quota").expect("the query is typed");
+    page.wait_for(WITHIN, |page| page.says("Filter issues by"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    page.press("enter").expect("enter");
+    page.wait_for(WITHIN, |page| !page.says("Do it") && page.says(" of 19"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    // Escape closes it, and does nothing else.
+    page.press("mod+k").expect("mod+k");
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| !page.says("Do it"))
+        .expect("escape closes the palette");
+    assert!(page.says(" of 19"), "{}", said(&page));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_card_of_keys_lists_what_the_page_can_do_and_closes() {
+    let (_linear, _session, mut page) = open_lists(WIDE);
+    page.press("?").expect("?");
+    page.wait_for(WITHIN, |page| page.says("Keys"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    for words in [
+        "Next issue",
+        "Select all",
+        "Show all issues",
+        "Find a command",
+    ] {
+        assert!(page.says(words), "{words}: {}", said(&page));
+    }
+    page.click("help-close").expect("the button is pressed");
+    page.wait_for(WITHIN, |page| !page.says("Select all"))
+        .expect("the card is closed");
+    // The status line's own word for it opens it by the pointer.
+    page.click("status/item/help")
+        .expect("the status line's key");
+    page.wait_for(WITHIN, |page| page.says("Select all"))
+        .expect("the card is open again");
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| !page.says("Select all"))
+        .expect("escape closes it");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn in_a_narrow_pane_the_issue_takes_the_pane_and_the_way_back_is_one_press() {
+    let (_linear, _session, mut page) = open_lists(PANE);
+    open_the_issue(&mut page);
+    // The list gives way: the pane is the issue's.
+    assert!(!page.says("ACM-398"), "{}", said(&page));
+    for name in ["panel-close", "open-linear"] {
+        let at = page
+            .bounds(name)
+            .unwrap_or_else(|| panic!("{name} is laid out"));
+        assert!(at.x >= 0.0 && at.x + at.w <= PANE.0 + 0.5, "{name}: {at:?}");
+    }
+    // The key line stays under it, inside the pane.
+    let keys = page
+        .bounds("status/item/help")
+        .expect("the key line is laid out");
+    assert!(keys.y + keys.h <= PANE.1 + 0.5, "{keys:?}");
+    page.click("panel-close").expect("the button is pressed");
+    page.wait_for(WITHIN, |page| page.says("ACM-398"))
+        .expect("the list is back");
 }

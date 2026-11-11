@@ -73,9 +73,26 @@ pub const ALL_ISSUES: Operation = Operation {
     ),
 };
 
+/// One issue with what a row does not carry: its description and its first comments.
+pub const ISSUE: Operation = Operation {
+    name: "Issue",
+    text: concat!(
+        "query Issue($id: String!) { issue(id: $id) { ",
+        issue_fields!(),
+        " description comments(first: 50) { nodes { body createdAt user { displayName } } \
+         pageInfo { hasNextPage endCursor } } } }"
+    ),
+};
+
 /// Every query there is, for the test that scans for a `mutation`.
 #[cfg(test)]
-pub const ALL: [Operation; 3] = [VERIFY, MY_ISSUES, ALL_ISSUES];
+pub const ALL: [Operation; 4] = [VERIFY, MY_ISSUES, ALL_ISSUES, ISSUE];
+
+/// The variables of the question for one issue: Linear's id of it, or its identifier.
+#[derive(Debug, Serialize)]
+pub struct Lookup<'a> {
+    pub id: &'a str,
+}
 
 /// The variables of a page of issues.
 #[derive(Debug, Serialize)]

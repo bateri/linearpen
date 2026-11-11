@@ -17,6 +17,10 @@ local S = {
 	now = 0,
 	width = 1000,
 	height = 700,
+	-- The room the list has: the page's width, less what an issue beside it takes.
+	room = 1000,
+	-- An issue is open beside the list (or over it).
+	panel_open = false,
 	-- What `boot` said, and why there is none.
 	boot = nil,
 	boot_error = nil,

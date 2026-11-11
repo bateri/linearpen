@@ -215,9 +215,41 @@ pub struct Issue {
     pub project: Option<String>,
     #[serde(default)]
     pub assignee: Option<Assignee>,
+    /// Untrusted markdown. Only an issue asked for alone has it.
+    #[serde(default)]
+    pub description: Option<String>,
+    /// Only an issue asked for alone has them.
+    #[serde(default)]
+    pub comments: Option<Comments>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+/// Who wrote a comment (a comment of a bot or of someone gone has none).
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Author {
+    pub display_name: String,
+}
+
+/// A comment of an issue. The text is untrusted.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Comment {
+    #[serde(default)]
+    pub body: String,
+    pub created_at: String,
+    #[serde(default)]
+    pub user: Option<Author>,
+}
+
+/// The first comments of an issue, and whether there are more.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct Comments {
+    pub nodes: Vec<Comment>,
+    #[serde(rename = "pageInfo")]
+    pub page_info: PageInfo,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PageInfo {
     pub has_next_page: bool,

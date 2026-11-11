@@ -17,6 +17,8 @@ end
 local function ground(look)
 	if look.selected then
 		return b.alpha("accent", 0.37), b.alpha("accent", 0.7)
+	elseif look.marked then
+		return b.alpha("accent", 0.14), b.alpha("foreground", 0)
 	elseif look.hovered then
 		return b.alpha("foreground", 0.07), b.alpha("foreground", 0)
 	end
@@ -63,19 +65,44 @@ local function label(info)
 	)
 end
 
--- An issue: room for the box of a selection (the next phase), its priority, its identifier, its
--- title that gives way, its labels, whose it is (in the list of all issues, where the page is wide
--- enough) and the day it changed.
-function row.issue(item, look, width, scope)
+-- The name the box of an issue's selection answers the pointer by.
+function row.check_name(key)
+	return "check:" .. key
+end
+
+-- The box of a selection: seen on the line the cursor is on, and on every line once one is selected;
+-- its place is kept where it is not seen, so that no line moves.
+local function check(key, look)
+	local slot = b.div():size(14, 14):no_shrink()
+	if not look.check then
+		return slot
+	end
+	local name = row.check_name(key)
+	slot:press(name):role("checkbox"):checked(look.marked):label("Select")
+	local box = b.div():size(14, 14):rounded(4):no_shrink()
+	if look.marked then
+		box:bg("accent"):child(b.canvas({
+			b.path():move_to(3.6, 7.3):line_to(5.9, 9.6):line_to(10.4, 4.6):stroke(1.7, "background"),
+		}):size(14, 14))
+	else
+		box:border(1, b.alpha("foreground", u:hovered(name) and 0.8 or 0.45))
+	end
+	return slot:child(box)
+end
+
+-- An issue: the box of a selection, its priority, its identifier, its title that gives way, its
+-- labels, whose it is (in the list of all issues, where the page is wide enough) and the day it
+-- changed. `o`: `labels` and `who` say whether there is room for them, `scope` the list shown.
+function row.issue(item, look, o)
 	local issue = item.row
 	local el = line(row.name(item.key), look):gap(10):label(issue.identifier .. ", " .. issue.title):selected(look.selected)
-	el:child(b.div():size(14, 14):no_shrink())
+	el:child(check(item.key, look))
 	el:child(icons.priority(issue.priority))
 	el:child(
 		b.div():w(SIZE.identifier):no_shrink():child(b.text(issue.identifier):text_size(SIZE.small):color("dim"):truncate())
 	)
 	el:child(b.text(issue.title):grow(1):min_w(0):truncate())
-	if width >= SIZE.labels then
+	if o.labels then
 		for index, info in issue.labels do
 			if index > 3 then
 				break
@@ -83,7 +110,7 @@ function row.issue(item, look, width, scope)
 			el:child(label(info))
 		end
 	end
-	if scope == "all" and width >= SIZE.assignee then
+	if o.scope == "all" and o.who then
 		el:child(
 			b.div():w(SIZE.who):no_shrink():row():justify_end():child(
 				b.text(issue.assignee or ""):text_size(SIZE.tiny):color("dim"):truncate()

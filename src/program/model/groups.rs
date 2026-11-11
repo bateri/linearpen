@@ -102,6 +102,8 @@ pub mod tests {
             cycle: None,
             project: None,
             assignee: None,
+            description: None,
+            comments: None,
         }
     }
 

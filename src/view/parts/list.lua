@@ -17,7 +17,7 @@ local HEAD = SIZE.row + SIZE.group_gap
 -- The lines as the program last told them: `items` one for each (`{ kind, key, group, row }`),
 -- `tops` where each starts (and where the last ends), `at` the place of a key, and the groups that
 -- are further along than the first of their kind.
-local L = { items = {}, tops = { 0 }, at = {}, late = {}, cursor = nil, cursor_group = nil }
+local L = { items = {}, tops = { 0 }, at = {}, late = {}, cursor = nil, cursor_group = nil, marks = {} }
 list.state = L
 
 local function index_of(key)
@@ -56,6 +56,64 @@ function list.load(snapshot)
 	end
 	local found = L.items[L.at[L.cursor] or 0]
 	L.cursor_group = found and found.group.key or nil
+	-- What is selected is only what can still be seen: a line a filter or a fold took away is not.
+	for key in L.marks do
+		if L.at[key] == nil then
+			L.marks[key] = nil
+		end
+	end
+end
+
+-- How many issues are selected.
+function list.marked()
+	local count = 0
+	for _ in L.marks do
+		count += 1
+	end
+	return count
+end
+
+-- The ids of the issues selected, in the order of the list.
+function list.marked_ids()
+	local ids = {}
+	for _, item in L.items do
+		if item.kind == "issue" and L.marks[item.key] then
+			ids[#ids + 1] = item.row.id
+		end
+	end
+	return ids
+end
+
+-- Selects or lets go of the issue of `key`.
+function list.toggle_mark(key)
+	local item = L.items[L.at[key] or 0]
+	if item == nil or item.kind ~= "issue" then
+		return false
+	end
+	L.marks[key] = (not L.marks[key]) or nil
+	return true
+end
+
+-- Selects the issue of the cursor's line; returns whether there is one.
+function list.mark_current()
+	local item = list.current()
+	if item ~= nil and item.kind == "issue" then
+		L.marks[item.key] = true
+		return true
+	end
+	return false
+end
+
+function list.select_all()
+	for _, item in L.items do
+		if item.kind == "issue" then
+			L.marks[item.key] = true
+		end
+	end
+end
+
+function list.clear_marks()
+	table.clear(L.marks)
 end
 
 function list.count()
@@ -138,6 +196,12 @@ function list.press(event)
 		return false
 	end
 	local hit = b.layout.hit({ x = event.x, y = event.y })
+	if hit ~= nil and string.sub(hit, 1, 6) == "check:" then
+		local box = string.sub(hit, 7)
+		put(box)
+		list.toggle_mark(box)
+		return true
+	end
 	if hit == nil or string.sub(hit, 1, 4) ~= "row:" then
 		return false
 	end
@@ -146,19 +210,29 @@ function list.press(event)
 		return false
 	end
 	put(key)
-	if L.items[index_of(key)].kind == "group" then
-		list.fold(nil)
+	local item = L.items[index_of(key)]
+	if item.kind == "group" then
+		-- A double press is one press on a head that turned over once.
+		if (event.count or 1) < 2 then
+			list.fold(nil)
+		end
+	elseif event.count == 2 then
+		act.open_issue(item)
 	end
 	return true
 end
 
--- Enter on the cursor's line: a group's head turns over.
+-- Enter on the cursor's line: a group's head turns over, and an issue opens beside the list.
 function list.open()
 	local item = list.current()
-	if item ~= nil and item.kind == "group" then
+	if item == nil then
+		return false
+	end
+	if item.kind == "group" then
 		return list.fold(nil)
 	end
-	return false
+	act.open_issue(item)
+	return true
 end
 
 -- A key for the cursor. `in_field` is the keyboard being in a field: then only the arrows are the
@@ -179,6 +253,13 @@ function list.key(event, in_field)
 		if in_field and name ~= "up" and name ~= "down" then
 			return false
 		end
+		if mods.shift and (name == "up" or name == "down") then
+			-- Shift and an arrow selects the line it leaves and the one it comes to.
+			list.mark_current()
+			list.move(name)
+			list.mark_current()
+			return true
+		end
 		list.move(name)
 		return true
 	end
@@ -190,14 +271,27 @@ function list.key(event, in_field)
 end
 
 -- The lines in view, and the room under them.
-function list.view(width)
+function list.view(room, panel_open)
+	local any = list.marked() > 0
+	local o = {
+		scope = S.scope,
+		labels = not panel_open and room >= SIZE.labels,
+		who = not panel_open and room >= SIZE.assignee,
+	}
 	return virtual.virtual(ID, #L.items, SIZE.row, function(index)
 		local item = L.items[index]
-		local look = { selected = item.key == L.cursor, hovered = u:hovered(row.name(item.key)) }
+		local name = row.name(item.key)
+		local selected = item.key == L.cursor
+		local look = {
+			selected = selected,
+			hovered = u:hovered(name),
+			marked = L.marks[item.key] == true,
+			check = any or selected or u:hovered(name) or u:hovered(row.check_name(item.key)),
+		}
 		if item.kind == "group" then
 			return row.group(item, look, L.late[item.group.key] == true)
 		end
-		return row.issue(item, look, width, S.scope)
+		return row.issue(item, look, o)
 	end, { tops = L.tops, px = 0, trail = 6 })
 end
 
