@@ -894,66 +894,6 @@ fn letters_typed_in_the_filter_are_its_own_and_the_buttons_answer_the_keyboard()
         .expect("the answer came");
 }
 
-#[test]
-#[ignore = "opens the kit's interpreter: make test-page"]
-fn after_the_button_of_an_empty_list_is_clicked_enter_opens_an_issue() {
-    let linear = Canned::new(Mode::NothingAssigned);
-    let session = session_over(&linear, Some("lin_api_test"), None);
-    let mut page =
-        open(&session, WIDE, None, "Nothing is assigned to you").expect("the page opens");
-    page.click("show-all").expect("the button is pressed");
-    page.wait_for(WITHIN, |page| page.says("ACM-417"))
-        .expect("all issues are shown");
-    page.press("enter").expect("enter");
-    page.wait_for(WITHIN, |page| page.bounds("panel-close").is_some())
-        .unwrap_or_else(|why| panic!("Enter opens the issue: {why:?}: {}", said(&page)));
-}
-
-#[test]
-#[ignore = "opens the kit's interpreter: make test-page"]
-fn after_the_control_of_the_scope_is_clicked_the_arrows_and_enter_are_the_lists() {
-    let (_linear, _session, mut page) = open_lists(WIDE);
-    page.click("scope/item/all")
-        .expect("the control is pressed");
-    page.wait_for(WITHIN, |page| page.says("ACM-417"))
-        .expect("all issues are shown");
-    // The cursor was on ACM-412 and the arrow is the list's: it goes on, and Enter opens that issue.
-    page.press("down").expect("down");
-    cursor_on(&mut page, "ACM-398");
-    page.press("enter").expect("enter");
-    page.wait_for(WITHIN, |page| page.bounds("panel-close").is_some())
-        .unwrap_or_else(|why| panic!("Enter opens the issue: {why:?}: {}", said(&page)));
-}
-
-#[test]
-#[ignore = "opens the kit's interpreter: make test-page"]
-fn after_refresh_is_clicked_enter_opens_the_issue_and_asks_linear_nothing() {
-    let (linear, session, mut page) = open_lists(WIDE);
-    page.click("refresh").expect("refresh is pressed");
-    page.wait_for(WITHIN, |_| linear.times("MyIssues") == 2)
-        .expect("Linear was asked again");
-    page.wait_for(WITHIN, |_| !session.state().refreshing)
-        .expect("the answer came");
-    page.advance(0.5).expect("a moment");
-    page.press("enter").expect("enter");
-    page.wait_for(WITHIN, |page| page.bounds("panel-close").is_some())
-        .unwrap_or_else(|why| panic!("Enter opens the issue: {why:?}: {}", said(&page)));
-    assert_eq!(linear.times("MyIssues"), 2, "Linear was not asked again");
-}
-
-#[test]
-#[ignore = "opens the kit's interpreter: make test-page"]
-fn after_the_button_that_closes_the_issue_is_clicked_enter_opens_it_again() {
-    let (_linear, _session, mut page) = open_lists(WIDE);
-    open_the_issue(&mut page);
-    page.click("panel-close").expect("the button is pressed");
-    page.wait_for(WITHIN, |page| page.bounds("panel-close").is_none())
-        .expect("the issue is closed");
-    page.press("enter").expect("enter");
-    page.wait_for(WITHIN, |page| page.bounds("panel-close").is_some())
-        .unwrap_or_else(|why| panic!("Enter opens the issue again: {why:?}: {}", said(&page)));
-}
-
 /// Opens the issue under the cursor with Enter, and waits for what the program tells of it.
 fn open_the_issue(page: &mut Page) {
     page.press("enter").expect("enter");
@@ -2637,4 +2577,217 @@ fn a_change_that_was_made_and_never_answered_shows_what_linear_holds_and_says_so
     .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
     assert!(page.says("could not be reached"), "{}", said(&page));
     assert_eq!(linear.changed().len(), 1, "it was sent once");
+}
+
+// --- The keyboard after the pointer -----------------------------------------------------------------
+// A press of the pointer on a control does not leave the keyboard on it: the list keeps the arrows
+// and Enter. (In a pane a person presses a button with the pointer and goes on with the keys.)
+
+/// The arrows move the cursor and Enter opens the issue it is on.
+fn the_keys_are_the_lists(page: &mut Page, after: &str) {
+    let before = cursor(page);
+    page.press("down").expect("down");
+    page.advance(0.3).expect("a moment");
+    let moved = cursor(page);
+    assert_ne!(moved, before, "after {after}: down moves the cursor");
+    page.press("up").expect("up");
+    page.advance(0.3).expect("a moment");
+    assert_eq!(cursor(page), before, "after {after}: up moves it back");
+    // Enter on a group's head folds it: the cursor goes down to an issue first.
+    for _ in 0..3 {
+        page.press("down").expect("down");
+        page.advance(0.3).expect("a moment");
+        if cursor(page).contains("ACM-") {
+            break;
+        }
+    }
+    assert!(
+        cursor(page).contains("ACM-"),
+        "after {after}: {}",
+        cursor(page)
+    );
+    page.press("enter").expect("enter");
+    page.wait_for(WITHIN, |page| page.bounds("panel-close").is_some())
+        .unwrap_or_else(|why| panic!("after {after}: enter opens the issue: {why:?}"));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn after_a_press_on_show_all_the_keys_are_the_lists() {
+    let linear = Canned::new(Mode::NothingAssigned);
+    let session = session_over(&linear, Some("lin_api_test"), None);
+    let mut page =
+        open(&session, WIDE, None, "Nothing is assigned to you").expect("the page opens");
+    page.click("show-all").expect("the button is pressed");
+    page.wait_for(WITHIN, |page| page.says("ACM-417"))
+        .expect("all issues are shown");
+    page.advance(0.4).expect("a moment");
+    the_keys_are_the_lists(&mut page, "Show all issues");
+    assert!(page.says("ACM-417"), "the scope stays: {}", said(&page));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn after_a_press_on_the_scope_the_keys_are_the_lists_and_the_scope_stays() {
+    let (_linear, _session, mut page) = open_lists(WIDE);
+    page.click("scope/item/all").expect("All issues is pressed");
+    page.wait_for(WITHIN, |page| page.says("ACM-417"))
+        .expect("all issues are shown");
+    page.advance(0.4).expect("a moment");
+    // Left and right are the list's too (they fold a group): they do not go to My issues.
+    page.press("left").expect("left");
+    page.press("right").expect("right");
+    page.advance(0.3).expect("a moment");
+    assert!(page.says("ACM-417"), "the scope stays: {}", said(&page));
+    the_keys_are_the_lists(&mut page, "All issues");
+    assert!(page.says("ACM-417"), "the scope stays: {}", said(&page));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn after_a_press_on_refresh_enter_opens_the_issue_and_linear_is_not_asked_again() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    page.click("refresh").expect("refresh is pressed");
+    page.wait_for(WITHIN, |_| linear.times("MyIssues") == 2)
+        .expect("Linear is asked once more");
+    page.advance(0.4).expect("a moment");
+    the_keys_are_the_lists(&mut page, "Refresh");
+    assert_eq!(
+        linear.times("MyIssues"),
+        2,
+        "the keys did not press Refresh"
+    );
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn after_a_press_on_close_the_keys_are_the_lists() {
+    let (_linear, _session, mut page) = open_lists(WIDE);
+    open_the_issue(&mut page);
+    page.click("panel-close").expect("the button is pressed");
+    page.wait_for(WITHIN, |page| page.bounds("panel-close").is_none())
+        .expect("the issue is closed");
+    the_keys_are_the_lists(&mut page, "Close");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn after_a_form_or_a_card_is_put_away_the_keys_are_the_lists() {
+    let (_linear, _session, mut page) = open_lists(WIDE);
+    page.click("new").expect("New issue is pressed");
+    page.wait_for(WITHIN, |page| page.says("Create issue"))
+        .expect("the form opens");
+    page.click("new-close").expect("Close is pressed");
+    page.wait_for(WITHIN, |page| !page.says("Create issue"))
+        .expect("the form is put away");
+    the_keys_are_the_lists(&mut page, "the form closed with the pointer");
+    page.press("escape").expect("escape closes the issue");
+    page.click("status/item/help").expect("the card of keys");
+    page.wait_for(WITHIN, |page| page.says("Keys"))
+        .expect("the card opens");
+    page.click("help-close").expect("Close is pressed");
+    page.wait_for(WITHIN, |page| !page.says("Select all"))
+        .expect("the card is put away");
+    the_keys_are_the_lists(&mut page, "the card closed with the pointer");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn after_a_press_on_a_line_the_keys_are_the_lists() {
+    let (_linear, _session, mut page) = open_lists(WIDE);
+    page.click("row:i:issue-405").expect("a line is pressed");
+    page.advance(0.3).expect("a moment");
+    cursor_on(&mut page, "ACM-405");
+    the_keys_are_the_lists(&mut page, "a line");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn after_a_press_on_the_scope_every_key_of_the_list_does_what_it_says() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    page.click("scope/item/all").expect("All issues is pressed");
+    page.wait_for(WITHIN, |page| page.says("ACM-417"))
+        .expect("all issues are shown");
+    page.advance(0.4).expect("a moment");
+    // j and k move, x selects, Shift and an arrow selects more, Esc clears.
+    page.press("j").expect("j");
+    let on = cursor(&page);
+    page.press("k").expect("k");
+    assert_ne!(cursor(&page), on, "k moves the cursor");
+    page.press("j").expect("j");
+    page.press("x").expect("x");
+    page.wait_for(WITHIN, |page| page.says("1 selected"))
+        .unwrap_or_else(|why| panic!("x selects: {why:?}: {}", said(&page)));
+    page.press("shift+down").expect("shift and down");
+    page.wait_for(WITHIN, |page| page.says("2 selected"))
+        .unwrap_or_else(|why| panic!("shift and down selects more: {why:?}: {}", said(&page)));
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| !page.says("selected"))
+        .expect("escape clears the selection");
+    // 1 and 2 choose the list, r asks Linear again.
+    page.press("1").expect("1");
+    page.wait_for(WITHIN, |page| !page.says("ACM-417"))
+        .expect("1 shows my issues");
+    page.press("2").expect("2");
+    page.wait_for(WITHIN, |page| page.says("ACM-417"))
+        .expect("2 shows all issues");
+    let asked = linear.times("AllIssues");
+    page.press("r").expect("r");
+    page.wait_for(WITHIN, |_| linear.times("AllIssues") > asked)
+        .expect("r asks Linear again");
+    page.advance(0.5).expect("a moment");
+    // The slash goes to the filter, and Enter there opens the issue.
+    page.press("/").expect("slash");
+    page.type_text("bug").expect("the filter is typed");
+    page.wait_for(WITHIN, |page| page.says(" of 19"))
+        .unwrap_or_else(|why| panic!("the filter narrows the list: {why:?}: {}", said(&page)));
+    page.press("escape").expect("escape clears the filter");
+    page.press("escape").expect("escape leaves the field");
+    page.wait_for(WITHIN, |page| !page.says(" of 19"))
+        .expect("the filter is gone");
+    // w and c open their forms, the card of keys and the palette open and close.
+    page.press("down").expect("down");
+    page.press("w").expect("w");
+    page.wait_for(WITHIN, |page| page.says("Open in"))
+        .unwrap_or_else(|why| panic!("w opens the form: {why:?}: {}", said(&page)));
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| !page.says("Open in"))
+        .expect("escape puts the form away");
+    page.press("c").expect("c");
+    page.wait_for(WITHIN, |page| page.says("Create issue"))
+        .unwrap_or_else(|why| panic!("c opens the form: {why:?}: {}", said(&page)));
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| !page.says("Create issue"))
+        .expect("escape puts the form away");
+    page.press("?").expect("?");
+    page.wait_for(WITHIN, |page| page.says("Keys"))
+        .expect("? opens the card");
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| !page.says("Select all"))
+        .expect("escape closes the card");
+    // (The card glides away: the keys are the page's when it has gone.)
+    page.advance(0.6).expect("a moment");
+    page.press("mod+k").expect("mod+k");
+    page.wait_for(WITHIN, |page| page.says("Do it"))
+        .expect("the palette opens");
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| !page.says("Do it"))
+        .expect("escape closes the palette");
+    // The keys that change issues: s, p, a and l open their menus, e makes the title a field.
+    for key in ["s", "p", "a", "l"] {
+        let entries = menu_after(&mut page, key);
+        assert!(entries.len() > 1, "{key} opens a menu: {entries:?}");
+        page.press("escape").expect("escape");
+        page.wait_for(WITHIN, |page| page.menu().is_none())
+            .expect("escape closes the menu");
+    }
+    page.press("e").expect("e");
+    page.wait_for(WITHIN, |page| has_field(page, "panel-title/field"))
+        .unwrap_or_else(|why| panic!("e makes the title a field: {why:?}: {}", said(&page)));
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| !has_field(page, "panel-title/field"))
+        .expect("escape leaves the title");
+    assert!(linear.changed().is_empty(), "{:?}", linear.changed());
+    // And after all of it the arrows and Enter are still the list's.
+    the_keys_are_the_lists(&mut page, "every key");
 }

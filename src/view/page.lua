@@ -449,6 +449,23 @@ local function follow()
 	end
 end
 
+-- A press of the pointer does not leave the keyboard on the control it pressed: after a click on
+-- Refresh, on a part of the scope, on Close or on a value of the issue open, the arrows and Enter are
+-- still the list's (Tab is what takes the keyboard to a button). A form, a card and a field (the filter,
+-- the title) keep the keyboard they have, and so does a press whose reply sends the keyboard into a
+-- field. (The library's own controls put the keyboard on what was pressed, a part of the scope for
+-- one, whose arrows would then choose the scope: that is what is taken back.) The reply that gives it
+-- back, or nil.
+local function keyboard_back(reply)
+	if S.screen ~= "list" or modal() or form_open() or u.holder ~= "page" or u:target() == nil then
+		return nil
+	end
+	if type(reply) == "table" and type(reply.keyboard) == "table" then
+		return nil
+	end
+	return u:focus(nil)
+end
+
 local function handle(event)
 	local kind = event.type
 	if kind == "key" and S.screen == "list" and (new.is_open() or work.is_open()) and not modal() then
@@ -496,21 +513,9 @@ local function handle(event)
 		elseif not taken then
 			reply = b.merge(reply, markdown.handle(event))
 		end
+		reply = b.merge(reply, keyboard_back(reply))
 	elseif kind == "key" and not taken then
 		reply = b.merge(reply, key(event))
-	end
-	-- A click does not leave the keyboard on what it pressed: the list has the arrows and Enter again,
-	-- and only Tab takes the keyboard to a button. A form, a card, a field (the filter, the title) keeps
-	-- the keyboard it was given, and so does a reply that sends it into a field.
-	if
-		kind == "release"
-		and S.screen == "list"
-		and not modal()
-		and not form_open()
-		and u.holder == "page"
-		and not (type(reply) == "table" and type(reply.keyboard) == "table")
-	then
-		reply = b.merge(reply, u:focus(nil))
 	end
 	follow()
 	return kit.take(reply)
