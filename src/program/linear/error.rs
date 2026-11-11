@@ -16,6 +16,9 @@ pub enum Error {
     /// Linear took the key and said it may not do this (HTTP 403, or an error of the kind
     /// `forbidden`): a key that can read and not write.
     Forbidden,
+    /// A write was sent, and what came back does not say whether Linear made it (no answer, or
+    /// an error), and asking for it afterwards did not settle it either.
+    Unsure,
 }
 
 impl Error {
@@ -26,7 +29,7 @@ impl Error {
         match self {
             Self::Refused => "refused",
             Self::Unreachable(_) => "unreachable",
-            Self::Failed(_) | Self::Forbidden => "failed",
+            Self::Failed(_) | Self::Forbidden | Self::Unsure => "failed",
         }
     }
 }
@@ -38,6 +41,7 @@ impl fmt::Display for Error {
             Self::Unreachable(why) => write!(out, "Linear could not be reached: {why}"),
             Self::Failed(why) => out.write_str(why),
             Self::Forbidden => out.write_str("Linear did not allow this key to do that"),
+            Self::Unsure => out.write_str("it is not known whether Linear made it"),
         }
     }
 }
@@ -79,6 +83,7 @@ mod tests {
         assert_eq!(Error::Unreachable(String::new()).kind(), "unreachable");
         assert_eq!(Error::Failed(String::new()).kind(), "failed");
         assert_eq!(Error::Forbidden.kind(), "failed");
+        assert_eq!(Error::Unsure.kind(), "failed");
     }
 
     #[test]

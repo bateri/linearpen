@@ -23,9 +23,11 @@ local TABLE = {
 	{ id = "read_down", title = "Scroll the issue down", group = "Issue", keys = { "space" }, when = "reading" },
 	{ id = "read_up", title = "Scroll the issue up", group = "Issue", keys = { "shift+space" }, when = "reading" },
 	{ id = "work", title = "Work on the issue, or the ones selected", group = "Issue", keys = { "w" }, when = "workable" },
-	{ id = "next_field", title = "Next field", group = "Work on", keys = { "tab" }, native = true },
-	{ id = "choose", title = "Choose", group = "Work on", keys = { "left", "right" }, native = true },
-	{ id = "start", title = "Start the agent", group = "Work on", keys = { "mod+enter" }, when = "startable" },
+	{ id = "new", title = "New issue", group = "Issue", keys = { "c" }, when = "idle" },
+	{ id = "next_field", title = "Next field", group = "Work on, New issue", keys = { "tab" }, native = true },
+	{ id = "choose", title = "Choose", group = "Work on, New issue", keys = { "left", "right", "enter" }, native = true },
+	{ id = "start", title = "Start the agent", group = "Work on, New issue", keys = { "mod+enter" }, when = "startable" },
+	{ id = "create", title = "Create the issue", group = "Work on, New issue", keys = { "mod+enter" }, when = "creatable" },
 	{ id = "scope_mine", title = "Show my issues", group = "Everywhere", keys = { "1" }, when = "list" },
 	{ id = "scope_all", title = "Show all issues", group = "Everywhere", keys = { "2" }, when = "list" },
 	{ id = "filter", title = "Filter issues", group = "Everywhere", keys = { "/" }, when = "list" },
@@ -80,13 +82,17 @@ function commands.enabled(command)
 	return when ~= nil and when() == true
 end
 
+-- The entries given to the library, by id: the library keeps these tables and writes their keys
+-- every time the page is drawn, so that `settle` can change them.
+local LIBRARY = {}
+
 -- The list for the library's `ui.commands`: what the host is given, each with its `when` made a
 -- function.
 function commands.for_library()
 	local out = {}
 	for _, command in TABLE do
 		if not command.native then
-			out[#out + 1] = {
+			local entry = {
 				id = command.id,
 				title = command.title,
 				group = command.group,
@@ -95,9 +101,48 @@ function commands.for_library()
 					return commands.enabled(command)
 				end,
 			}
+			LIBRARY[command.id] = entry
+			out[#out + 1] = entry
 		end
 	end
 	return out
+end
+
+-- Whether `command` lists `words` among its keys.
+local function lists(command, words)
+	for _, keys in command.keys do
+		if keys == words then
+			return true
+		end
+	end
+	return false
+end
+
+-- Commands share keys (Command+Enter starts the agent in one form and makes the issue in the other),
+-- and the host gives a key to the first command that lists it, whether it can be done or not. So a
+-- key that several list is written on one of them: the first that can be done now, else the first.
+-- Before the page is drawn.
+function commands.settle()
+	for _, command in TABLE do
+		local entry = LIBRARY[command.id]
+		if entry ~= nil then
+			local kept = {}
+			for _, words in command.keys do
+				local owner = nil
+				for _, other in TABLE do
+					if not other.native and lists(other, words) then
+						if owner == nil or (not commands.enabled(owner) and commands.enabled(other)) then
+							owner = other
+						end
+					end
+				end
+				if owner == command then
+					kept[#kept + 1] = words
+				end
+			end
+			entry.keys = kept
+		end
+	end
 end
 
 -- The commands that can be done now and are not the cursor's keys, as the items of the palette.

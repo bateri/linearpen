@@ -13,6 +13,10 @@ local function apply(snapshot)
 	S.scope = snapshot.scope
 	S.refreshing = snapshot.refreshing == true
 	list.load(snapshot)
+	-- A new issue that is waited for is shown when it comes.
+	if act.listed ~= nil then
+		act.listed()
+	end
 end
 
 -- Tells the program what the page looks at (`scope`, `filter`, `closed`).

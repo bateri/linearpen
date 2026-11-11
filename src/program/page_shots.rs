@@ -8,6 +8,7 @@
 //! They need the system's fonts, so they are not part of the gate: `make shots` makes them.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
 use pencere_drive::headless::Error;
@@ -49,6 +50,25 @@ fn lists(size: (f32, f32), fonts: &Fonts) -> Result<Page, Error> {
     let linear = Canned::new(Mode::Fine);
     let session = session_over(&linear, Some("lin_api_test"), None);
     open(&session, size, Some(fonts), "ACM-412")
+}
+
+/// The page over the lists of a workspace with one team (as the design shows it), at `size`, and
+/// the Linear it asks.
+fn one_team(size: (f32, f32), fonts: &Fonts) -> Result<(Arc<Canned>, Page), Error> {
+    let linear = Canned::new(Mode::Fine);
+    linear.set_one_team();
+    let session = session_over(&linear, Some("lin_api_test"), None);
+    let page = open(&session, size, Some(fonts), "ACM-412")?;
+    Ok((linear, page))
+}
+
+/// The new issue form, opened with `c`, once the choices are there.
+fn new_form(page: &mut Page) -> Result<(), Error> {
+    page.press("c")?;
+    page.wait_for(Duration::from_secs(20), |page| {
+        page.bounds("new-value:state").is_some()
+    })?;
+    page.advance(0.6)
 }
 
 #[test]
@@ -95,6 +115,51 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     })?;
     page.advance(0.4)?;
     save(&page, &fonts, Palette::Dark, "narrow-issue.png");
+
+    // A new issue: the empty form, the form written (the host draws what is typed into a line, so the
+    // title is not in a picture made without one), the issue made and open beside the list, and the
+    // form in an 80 by 24 pane, where it takes the pane.
+    let (_linear, mut page) = one_team(BIG, &fonts)?;
+    new_form(&mut page)?;
+    save(&page, &fonts, Palette::Dark, "new.png");
+    save(&page, &fonts, Palette::Light, "light-new.png");
+    let (linear, mut page) = one_team(BIG, &fonts)?;
+    new_form(&mut page)?;
+    page.type_text("Return 429 when a key is over its limit")?;
+    page.press("enter")?;
+    page.type_text(
+        "The limiter drops the request without a word. Send 429 with Retry-After, and count it in the usage numbers.",
+    )?;
+    page.click("new-value:priority")?;
+    page.pick_titled("High")?;
+    page.click("new-value:labels")?;
+    page.pick_titled("bug")?;
+    page.click("new-value:labels")?;
+    page.pick_titled("api")?;
+    page.advance(0.6)?;
+    save(&page, &fonts, Palette::Dark, "new-typed.png");
+    page.press("mod+enter")?;
+    page.wait_for(Duration::from_secs(20), |page| {
+        page.bounds("panel-close").is_some() && page.says("ACM-900")
+    })?;
+    page.advance(0.6)?;
+    save(&page, &fonts, Palette::Dark, "created.png");
+    assert_eq!(linear.created().len(), 1);
+    let (_linear, mut page) = one_team(PANE, &fonts)?;
+    new_form(&mut page)?;
+    page.type_text("Return 429 when a key is over its limit")?;
+    page.press("enter")?;
+    page.type_text(
+        "The limiter drops the request without a word. Send 429 with Retry-After, and count it in the usage numbers.",
+    )?;
+    page.click("new-value:priority")?;
+    page.pick_titled("High")?;
+    page.click("new-value:labels")?;
+    page.pick_titled("bug")?;
+    page.click("new-value:labels")?;
+    page.pick_titled("api")?;
+    page.advance(0.6)?;
+    save(&page, &fonts, Palette::Dark, "narrow-new.png");
 
     // Issues selected, to be taken to an agent.
     let mut page = lists(BIG, &fonts)?;

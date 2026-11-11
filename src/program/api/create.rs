@@ -117,7 +117,7 @@ fn new_options(session: &Session, params: Which) -> Result<OptionsMessage, Failu
         )));
     };
     let options = session.options(&team.id).map_err(Failure::Linear)?;
-    let draft = draft::new_id().map_err(Failure::CreateFailed)?;
+    let draft = draft::new_id().map_err(|why| Failure::Linear(Error::Failed(why)))?;
     Ok(OptionsMessage {
         draft,
         team: team.id.clone(),
@@ -263,6 +263,10 @@ fn told(error: Error) -> Failure {
         Error::Refused | Error::Unreachable(_) => Failure::Linear(error),
         Error::Forbidden => Failure::CreateFailed(
             "Linear did not make it: this key cannot create issues".to_owned(),
+        ),
+        Error::Unsure => Failure::CreateFailed(
+            "Linear did not answer whole, so it may have made the issue: press Create again to find out"
+                .to_owned(),
         ),
         Error::Failed(why) => Failure::CreateFailed(format!(
             "Linear did not make it: {}",
@@ -426,6 +430,10 @@ mod tests {
         assert_eq!(
             words(told(Error::Forbidden)),
             "Linear did not make it: this key cannot create issues"
+        );
+        assert!(
+            words(told(Error::Unsure)).contains("may have made the issue"),
+            "an answer that settled nothing is not said to be a failure"
         );
         assert_eq!(
             words(told(Error::Failed(

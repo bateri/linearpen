@@ -145,6 +145,15 @@ local function work_button()
 	})
 end
 
+-- The button that opens the form of a new issue. Where the list has less room the key is in the line
+-- of keys under the page.
+local function new_button()
+	return kit.button("new", "New issue", {
+		suffix = not head.typing() and commands.label("new") or nil,
+		tip = "Write an issue and add it to Linear",
+	})
+end
+
 function head.view()
 	local width = S.room
 	local narrow = width < SIZE.narrow
@@ -168,8 +177,12 @@ function head.view()
 	if width >= SIZE.wide then
 		bar:child(refresh_button())
 	end
-	-- A list with no line has no issue to hand over: the button is not there, rather than dead.
-	if not S.work_open and list.count() > 0 then
+	-- A form is open in the place of the buttons that open one. A list with no line has no issue to
+	-- hand over: that button is not there, rather than dead.
+	if not S.form_open and width >= SIZE.roomy then
+		bar:child(new_button())
+	end
+	if not S.form_open and list.count() > 0 then
 		bar:child(work_button())
 	end
 	if not narrow then

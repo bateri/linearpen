@@ -28,6 +28,8 @@ local SIZE = {
 	-- A page this wide shows the labels of an issue, and this much the name of whose it is.
 	labels = 760,
 	assignee = 880,
+	-- The list's room from which the head holds New issue (below it the key is in the line of keys).
+	roomy = 760,
 	-- Of the 80 columns of a pane: a page this short drops what it can.
 	short = 440,
 }

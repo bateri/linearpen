@@ -189,7 +189,8 @@ digits and dashes.
 
 The teams and what each offers are asked of Linear when first needed and kept for the run; they are
 let go whenever the program asks for the lists again (`refresh`, and every five minutes). Errors:
-`bad-params`, `no-key`, `refused`, `unreachable`, `failed` (also where Linear has no team).
+`bad-params`, `no-key`, `refused`, `unreachable`, `failed` (also where Linear has no team, and where
+the program could not make the id of the draft).
 
 ### `create`
 
@@ -224,7 +225,10 @@ they come: the answer does not wait for them, and the page looks for the row in 
 Errors: `bad-params` (also an `id` that is not a UUID), `no-key`, `refused`, `unreachable`, and
 `create-failed`: Linear did not make it. The words say why: `Linear did not make it: this key cannot
 create issues` where the key is one that reads and may not write, else Linear's own words
-(`Linear did not make it: ...`).
+(`Linear did not make it: ...`). Where the answer was lost and asking for the issue by the id did
+not settle it either, it is not known that Linear did not make it, and the words say so
+(`Linear did not answer whole, so it may have made the issue: press Create again to find out`);
+pressing Create again sends the same `id`, which cannot make a second issue.
 
 ### `refresh`
 

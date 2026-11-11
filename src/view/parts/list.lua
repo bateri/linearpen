@@ -143,6 +143,16 @@ local function put(key)
 	return true
 end
 
+-- Puts the cursor on the issue with Linear's `id` and scrolls it into view. Its line, or nil where it
+-- is not in the list.
+function list.reveal_issue(id)
+	local key = "i:" .. id
+	if not put(key) then
+		return nil
+	end
+	return L.items[L.at[key]]
+end
+
 -- Moves the cursor as `name` says ("down", "up", "first", "last", "page_down", "page_up"). Whether it
 -- moved.
 function list.move(name)

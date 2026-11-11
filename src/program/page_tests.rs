@@ -34,6 +34,10 @@ const ALL_ISSUES: &str = include_str!("../../test/stand-in/all-issues.json");
 const VERIFY: &str = include_str!("../../test/stand-in/verify.json");
 const ISSUE: &str = include_str!("../../test/stand-in/issue.json");
 const REFUSED: &str = include_str!("../../test/stand-in/refused.json");
+const TEAMS: &str = include_str!("../../test/stand-in/teams.json");
+const NEW_ISSUE_OPTIONS: &str = include_str!("../../test/stand-in/new-issue-options.json");
+const CREATED_ISSUE: &str = include_str!("../../test/stand-in/created-issue.json");
+const CREATE_REFUSED: &str = include_str!("../../test/stand-in/create-refused.json");
 
 /// How Linear answers in a test.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -50,20 +54,162 @@ pub(crate) enum Mode {
     Held,
 }
 
+/// How Linear answers a new issue.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Create {
+    /// By making it: it is in the lists from then on.
+    Fine,
+    /// By not making it (an error of its own).
+    Refused,
+    /// By saying the key may not do it (HTTP 403).
+    Forbidden,
+}
+
 /// Linear, in memory: answers by the query's name with a fixture, and keeps what it was asked.
 pub(crate) struct Canned {
     mode: Mutex<Mode>,
+    create: Mutex<Create>,
     asked: Mutex<Vec<String>>,
     key: Mutex<Option<String>>,
+    /// The input of each `IssueCreate` that was sent, and the input of the one that made an issue.
+    sent: Mutex<Vec<serde_json::Value>>,
+    made: Mutex<Option<serde_json::Value>>,
+    /// Whether Linear has one team, and no label or project to choose.
+    bare: Mutex<bool>,
+    /// Whether Linear has one team.
+    one_team: Mutex<bool>,
 }
 
 impl Canned {
     pub(crate) fn new(mode: Mode) -> Arc<Self> {
         Arc::new(Self {
             mode: Mutex::new(mode),
+            create: Mutex::new(Create::Fine),
             asked: Mutex::new(Vec::new()),
             key: Mutex::new(None),
+            sent: Mutex::new(Vec::new()),
+            made: Mutex::new(None),
+            bare: Mutex::new(false),
+            one_team: Mutex::new(false),
         })
+    }
+
+    /// From now on Linear has one team and no label or project to choose.
+    pub(crate) fn set_bare(&self) {
+        *self.bare.lock().unwrap() = true;
+    }
+
+    /// From now on Linear has one team.
+    pub(crate) fn set_one_team(&self) {
+        *self.one_team.lock().unwrap() = true;
+    }
+
+    fn teams_text(&self) -> String {
+        if !*self.bare.lock().unwrap() && !*self.one_team.lock().unwrap() {
+            return TEAMS.to_owned();
+        }
+        let mut value: serde_json::Value = serde_json::from_str(TEAMS).unwrap();
+        value["data"]["teams"]["nodes"]
+            .as_array_mut()
+            .unwrap()
+            .remove(0);
+        value.to_string()
+    }
+
+    fn options_text(&self) -> String {
+        if !*self.bare.lock().unwrap() {
+            return NEW_ISSUE_OPTIONS.to_owned();
+        }
+        let mut value: serde_json::Value = serde_json::from_str(NEW_ISSUE_OPTIONS).unwrap();
+        value["data"]["team"]["labels"]["nodes"] = serde_json::json!([]);
+        value["data"]["team"]["projects"]["nodes"] = serde_json::json!([]);
+        value["data"]["issueLabels"]["nodes"] = serde_json::json!([]);
+        value.to_string()
+    }
+
+    /// How a new issue is answered from now on.
+    pub(crate) fn set_create(&self, create: Create) {
+        *self.create.lock().unwrap() = create;
+    }
+
+    /// The inputs of the `IssueCreate` requests that were sent, in order.
+    pub(crate) fn created(&self) -> Vec<serde_json::Value> {
+        self.sent.lock().unwrap().clone()
+    }
+
+    /// The created issue as a node of a list, where there is one.
+    fn made_node(&self) -> Option<serde_json::Value> {
+        let input = self.made.lock().unwrap().clone()?;
+        let mut node: serde_json::Value = serde_json::from_str(CREATED_ISSUE).ok()?;
+        node["id"] = input["id"].clone();
+        node["title"] = input["title"].clone();
+        node["priority"] = input["priority"].as_f64().unwrap_or(0.0).into();
+        let (name, kind, position) = match input["stateId"].as_str() {
+            Some("s-prog") => ("In Progress", "started", 2.0),
+            Some("s-back") => ("Backlog", "backlog", 0.0),
+            _ => ("Todo", "unstarted", 1.0),
+        };
+        node["state"] = serde_json::json!({
+            "id": input["stateId"], "name": name, "type": kind, "position": position });
+        let labels: Vec<serde_json::Value> = input["labelIds"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|id| match id.as_str()? {
+                "l-bug" => Some(("bug", "#eb5757")),
+                "l-api" => Some(("api", "#3e63dd")),
+                "l-customer" => Some(("Customer", "#f2994a")),
+                _ => None,
+            })
+            .map(|(name, color)| serde_json::json!({ "name": name, "color": color }))
+            .collect();
+        node["labels"]["nodes"] = labels.into();
+        node["assignee"] = match input["assigneeId"].as_str() {
+            Some("u-ada") => serde_json::json!({ "displayName": "Ada", "isMe": true }),
+            Some("u-deniz") => serde_json::json!({ "displayName": "Deniz", "isMe": false }),
+            _ => serde_json::Value::Null,
+        };
+        Some(node)
+    }
+
+    /// The made issue as `Issue` says it: with its description and no comments.
+    fn made_detail(&self) -> Option<serde_json::Value> {
+        let node = self.made_node()?;
+        let input = self.made.lock().unwrap().clone()?;
+        let mut value: serde_json::Value = serde_json::from_str(ISSUE).ok()?;
+        for key in [
+            "id",
+            "identifier",
+            "title",
+            "priority",
+            "state",
+            "labels",
+            "assignee",
+            "url",
+            "branchName",
+        ] {
+            value["data"]["issue"][key] = node[key].clone();
+        }
+        value["data"]["issue"]["description"] = input["description"].clone();
+        value["data"]["issue"]["comments"]["nodes"] = serde_json::json!([]);
+        value["data"]["issue"]["cycle"] = serde_json::Value::Null;
+        value["data"]["issue"]["project"] = serde_json::Value::Null;
+        Some(value)
+    }
+
+    /// A list of the fixtures with the created issue first, if one was made.
+    fn listing(&self, fixture: &str, mine: bool) -> String {
+        let Some(node) = self.made_node() else {
+            return fixture.to_owned();
+        };
+        let mut value: serde_json::Value = serde_json::from_str(fixture).unwrap();
+        let nodes = if mine {
+            &mut value["data"]["viewer"]["assignedIssues"]["nodes"]
+        } else {
+            &mut value["data"]["issues"]["nodes"]
+        };
+        nodes.as_array_mut().unwrap().insert(0, node);
+        value.to_string()
     }
 
     pub(crate) fn set(&self, mode: Mode) {
@@ -88,10 +234,18 @@ impl Canned {
 
 impl Transport for Canned {
     fn post(&self, key: &Key, body: &str) -> Result<Reply, LinearError> {
-        let name = ["Verify", "MyIssues", "AllIssues", "Issue"]
-            .into_iter()
-            .find(|name| body.contains(&format!(r#""operationName":"{name}""#)))
-            .unwrap_or("Other");
+        let name = [
+            "Verify",
+            "MyIssues",
+            "AllIssues",
+            "IssueCreate",
+            "NewIssueTeams",
+            "NewIssueOptions",
+            "Issue",
+        ]
+        .into_iter()
+        .find(|name| body.contains(&format!(r#""operationName":"{name}""#)))
+        .unwrap_or("Other");
         self.asked.lock().unwrap().push(name.to_owned());
         *self.key.lock().unwrap() = Some(key.expose().to_owned());
         let reply = |status, body: &str| {
@@ -108,12 +262,44 @@ impl Transport for Canned {
                 "the host name was not found".to_owned(),
             )),
             Mode::Refused => reply(401, REFUSED),
-            Mode::NothingAssigned if name == "MyIssues" => reply(200, MY_ISSUES_EMPTY),
+            Mode::NothingAssigned if name == "MyIssues" => {
+                reply(200, &self.listing(MY_ISSUES_EMPTY, true))
+            }
             _ => match name {
                 "Verify" => reply(200, VERIFY),
-                "MyIssues" => reply(200, MY_ISSUES),
-                "AllIssues" => reply(200, ALL_ISSUES),
-                "Issue" => reply(200, ISSUE),
+                "MyIssues" => reply(200, &self.listing(MY_ISSUES, true)),
+                "AllIssues" => reply(200, &self.listing(ALL_ISSUES, false)),
+                "Issue" => {
+                    let asked: serde_json::Value = serde_json::from_str(body).unwrap();
+                    let id = asked["variables"]["id"].as_str().unwrap_or_default();
+                    match self.made_detail() {
+                        Some(value) if value["data"]["issue"]["id"] == id => {
+                            reply(200, &value.to_string())
+                        }
+                        _ => reply(200, ISSUE),
+                    }
+                }
+                "NewIssueTeams" => reply(200, &self.teams_text()),
+                "NewIssueOptions" => reply(200, &self.options_text()),
+                "IssueCreate" => {
+                    let asked: serde_json::Value = serde_json::from_str(body).unwrap();
+                    let input = asked["variables"]["input"].clone();
+                    self.sent.lock().unwrap().push(input.clone());
+                    match *self.create.lock().unwrap() {
+                        Create::Refused => reply(400, CREATE_REFUSED),
+                        Create::Forbidden => reply(403, r#"{"errors":[{"message":"Forbidden"}]}"#),
+                        Create::Fine => {
+                            let id = input["id"].as_str().unwrap_or_default().to_owned();
+                            *self.made.lock().unwrap() = Some(input.clone());
+                            reply(
+                                200,
+                                &serde_json::json!({ "data": { "issueCreate": { "success": true,
+                                    "issue": { "id": id, "identifier": "ACM-900" } } } })
+                                .to_string(),
+                            )
+                        }
+                    }
+                }
                 _ => Err(LinearError::Failed(
                     "a query the test does not know".to_owned(),
                 )),
@@ -400,7 +586,12 @@ fn without_a_key_the_page_asks_for_one_and_keeps_what_linear_takes() {
     let session = session_over(&linear, None, Some(dir.clone()));
     let mut page = open(&session, WIDE, None, "Connect Linear").expect("the page opens");
     assert!(
-        page.says("A key with Read access is enough."),
+        page.says("A key with Read access shows your issues."),
+        "{}",
+        said(&page)
+    );
+    assert!(
+        page.says("To make new ones it needs Create issues too."),
         "{}",
         said(&page)
     );
@@ -941,6 +1132,8 @@ fn open_form(page: &mut Page) {
     page.press("w").expect("w");
     page.wait_for(WITHIN, |page| page.says("Open in"))
         .unwrap_or_else(|why| panic!("the form opens: {why:?}: {}", said(page)));
+    // (The keyboard is in the title a moment after the form is drawn.)
+    page.advance(0.3).expect("a moment");
 }
 
 #[test]
@@ -1188,4 +1381,382 @@ fn in_an_80_by_24_pane_the_form_takes_the_pane_and_keeps_start_inside_it() {
             "{name}: {at:?}"
         );
     }
+}
+
+// --- A new issue ---------------------------------------------------------------------------------
+
+/// Opens the form with `c` and waits until the program has said what can be chosen.
+fn open_new(page: &mut Page) {
+    page.press("c").expect("c");
+    page.wait_for(WITHIN, |page| page.bounds("new-value:state").is_some())
+        .unwrap_or_else(|why| panic!("the form opens: {why:?}: {}", said(page)));
+}
+
+/// The titles of the entries of the menu that is open.
+fn menu_titles(page: &Page) -> Vec<String> {
+    page.menu()
+        .expect("a menu is open")
+        .entries
+        .iter()
+        .filter_map(|entry| match entry {
+            pencere_view::MenuEntry::Item { title, .. } => Some(title.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Presses the value `kind` and picks the entry titled `title` of its menu.
+fn pick_value(page: &mut Page, kind: &str, title: &str) {
+    page.click(&format!("new-value:{kind}"))
+        .unwrap_or_else(|why| panic!("{kind} is pressed: {why:?}"));
+    page.pick_titled(title)
+        .unwrap_or_else(|why| panic!("{title:?} is picked: {why:?}: {:?}", menu_titles(page)));
+}
+
+/// Waits until `linear` has been asked for `count` issues.
+fn made(linear: &Arc<Canned>, page: &mut Page, count: usize) {
+    page.wait_for(WITHIN, |_| linear.created().len() >= count)
+        .unwrap_or_else(|why| {
+            panic!(
+                "Linear is asked: {why:?}: {:?}: {}",
+                linear.created(),
+                said(page)
+            )
+        });
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn c_opens_the_form_on_the_title_and_create_waits_for_one() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    open_new(&mut page);
+    // The form is beside the list, and the keyboard is on the title: letters are its own.
+    assert!(page.says("Create issue"), "{}", said(&page));
+    page.type_text("cr1w").expect("the title is typed");
+    assert_eq!(page.field("new-title/field"), Some("cr1w"));
+    // (Nothing of the list's was done: the form is still the form.)
+    assert!(page.says("Create issue"), "{}", said(&page));
+    // With no title there is nothing to make: the key and the button do nothing.
+    for _ in 0..4 {
+        page.press("backspace").expect("backspace");
+    }
+    page.press("mod+enter").expect("mod+enter");
+    page.click("new-create").ok();
+    page.advance(0.5).expect("a moment");
+    assert!(linear.created().is_empty(), "{:?}", linear.created());
+    assert_eq!(linear.times("IssueCreate"), 0);
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn enter_in_the_title_goes_to_the_description_and_tab_goes_through_the_values() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    open_new(&mut page);
+    page.type_text("Retry the webhook").expect("the title");
+    page.press("enter").expect("enter");
+    assert!(
+        linear.created().is_empty(),
+        "Enter in the title does not make the issue"
+    );
+    // The description has the keyboard: the page's keys are letters there.
+    page.type_text("wcr12 it fails").expect("the description");
+    assert_eq!(
+        page.editor_text("new-about1").as_deref(),
+        Some("wcr12 it fails")
+    );
+    // Tab goes through the values, in the order they stand, each one opening its menu on Enter.
+    for (kind, first) in [
+        ("team", "WEB web"),
+        ("state", "In Progress"),
+        ("priority", "No priority"),
+        ("assignee", "Me"),
+        ("labels", "api"),
+        ("project", "No project"),
+    ] {
+        page.press("tab").expect("tab");
+        page.press("enter").expect("enter");
+        let titles = menu_titles(&page);
+        assert!(
+            titles.iter().any(|title| title.ends_with(first)),
+            "{kind}: {titles:?}"
+        );
+        page.press("escape").expect("escape closes the menu");
+    }
+    // Then Create (it can be pressed: there is a title), then Close, then the title again.
+    page.press("tab").expect("tab");
+    page.press("tab").expect("tab");
+    page.press("tab").expect("tab");
+    page.type_text("!").expect("the title again");
+    assert_eq!(
+        page.field("new-title/field"),
+        Some("Retry the webhook!"),
+        "{}",
+        said(&page)
+    );
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_value_opens_its_menu_and_the_pick_is_written_to_the_control() {
+    let (_linear, _session, mut page) = open_lists(WIDE);
+    open_new(&mut page);
+    page.click("new-value:priority").expect("priority");
+    assert_eq!(
+        menu_titles(&page),
+        ["\u{2713} No priority", "Urgent", "High", "Medium", "Low"]
+    );
+    page.pick_titled("High").expect("High");
+    page.wait_for(WITHIN, |page| {
+        page.words_in("new-value:priority")
+            .contains(&"High".to_owned())
+    })
+    .unwrap_or_else(|why| panic!("{why:?}: {:?}", page.words_in("new-value:priority")));
+    // Status offers the open ones, in the order of their kinds, and the team's own is marked.
+    page.click("new-value:state").expect("state");
+    assert_eq!(
+        menu_titles(&page),
+        ["Backlog", "\u{2713} Todo", "In Progress"]
+    );
+    page.pick_titled("In Progress").expect("In Progress");
+    page.wait_for(WITHIN, |page| {
+        page.words_in("new-value:state")
+            .contains(&"In Progress".to_owned())
+    })
+    .unwrap_or_else(|why| panic!("{why:?}: {:?}", page.words_in("new-value:state")));
+    // The person is the assignee to begin with, the others who are active follow; one can be no one.
+    page.click("new-value:assignee").expect("assignee");
+    assert_eq!(menu_titles(&page), ["\u{2713} Me", "Deniz", "No one"]);
+    page.pick_titled("No one").expect("No one");
+    page.wait_for(WITHIN, |page| {
+        page.words_in("new-value:assignee")
+            .contains(&"Assignee".to_owned())
+    })
+    .unwrap_or_else(|why| panic!("{why:?}: {:?}", page.words_in("new-value:assignee")));
+    // A project that is done is not offered; the issue may have none.
+    page.click("new-value:project").expect("project");
+    assert_eq!(menu_titles(&page), ["\u{2713} No project", "Billing"]);
+    page.pick_titled("Billing").expect("Billing");
+    page.wait_for(WITHIN, |page| {
+        page.words_in("new-value:project")
+            .contains(&"Billing".to_owned())
+    })
+    .unwrap_or_else(|why| panic!("{why:?}: {:?}", page.words_in("new-value:project")));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn labels_are_picked_one_at_a_time_and_a_second_pick_takes_one_off() {
+    let (_linear, _session, mut page) = open_lists(WIDE);
+    open_new(&mut page);
+    // (A group of labels is not offered; those of the workspace are, with the team's.)
+    page.click("new-value:labels").expect("labels");
+    assert_eq!(menu_titles(&page), ["api", "bug", "Customer"]);
+    page.pick_titled("bug").expect("bug");
+    pick_value(&mut page, "labels", "api");
+    page.wait_for(WITHIN, |page| {
+        let words = page.words_in("new-value:labels");
+        words.contains(&"bug".to_owned()) && words.contains(&"api".to_owned())
+    })
+    .unwrap_or_else(|why| panic!("{why:?}: {:?}", page.words_in("new-value:labels")));
+    // They are said in the order they were chosen.
+    let words = page.words_in("new-value:labels");
+    assert!(
+        words.iter().position(|word| word == "bug") < words.iter().position(|word| word == "api"),
+        "{words:?}"
+    );
+    page.click("new-value:labels").expect("labels");
+    assert_eq!(
+        menu_titles(&page),
+        ["\u{2713} api", "\u{2713} bug", "Customer"]
+    );
+    page.pick_titled("\u{2713} bug").expect("bug off");
+    page.wait_for(WITHIN, |page| {
+        let words = page.words_in("new-value:labels");
+        !words.contains(&"bug".to_owned()) && words.contains(&"api".to_owned())
+    })
+    .unwrap_or_else(|why| panic!("{why:?}: {:?}", page.words_in("new-value:labels")));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_value_with_nothing_to_choose_is_not_drawn() {
+    let linear = Canned::new(Mode::Fine);
+    linear.set_bare();
+    let session = session_over(&linear, Some("lin_api_test"), None);
+    let mut page = open(&session, WIDE, None, "ACM-412").expect("the page opens");
+    open_new(&mut page);
+    for name in ["new-value:team", "new-value:labels", "new-value:project"] {
+        assert!(page.bounds(name).is_none(), "{name}: {}", said(&page));
+    }
+    for name in [
+        "new-value:state",
+        "new-value:priority",
+        "new-value:assignee",
+    ] {
+        assert!(page.bounds(name).is_some(), "{name}: {}", said(&page));
+    }
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn command_enter_makes_the_issue_once_and_it_is_under_the_cursor_with_the_panel_open() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    // A filter is on: the issue made must not be hidden by it.
+    page.press("/").expect("slash");
+    page.type_text("rate").expect("the filter");
+    page.wait_for(WITHIN, |page| page.says(" of 14"))
+        .expect("the filter is on");
+    page.press("escape").expect("escape");
+    page.press("escape").expect("escape");
+    open_new(&mut page);
+    page.type_text("Retry the webhook").expect("the title");
+    page.press("enter").expect("enter");
+    page.type_text("It fails twice.").expect("the description");
+    pick_value(&mut page, "priority", "High");
+    pick_value(&mut page, "labels", "bug");
+    pick_value(&mut page, "project", "Billing");
+    // The group of Backlog is folded in the list: the issue goes there, and the group opens.
+    pick_value(&mut page, "state", "Backlog");
+    page.press("mod+enter").expect("mod+enter");
+    // (A second press while it is on its way makes nothing.)
+    page.press("mod+enter").ok();
+    made(&linear, &mut page, 1);
+    cursor_on(&mut page, "ACM-900");
+    page.wait_for(WITHIN, |page| page.bounds("panel-close").is_some())
+        .unwrap_or_else(|why| panic!("the issue opens: {why:?}: {}", said(&page)));
+    assert!(page.bounds("new-create").is_none(), "{}", said(&page));
+    assert!(page.says("Retry the webhook"), "{}", said(&page));
+    assert!(!page.says(" of 14"), "the filter is off: {}", said(&page));
+    let sent = linear.created();
+    assert_eq!(sent.len(), 1, "{sent:?}");
+    let input = &sent[0];
+    assert_eq!(input["id"].as_str().map(str::len), Some(36), "{input}");
+    assert_eq!(input["teamId"], "team-acm");
+    assert_eq!(input["title"], "Retry the webhook");
+    assert_eq!(input["description"], "It fails twice.");
+    assert_eq!(input["stateId"], "s-back");
+    assert_eq!(input["priority"], 2);
+    assert_eq!(input["assigneeId"], "u-ada");
+    assert_eq!(input["labelIds"], serde_json::json!(["l-bug"]));
+    assert_eq!(input["projectId"], "p-1");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn an_issue_for_someone_else_is_shown_in_all_issues_and_the_next_draft_begins_empty() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    open_new(&mut page);
+    page.type_text("For Deniz").expect("the title");
+    pick_value(&mut page, "assignee", "Deniz");
+    page.click("new-create").expect("Create is pressed");
+    made(&linear, &mut page, 1);
+    cursor_on(&mut page, "ACM-900");
+    assert!(page.says("All issues"), "{}", said(&page));
+    assert_eq!(linear.created()[0]["assigneeId"], "u-deniz");
+    // A new draft: the project and the team of this one, and nothing else.
+    page.press("escape").ok();
+    open_new(&mut page);
+    page.advance(0.3).expect("a moment");
+    assert_eq!(page.field("new-title/field").unwrap_or(""), "");
+    assert_eq!(page.editor_text("new-about2").as_deref(), Some(""));
+    page.type_text("Another").expect("the title");
+    page.press("mod+enter").expect("mod+enter");
+    made(&linear, &mut page, 2);
+    let sent = linear.created();
+    assert_ne!(sent[0]["id"], sent[1]["id"], "each draft has its own id");
+    assert!(sent[1].get("description").is_none(), "{sent:?}");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn escape_keeps_the_draft_and_c_brings_it_back() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    open_new(&mut page);
+    page.type_text("Keep this").expect("the title");
+    page.press("enter").expect("enter");
+    page.type_text("and this").expect("the description");
+    pick_value(&mut page, "priority", "Low");
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| page.bounds("new-create").is_none())
+        .unwrap_or_else(|why| panic!("the form is put away: {why:?}: {}", said(&page)));
+    assert!(page.says("ACM-412"), "{}", said(&page));
+    open_new(&mut page);
+    page.advance(0.6).expect("a moment");
+    page.press("mod+enter").expect("mod+enter");
+    made(&linear, &mut page, 1);
+    let input = &linear.created()[0];
+    assert_eq!(input["title"], "Keep this", "{input}");
+    assert_eq!(input["description"], "and this", "{input}");
+    assert_eq!(input["priority"], 4, "{input}");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_refusal_is_said_in_the_form_with_what_was_written_and_create_again_sends_the_same_draft() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    linear.set_create(Create::Refused);
+    open_new(&mut page);
+    page.type_text("A title").expect("the title");
+    page.press("mod+enter").expect("mod+enter");
+    page.wait_for(WITHIN, |page| page.says("title must be shorter"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    assert!(
+        page.says("Linear did not make it"),
+        "the words are Linear's: {}",
+        said(&page)
+    );
+    assert!(page.bounds("new-create").is_some(), "{}", said(&page));
+    assert_eq!(page.field("new-title/field"), Some("A title"));
+    // The person tries again; the draft is the same one, and this time Linear makes it.
+    linear.set_create(Create::Fine);
+    page.press("mod+enter").expect("mod+enter");
+    made(&linear, &mut page, 2);
+    cursor_on(&mut page, "ACM-900");
+    let sent = linear.created();
+    assert_eq!(sent[0]["id"], sent[1]["id"], "{sent:?}");
+    // A key that may not create says so in words of its own.
+    linear.set_create(Create::Forbidden);
+    open_new(&mut page);
+    page.type_text("Second").expect("the title");
+    page.press("mod+enter").expect("mod+enter");
+    page.wait_for(WITHIN, |page| page.says("this key cannot create issues"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn in_an_80_by_24_pane_the_form_takes_the_pane_and_keeps_create_inside_it() {
+    let (_linear, _session, mut page) = open_lists(PANE);
+    open_new(&mut page);
+    page.type_text("A title").expect("the title");
+    assert!(!page.says("ACM-398"), "the list gives way: {}", said(&page));
+    for name in ["new-title/field", "new-close", "new-create"] {
+        let at = page
+            .bounds(name)
+            .unwrap_or_else(|| panic!("{name} is laid out"));
+        assert!(
+            at.x >= 0.0 && at.x + at.w <= PANE.0 + 0.5 && at.y + at.h <= PANE.1 + 0.5,
+            "{name}: {at:?}"
+        );
+    }
+    // Esc puts it away and the list is back.
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| page.says("ACM-412"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn an_issue_made_while_all_issues_is_shown_leaves_the_list_as_it_is() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    page.press("2").expect("2");
+    page.wait_for(WITHIN, |page| page.says("ACM-417"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    open_new(&mut page);
+    page.type_text("For me, from all").expect("the title");
+    page.press("mod+enter").expect("mod+enter");
+    made(&linear, &mut page, 1);
+    cursor_on(&mut page, "ACM-900");
+    // (It is for the person, and the list that is shown is still All issues.)
+    assert!(page.says("ACM-417"), "{}", said(&page));
 }

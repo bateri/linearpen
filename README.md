@@ -2,7 +2,8 @@
 
 Your Linear issues in a terminal pane, and an agent started on the ones you pick: a list grouped
 by state, an issue beside it with its description and comments, and Claude, Codex or Cursor
-working on what you chose in the pane next to it. It only reads: nothing is changed in Linear.
+working on what you chose in the pane next to it. You can write a new issue in it too, and that is
+the one thing it changes in Linear.
 
 <img src="docs/list.png" width="720" alt="linearpen: the issues assigned to you, grouped by state">
 
@@ -27,8 +28,8 @@ target/release/linearpen
 
 ### The key
 
-linearpen asks Linear with a personal API key that has Read permission. Make one in Linear under
-Settings, Account, Security. A pane that has no key asks for one (the field hides what you type),
+linearpen asks Linear with a personal API key that has Read permission, and Create issues too if
+you want to make new issues in it. Make one in Linear under Settings, Account, Security. A pane that has no key asks for one (the field hides what you type),
 tries it with a question to Linear and keeps it in the file `key` of `~/.config/linearpen` (or of
 `$XDG_CONFIG_HOME/linearpen`), made readable by you alone. `LINEAR_API_KEY` in the environment is
 used first, and kept nowhere. A key file that other users can read is still read, and `linearpen --text` warns about it.
@@ -42,6 +43,25 @@ each saying whose it is), grouped by state with the backlog folded, and asked of
 five minutes. `/` filters it by title, identifier or label. Enter opens an issue beside the list
 (from the filter too), with its description, its comments, its cycle, its project and who has it;
 Space scrolls it, and `Open in Linear` puts it in your browser. In a pane too narrow for both, the issue takes the pane.
+
+### A new issue
+
+<img src="docs/new.png" width="720" alt="linearpen: the form of a new issue beside the list">
+
+`c` opens a form beside the list with what Linear's own asks: a title, a description, and the
+values of the issue: the team (where the workspace has more than one), its status, its priority,
+who it is assigned to (you, to begin with), its labels and its project. Each value is a button that
+says what it is now and opens a menu of the others, and Tab goes through them all. `⌘Enter`, or
+`Create issue`, makes the issue.
+
+<img src="docs/created.png" width="720" alt="linearpen: the issue that was made, under the cursor with its panel open">
+
+The list then shows the issue where it is, under the cursor and open beside the list, with its group
+unfolded and the filter off. `Esc` puts the form away and keeps what you wrote until the issue is
+made. If Linear does not make it the form says why, with what you wrote still in it. The issue is
+sent once, with an identity the program gave the draft, so pressing Create again after an answer that
+was lost asks Linear for that issue before it sends anything else and never makes two. A key without
+Create issues permission is told so in the form.
 
 ### Work on an issue
 
@@ -82,18 +102,23 @@ Everything the mouse does, the keys do too. The line at the foot says what the k
 | `o`                   | open it in Linear                                                    |
 | `Space`, `⇧ Space`    | scroll the open issue down, up                                       |
 | `x`, `Shift ↑↓`, `⌘A` | select the issue, select more, select all                            |
-| `w`, `⌘Enter`         | work on the issue or the selected, start the agent                   |
+| `w`                   | work on the issue or the selected                                    |
+| `c`                   | write a new issue                                                    |
+| `⌘Enter`              | start the agent, or create the issue, in the form that is open       |
 | `1` `2`               | My issues, All issues                                                |
 | `/`                   | filter                                                               |
 | `r`                   | ask Linear again                                                     |
 | `⌘K`, `?`             | find a command, the card of keys                                     |
 | `Esc`                 | close what is on top: the form, the issue, the selection, the filter |
 
-## It only reads
+## It writes one thing
 
-Linear is asked questions and never told anything: no query in linearpen changes data, and a test
-reads every query it sends to see that none is a mutation. Writing to Linear would be a decision of
-its own.
+The only thing linearpen tells Linear is a new issue: its one mutation, `IssueCreate`, is sent when
+you press Create in the form and not otherwise, and the list of mutations it may send is one place
+in the program that a test checks every query against, refusing any other before it is sent. A
+state, an assignee, a comment, an archive or a deletion changed from here would be a decision of its
+own. It does not send a new issue twice by itself: the draft has an identity, and an issue whose
+answer was lost is asked for by it.
 
 ## It talks to Linear with `curl`
 

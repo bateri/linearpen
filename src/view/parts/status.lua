@@ -7,6 +7,7 @@ local kit = require("../lib/kit")
 local commands = require("./commands")
 local head = require("./head")
 local list = require("./list")
+local new = require("./new")
 
 local b, u, S, SIZE, act = kit.b, kit.u, kit.S, kit.SIZE, kit.act
 
@@ -37,8 +38,8 @@ function status.finish()
 			priority = 2,
 		}
 	end
-	-- (In the form `?` is a character of the words for the agent, not the card of keys.)
-	if not S.work_open then
+	-- (In a form `?` is a character of the words, not the card of keys.)
+	if not S.form_open then
 		finish[#finish + 1] = {
 			key = "help",
 			words = hint({ "help" }, "keys"),
@@ -64,7 +65,19 @@ local function work_hints()
 	}
 end
 
+-- What the keyboard does in the form of a new issue: Tab goes on, and on a value Enter chooses.
+local function new_hints()
+	local start = { { key = "next_field", words = hint({ "next_field" }, "next field"), priority = 8 } }
+	if new.on_value() then
+		start[#start + 1] = { key = "choose", words = hint({ "open" }, "choose"), priority = 6 }
+	end
+	return start
+end
+
 function status.view()
+	if S.new_open then
+		return u:status("status", { start = new_hints(), finish = status.finish() })
+	end
 	if S.work_open then
 		return u:status("status", { start = work_hints(), finish = status.finish() })
 	end
@@ -100,6 +113,10 @@ function status.view()
 	end
 	if S.room < SIZE.wide then
 		start[#start + 1] = { key = "refresh", words = hint({ "refresh" }, "refresh"), priority = 3 }
+	end
+	-- Where the head has no button for it (the list has too little room) the key is said here.
+	if S.room < SIZE.roomy and not typing then
+		start[#start + 1] = { key = "new", words = hint({ "new" }, "new issue"), priority = 4 }
 	end
 	local finish = status.finish()
 	return u:status("status", { start = start, finish = finish })

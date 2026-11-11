@@ -415,8 +415,9 @@ impl Session {
     /// Makes the issue of the draft in Linear: the program's one write. It is sent once. Where it
     /// did not come back whole (no answer, or an error), the issue is asked for by the id of the
     /// draft, which Linear took as the issue's own: if it is there it was made, and that is the
-    /// answer; if not, the failure is told and nothing is sent again unless the person asks again,
-    /// with the same id. A key Linear does not take cannot have made it, and is not asked about.
+    /// answer; if Linear says there is none, the failure is told; if the asking comes to nothing too,
+    /// it is not known (`Error::Unsure`). Nothing is sent again unless the person asks again, with
+    /// the same id. A key Linear does not take cannot have made it, and is not asked about.
     pub fn create(&self, input: &NewIssue) -> Result<Created, Error> {
         let key = self.key()?;
         let transport = self.transport();
@@ -437,7 +438,12 @@ impl Session {
                     identifier: issue.identifier,
                 })
             }
-            _ => Err(failure),
+            // Linear has no such issue, or has another: the draft was not made.
+            Ok(_) => Err(failure),
+            Err(Error::Failed(why)) if why.to_ascii_lowercase().contains("not found") => {
+                Err(failure)
+            }
+            Err(_) => Err(Error::Unsure),
         }
     }
 
@@ -684,6 +690,16 @@ mod tests {
             session.create(&draft()).unwrap_err(),
             Error::Unreachable("down".to_owned())
         );
+    }
+
+    #[test]
+    fn a_create_that_cannot_be_asked_about_is_not_known_to_have_failed() {
+        let (session, sent) = answered(vec![
+            Err(Error::Unreachable("down".to_owned())),
+            Err(Error::Unreachable("down".to_owned())),
+        ]);
+        assert_eq!(session.create(&draft()).unwrap_err(), Error::Unsure);
+        assert_eq!(sent.lock().unwrap().len(), 2);
     }
 
     #[test]

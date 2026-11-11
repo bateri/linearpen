@@ -339,6 +339,20 @@ fn only_create_names_the_mutation() {
             _ => assert_eq!(uses, 0, "{} names the mutation", path.display()),
         }
     }
+    // Nothing else posts a body to Linear but `run`, which reads the operation before it sends it,
+    // and the function that makes the issue is called from the session alone.
+    for (path, text) in &found {
+        let name = path.file_name().unwrap().to_str().unwrap();
+        if name == "tests.rs" || name == "page_tests.rs" {
+            continue;
+        }
+        let posts = text.matches(".post(").count();
+        let expected = usize::from(path.ends_with("linear/mod.rs"));
+        assert_eq!(posts, expected, "{} posts to Linear", path.display());
+        let makes = text.matches("linear::create(").count();
+        let expected = usize::from(path.ends_with("program/session.rs"));
+        assert_eq!(makes, expected, "{} makes an issue", path.display());
+    }
 }
 
 const TEAM_ID: &str = "team-acm";

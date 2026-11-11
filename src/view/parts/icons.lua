@@ -117,6 +117,41 @@ function icons.arrow(closed, color)
 	return b.canvas({ path:fill(color or "dim") }):size(9, 9):no_shrink()
 end
 
+-- Someone: a head over shoulders, for the assignee.
+function icons.person()
+	local color = b.alpha("foreground", 0.75)
+	return canvas({
+		b.path():circle(7, 5, 2.3):stroke(1.4, color),
+		b.path():move_to(2.8, 12):cubic_to(2.8, 6.6, 11.2, 6.6, 11.2, 12):stroke(1.4, color),
+	}):no_shrink()
+end
+
+-- A box seen from a corner, for the project.
+function icons.cube()
+	local color = b.alpha("foreground", 0.75)
+	return canvas({
+		b.path()
+			:move_to(7, 1.8)
+			:line_to(11.6, 4.4)
+			:line_to(11.6, 9.6)
+			:line_to(7, 12.2)
+			:line_to(2.4, 9.6)
+			:line_to(2.4, 4.4)
+			:close()
+			:stroke(1.3, color),
+		b.path():move_to(2.6, 4.5):line_to(7, 7):line_to(11.4, 4.5):move_to(7, 7):line_to(7, 12):stroke(1.3, color),
+	}):no_shrink()
+end
+
+-- A tag, for the labels.
+function icons.tag()
+	local color = b.alpha("foreground", 0.75)
+	return canvas({
+		b.path():move_to(2, 2.6):line_to(6.6, 2.6):line_to(11.8, 7.8):line_to(7.6, 12):line_to(2, 6.4):close():stroke(1.3, color),
+		b.path():circle(4.8, 5.2, 0.9):fill(color),
+	}):no_shrink()
+end
+
 -- The dot of a label, in the colour Linear gave it: data, not a role of the theme.
 function icons.dot(color)
 	return b.div():size(7, 7):rounded(4):bg(color or "dim"):no_shrink()

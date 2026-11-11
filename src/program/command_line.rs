@@ -11,7 +11,8 @@ usage: linearpen [--text]
 
 In a terminal that shows pencere views (bateri) linearpen opens in the pane. In any other it
 prints the issues as text and exits. The Linear API key is read from LINEAR_API_KEY, or from the
-file `key` in ~/.config/linearpen. linearpen only reads: nothing is changed in Linear.
+file `key` in ~/.config/linearpen. linearpen writes one thing to Linear, the issues you make
+with its New issue form; nothing else is changed.
 ";
 
 /// What a run is asked to do.

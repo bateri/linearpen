@@ -14,7 +14,7 @@ local H = { open = false }
 local SCROLL = "help/scroll"
 
 -- The groups of the card, in the order they stand in the table.
-local ORDER = { "Move", "Select", "Issue", "Work on", "Everywhere" }
+local ORDER = { "Move", "Select", "Issue", "Work on, New issue", "Everywhere" }
 
 function help.is_open()
 	return H.open
@@ -32,26 +32,50 @@ local function label(words)
 	return b.text(string.upper(words)):text_size(11.5):color("dim")
 end
 
--- The keys of a command, as caps, and its words. Two keys at most: the rest are in the table.
-local function line(command)
+-- The keys of a command, as caps, and its words. Three keys at most: the rest are in the table.
+local function line(command, title)
 	local row = b.div():row():items_center():gap(8):h(22):no_shrink()
 	for index, words in command.keys do
-		if index > 2 then
+		if index > 3 then
 			break
 		end
 		row:child(u:kbd(words))
 	end
-	row:child(b.text(command.title):text_size(13):truncate():min_w(0):grow(1))
+	row:child(b.text(title):text_size(13):truncate():min_w(0):grow(1))
 	return row
 end
 
+-- Whether two commands have the same keys, in the same order.
+local function same_keys(a, b_)
+	if #a.keys ~= #b_.keys then
+		return false
+	end
+	for index, words in a.keys do
+		if b_.keys[index] ~= words then
+			return false
+		end
+	end
+	return true
+end
+
+-- The commands of a group, a key said once: commands that have the same keys (the key that starts the
+-- agent is the one that creates the issue) are one line, "Start the agent, create the issue".
 local function group(name)
 	local box = b.div():id("help/group/" .. name):col():gap(7):mb(18)
 	box:child(label(name))
+	local lines = {}
 	for _, command in commands.all() do
 		if command.group == name then
-			box:child(line(command))
+			local last = lines[#lines]
+			if last ~= nil and same_keys(last.command, command) then
+				last.title = last.title .. ", " .. string.lower(string.sub(command.title, 1, 1)) .. string.sub(command.title, 2)
+			else
+				lines[#lines + 1] = { command = command, title = command.title }
+			end
 		end
+	end
+	for _, each in lines do
+		box:child(line(each.command, each.title))
 	end
 	return box
 end
