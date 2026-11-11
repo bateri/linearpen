@@ -127,13 +127,6 @@ function panel.hold(ids)
 	end
 end
 
--- The change of the issue `id` is done and the list still holds it: it need not be held open.
-function panel.release(id)
-	if P.pin ~= nil and P.pin.id == id then
-		P.pin = nil
-	end
-end
-
 -- Whether the issue open is held: it is what the person changed and the cursor has not been moved since.
 function panel.held()
 	local pin = P.pin
@@ -191,7 +184,6 @@ end
 -- What the change part asks of the issue open (it does not require this part).
 act.panel_id = panel.id
 act.panel_hold = panel.hold
-act.panel_release = panel.release
 act.panel_reask = panel.reask
 act.panel_forget = panel.forget
 act.panel_team = function()

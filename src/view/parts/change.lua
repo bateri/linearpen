@@ -360,7 +360,7 @@ local function send(ids, field, value, state)
 	local first = row_of(ids[1])
 	local request = { ids = table.clone(ids), what = first ~= nil and first.identifier or nil }
 	local function go()
-		kit.call("change", params, function(result, err)
+		kit.call("change", params, function(_, err)
 			if err then
 				-- The program asked Linear what it holds where the change may have been made (no answer,
 				-- or one that could not be read): what the open issue says is asked for again, too, for
@@ -375,13 +375,7 @@ local function send(ids, field, value, state)
 				return true
 			end
 			-- What the open issue says is asked for again, for it may be of what the lists do not
-			-- hold any more (done, given to someone else); the control is busy until it comes. One
-			-- that the lists hold still need not stay open by the pin.
-			for _, told in result.issues do
-				if told.listed then
-					act.panel_release(told.id)
-				end
-			end
+			-- hold any more (done, given to someone else); the control is busy until it comes.
 			for _, id in ids do
 				if not act.panel_reask(id, function()
 					C.busy[id] = nil

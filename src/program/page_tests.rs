@@ -96,6 +96,8 @@ pub(crate) enum Change {
     Fine,
     /// By not making it (an error of its own).
     Refused,
+    /// By making it and never answering: the program has to ask what Linear holds.
+    Lost,
 }
 
 impl Canned {
@@ -464,6 +466,9 @@ impl Transport for Canned {
                             .or_default()
                             .push(asked["variables"]["input"].clone());
                         nodes.extend(self.node_of(id));
+                    }
+                    if *self.change.lock().unwrap() == Change::Lost {
+                        return Err(LinearError::Unreachable("timed out".to_owned()));
                     }
                     reply(
                         200,
@@ -2182,7 +2187,17 @@ fn done_takes_the_issue_out_of_the_list_the_panel_stays_on_it_and_follows_the_cu
     page.wait_for(WITHIN, |page| page.bounds("row:i:issue-398").is_some())
         .unwrap_or_else(|why| panic!("the line is back: {why:?}: {}", said(&page)));
     assert!(group_says(&page, "In Progress, 4"), "{}", said(&page));
-    assert!(page.says("Checkout test fails"), "{}", said(&page));
+    // The issue is in the list again and the cursor is not on it: the panel stays on it, whatever
+    // else is done that does not move the cursor.
+    page.press("x").expect("x");
+    page.press("x").expect("x");
+    page.advance(0.5).expect("a moment");
+    assert!(
+        page.words_in("panel-title-edit")
+            .contains(&"Checkout test fails one run in ten".to_owned()),
+        "{}",
+        said(&page)
+    );
     // Once the cursor is moved the issue open follows it again.
     page.press("down").expect("down");
     page.wait_for(WITHIN, |page| {
@@ -2600,4 +2615,26 @@ fn after_a_value_is_picked_from_the_panel_enter_is_the_lists_and_not_the_control
             .contains(&"Checkout test fails one run in ten".to_owned())
     })
     .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_change_that_was_made_and_never_answered_shows_what_linear_holds_and_says_so() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    linear.set_change(Change::Lost);
+    open_the_controls(&mut page);
+    page.click("panel-value:state").expect("status");
+    page.pick_titled("Done").expect("Done");
+    changed(&linear, &mut page, 1);
+    // Linear made it: the program asked, the line is gone, and the issue open says Done, with the
+    // words that no answer came.
+    page.wait_for(WITHIN, |page| {
+        page.bounds("row:i:issue-412").is_none()
+            && page
+                .words_in("panel-value:state")
+                .contains(&"Done".to_owned())
+    })
+    .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    assert!(page.says("could not be reached"), "{}", said(&page));
+    assert_eq!(linear.changed().len(), 1, "it was sent once");
 }
