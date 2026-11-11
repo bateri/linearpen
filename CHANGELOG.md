@@ -15,7 +15,8 @@
   description (as markdown, with its links opening only where you press them), the comments oldest
   first, the cycle, the project and who it is assigned to. `Open in Linear` (`o`) opens it in your
   browser and `Close` (`Esc`) puts it away; the panel follows the cursor, asks Linear once for each
-  issue, and takes the whole of a pane too narrow for both.
+  issue, and takes the whole of a pane too narrow for both. Space and Shift Space scroll an issue
+  longer than its room, and Enter in the filter opens the issue the cursor is on.
 - **Select issues.** `x` or the box of a line selects it, Shift with the arrows selects more, and
   `Cmd A` selects every issue that is shown. `Esc` closes what is on top: the issue, then the
   selection, then the filter.

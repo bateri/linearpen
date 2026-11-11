@@ -339,12 +339,19 @@ fn the_filter_narrows_the_list_and_escape_takes_it_off() {
     page.press("escape").expect("escape");
     page.wait_for(WITHIN, |page| page.says("ACM-412") && !page.says("4 of 14"))
         .expect("the filter is gone");
-    // Down in the field is the list's.
+    // Down in the field is the list's, and Enter there is Enter on the list: the issue the cursor
+    // is on opens, and the keyboard is the page's again.
     page.type_text("a").expect("a letter");
     page.press("down").expect("down");
-    page.press("enter").expect("enter leaves the field");
+    page.press("enter").expect("enter opens the issue");
+    page.wait_for(WITHIN, |page| page.bounds("panel-close").is_some())
+        .unwrap_or_else(|why| panic!("the issue opens: {why:?}: {}", said(&page)));
+    page.press("escape").expect("escape closes the issue");
+    page.wait_for(WITHIN, |page| page.bounds("panel-close").is_none())
+        .expect("the issue is closed");
+    assert!(page.says(" of 14"), "the filter stays: {}", said(&page));
     page.press("escape").expect("escape clears what is typed");
-    page.wait_for(WITHIN, |page| page.says("ACM-412"))
+    page.wait_for(WITHIN, |page| !page.says(" of 14"))
         .expect("the filter is gone again");
 }
 
@@ -732,6 +739,31 @@ fn in_a_narrow_pane_the_issue_takes_the_pane_and_the_way_back_is_one_press() {
     page.click("panel-close").expect("the button is pressed");
     page.wait_for(WITHIN, |page| page.says("ACM-398"))
         .expect("the list is back");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn space_scrolls_the_issue_open_and_shift_space_scrolls_it_back() {
+    let (_linear, _session, mut page) = open_lists(PANE);
+    open_the_issue(&mut page);
+    // The comments are under the foot of an 80 by 24 pane: the keyboard has to reach them.
+    let top = |page: &Page| {
+        page.bounds("panel-comments")
+            .expect("the comments are laid out")
+            .y
+    };
+    let before = top(&page);
+    page.press("space").expect("space");
+    page.advance(0.6).expect("a moment");
+    page.wait_for(WITHIN, |page| top(page) < before - 1.0)
+        .unwrap_or_else(|why| panic!("the issue scrolls down: {why:?}: {}", top(&page)));
+    page.press("shift+space").expect("shift and space");
+    page.advance(0.6).expect("a moment");
+    page.wait_for(WITHIN, |page| (top(page) - before).abs() < 1.0)
+        .unwrap_or_else(|why| panic!("the issue scrolls back: {why:?}: {}", top(&page)));
+    // The key is said where the issue is open, and no key of a line that is not on the page.
+    assert!(page.says("scroll"), "{}", said(&page));
+    assert!(!page.says("select"), "{}", said(&page));
 }
 
 // --- Handing issues to an agent ------------------------------------------------------------------

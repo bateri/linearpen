@@ -20,6 +20,8 @@ local TABLE = {
 	{ id = "select_all", title = "Select all", group = "Select", keys = { "mod+a" }, when = "idle" },
 	{ id = "open", title = "Open beside the list", group = "Issue", keys = { "enter" }, native = true },
 	{ id = "link", title = "Open in Linear", group = "Issue", keys = { "o" }, when = "issue" },
+	{ id = "read_down", title = "Scroll the issue down", group = "Issue", keys = { "space" }, when = "reading" },
+	{ id = "read_up", title = "Scroll the issue up", group = "Issue", keys = { "shift+space" }, when = "reading" },
 	{ id = "work", title = "Work on the issue, or the ones selected", group = "Issue", keys = { "w" }, when = "workable" },
 	{ id = "next_field", title = "Next field", group = "Work on", keys = { "tab" }, native = true },
 	{ id = "choose", title = "Choose", group = "Work on", keys = { "left", "right" }, native = true },

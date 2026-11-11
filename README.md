@@ -39,9 +39,9 @@ used first, and kept nowhere. A key file that other users can read is still read
 
 The list is **My issues** (what is assigned to you) or **All issues** (the open issues of the workspace,
 each saying whose it is), grouped by state with the backlog folded, and asked of Linear again every
-five minutes. `/` filters it by title, identifier or label. Enter opens an issue beside the list,
-with its description, its comments, its cycle, its project and who has it; `Open in Linear` puts it
-in your browser. In a pane too narrow for both, the issue takes the pane.
+five minutes. `/` filters it by title, identifier or label. Enter opens an issue beside the list
+(from the filter too), with its description, its comments, its cycle, its project and who has it;
+Space scrolls it, and `Open in Linear` puts it in your browser. In a pane too narrow for both, the issue takes the pane.
 
 ### Work on an issue
 
@@ -80,6 +80,7 @@ Everything the mouse does, the keys do too. The line at the foot says what the k
 | `←` `→`               | close and open a group                                               |
 | `Enter`               | open the issue beside the list                                       |
 | `o`                   | open it in Linear                                                    |
+| `Space`, `⇧ Space`    | scroll the open issue down, up                                       |
 | `x`, `Shift ↑↓`, `⌘A` | select the issue, select more, select all                            |
 | `w`, `⌘Enter`         | work on the issue or the selected, start the agent                   |
 | `1` `2`               | My issues, All issues                                                |

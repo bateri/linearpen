@@ -21,9 +21,11 @@ function head.focus()
 	return u:focus(FIELD)
 end
 
--- Puts the keyboard back on the page, where the list has the arrows.
+-- Puts the keyboard back on the page, where the list has the arrows. The library is told too
+-- (`u:focus(nil)`): a reply alone moves the host's keyboard and leaves the library sending Enter
+-- and Esc to the field.
 function head.leave()
-	return { keyboard = "page" }
+	return u:focus(nil)
 end
 
 -- Puts `text` in the field and tells the program.
@@ -44,6 +46,12 @@ function head.action(action)
 		if kind == "change" then
 			head.set(action.text)
 		elseif kind == "submit" then
+			-- Enter in the field is Enter on the list: the issue the cursor is on opens, and the
+			-- keyboard goes back to the page.
+			local item = list.current()
+			if item ~= nil and item.kind == "issue" then
+				act.open_issue(item)
+			end
 			return head.leave()
 		elseif kind == "escape" then
 			-- The first escape clears the field, the next leaves it.

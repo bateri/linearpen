@@ -19,6 +19,9 @@ panel.state = P
 
 local PRIORITY = { urgent = "Urgent", high = "High", medium = "Medium", low = "Low", none = "No priority" }
 
+-- The box that scrolls: the description and the comments.
+local SCROLL = "panel-scroll"
+
 -- The room an issue takes beside the list (the page is this wide), points: a part of the page, held
 -- between two widths; a pane too narrow for both takes the whole of it.
 function panel.width(page)
@@ -63,6 +66,10 @@ function panel.show(item)
 		return false
 	end
 	local row = item.row
+	if P.open ~= nil and P.open.id ~= row.id then
+		-- Another issue is read from its top, not from where the one before was left.
+		kit.scroll_to(SCROLL, 0)
+	end
 	P.open = {
 		id = row.id,
 		identifier = row.identifier,
@@ -81,6 +88,18 @@ end
 
 function panel.close()
 	P.open = nil
+end
+
+-- Scrolls what is said of the issue by most of what its room shows, down (1) or up (-1): the way
+-- the keyboard reads an issue longer than the room.
+function panel.scroll(way)
+	if P.open == nil then
+		return false
+	end
+	local extent = b.layout.scroll_extent(SCROLL)
+	local room = extent ~= nil and extent.view or 0
+	kit.scroll_to(SCROLL, (kit.offset(SCROLL) or 0) + way * math.max(room - 48, 48), true)
+	return true
 end
 
 -- Asks the program for the open issue again (where it could not tell).
@@ -137,7 +156,7 @@ local function words(text, id)
 end
 
 local function comments(detail)
-	local box = b.div():col():gap(0):mt(20)
+	local box = b.div():id("panel-comments"):col():gap(0):mt(20)
 	box:child(
 		b.div():row():items_center():gap(8):mb(4):child(
 			b.text("COMMENTS"):text_size(SIZE.tiny):color("dim")
@@ -205,7 +224,7 @@ function panel.view(width)
 	local content = b.div():col():grow(1):min_w(0):min_h(0):child(top)
 	content:child(b.div():h(1):bg(b.alpha("foreground", 0.18)):no_shrink())
 	content:child(
-		b.div():id("panel-scroll"):grow(1):min_h(0):scroll():col():pt(14):px(SIZE.pad):pb(SIZE.pad):child(body(entry))
+		b.div():id(SCROLL):grow(1):min_h(0):scroll():col():pt(14):px(SIZE.pad):pb(SIZE.pad):child(body(entry))
 	)
 	local side = b.div():row():w(width):no_shrink():min_h(0)
 	if width < S.width then

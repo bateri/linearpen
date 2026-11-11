@@ -43,6 +43,11 @@ end
 commands.when.issue = function()
 	return commands.when.list() and panel.detail() ~= nil
 end
+-- Space scrolls the open issue, but where a button has the keyboard it presses the button.
+commands.when.reading = function()
+	local target = u:target()
+	return commands.when.idle() and panel.is_open() and not (target ~= nil and kit.buttons[target] ~= nil)
+end
 commands.when.workable = function()
 	return commands.when.idle() and work.workable()
 end
@@ -191,6 +196,10 @@ local function command(id)
 		list.select_all()
 	elseif id == "link" then
 		return panel.link()
+	elseif id == "read_down" then
+		panel.scroll(1)
+	elseif id == "read_up" then
+		panel.scroll(-1)
 	elseif id == "scope_mine" then
 		act.view({ scope = "mine" })
 	elseif id == "scope_all" then
