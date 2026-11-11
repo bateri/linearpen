@@ -68,20 +68,22 @@ function status.view()
 	if S.work_open then
 		return u:status("status", { start = work_hints(), finish = status.finish() })
 	end
-	local start = {
-		{ key = "move", words = hint({ "up", "down" }, "move"), priority = 8 },
-		{ key = "select", words = hint({ "select" }, "select"), priority = 6 },
-	}
-	if list.marked() > 0 then
-		start[#start + 1] = {
-			key = "select_more",
-			words = b.div():row():items_center():gap(5):no_shrink():child(u:kbd("shift+up")):child(u:kbd("shift+down")):child(
-				b.text("select more")
-			),
-			priority = 4,
-		}
+	-- A list with no line has nothing to move on, select or open: its keys are not said.
+	local start = {}
+	if list.count() > 0 then
+		start[#start + 1] = { key = "move", words = hint({ "up", "down" }, "move"), priority = 8 }
+		start[#start + 1] = { key = "select", words = hint({ "select" }, "select"), priority = 6 }
+		if list.marked() > 0 then
+			start[#start + 1] = {
+				key = "select_more",
+				words = b.div():row():items_center():gap(5):no_shrink():child(u:kbd("shift+up")):child(u:kbd("shift+down")):child(
+					b.text("select more")
+				),
+				priority = 4,
+			}
+		end
+		start[#start + 1] = { key = "open", words = hint({ "open" }, "open"), priority = 7 }
 	end
-	start[#start + 1] = { key = "open", words = hint({ "open" }, "open"), priority = 7 }
 	if head.field.value ~= "" then
 		start[#start + 1] = { key = "clear", words = hint({ "back" }, "clear the filter"), priority = 5 }
 	end

@@ -57,7 +57,7 @@ function help.view(root)
 	if not H.open then
 		return
 	end
-	local width = math.min(600, S.width - 32)
+	local width = math.min(640, S.width - 32)
 	local inner = width - 36
 	local body = b.div():col():p(16):pb(0):w(width)
 	local head = b.div():row():items_center():gap(8):mb(16):w(inner)
@@ -67,9 +67,11 @@ function help.view(root)
 	body:child(head)
 	local columns = b.div():row():items_start():gap(28):w(inner)
 	if width >= 520 then
-		local each = math.floor((inner - 28) / 2)
-		local left = b.div():col():w(each):no_shrink()
-		local right = b.div():col():w(each):no_shrink()
+		-- The left groups have short words; the room they leave is the right's, whose longest line
+		-- is whole in a pane wide enough for the card.
+		local left_width = 210
+		local left = b.div():col():w(left_width):no_shrink()
+		local right = b.div():col():w(inner - 28 - left_width):no_shrink()
 		for index, name in ORDER do
 			local side = index <= 2 and left or right
 			side:child(group(name))

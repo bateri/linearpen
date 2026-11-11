@@ -104,7 +104,9 @@ impl Transport for Canned {
             std::thread::sleep(Duration::from_millis(20));
         }
         match *self.mode.lock().unwrap() {
-            Mode::Down | Mode::Held => Err(LinearError::Unreachable("it is not there".to_owned())),
+            Mode::Down | Mode::Held => Err(LinearError::Unreachable(
+                "the host name was not found".to_owned(),
+            )),
             Mode::Refused => reply(401, REFUSED),
             Mode::NothingAssigned if name == "MyIssues" => reply(200, MY_ISSUES_EMPTY),
             _ => match name {

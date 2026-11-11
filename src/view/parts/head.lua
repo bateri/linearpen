@@ -160,7 +160,8 @@ function head.view()
 	if width >= SIZE.wide then
 		bar:child(refresh_button())
 	end
-	if not S.work_open then
+	-- A list with no line has no issue to hand over: the button is not there, rather than dead.
+	if not S.work_open and list.count() > 0 then
 		bar:child(work_button())
 	end
 	if not narrow then
