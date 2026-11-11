@@ -1479,9 +1479,9 @@ fn a_new_worktree_is_offered_in_a_repository_and_the_reason_is_said_outside_one(
     assert!(page.says("New worktree"), "{}", said(&page));
     page.click("work-folder/item/worktree")
         .expect("the segment is pressed");
-    // (The note is one line, and the kit cuts what does not fit, so the start of the name is said.)
-    page.wait_for(WITHIN, |page| page.says("branch ada/acm-412-add-rate"))
-        .unwrap_or_else(|why| panic!("the branch is said: {why:?}: {}", said(&page)));
+    // The form says who makes it: the agent, by the project's own rules.
+    page.wait_for(WITHIN, |page| page.says("The agent makes it"))
+        .unwrap_or_else(|why| panic!("the note is said: {why:?}: {}", said(&page)));
     page.press("mod+enter").expect("mod+enter");
     page.wait_for(WITHIN, |_| {
         rig.hands
@@ -1491,16 +1491,38 @@ fn a_new_worktree_is_offered_in_a_repository_and_the_reason_is_said_outside_one(
     })
     .unwrap_or_else(|why| panic!("{why:?}: {:?}", rig.hands.asked()));
     let asked = rig.hands.asked();
+    // The pen makes no worktree and no branch: it asks the agent for one, in the pen's folder.
     assert!(
-        asked.iter().any(|line| line
-            == "git worktree add -b ada/acm-412-add-rate-limiting-to-the-public-api /work/acme-app-acm-412 HEAD"),
+        !asked
+            .iter()
+            .any(|line| line.starts_with("git worktree") || line.starts_with("git branch")),
         "{asked:?}"
     );
-    assert!(
-        asked
+    let split = asked
+        .iter()
+        .find(|line| line.starts_with("bateri split"))
+        .expect("the pane is asked for");
+    assert!(split.contains("new git worktree"), "{split}");
+    assert!(split.contains("project's own rules"), "{split}");
+    assert!(!split.contains("acme-app-acm-412"), "{split}");
+    // In this folder the agent is asked for none.
+    let (rig, mut page) = open_rig(WIDE, true, &["claude"]);
+    open_form(&mut page);
+    page.press("mod+enter").expect("mod+enter");
+    page.wait_for(WITHIN, |_| {
+        rig.hands
+            .asked()
             .iter()
-            .any(|line| line.starts_with("bateri split --right --cwd /work/acme-app-acm-412 ")),
-        "{asked:?}"
+            .any(|line| line.starts_with("bateri split"))
+    })
+    .unwrap_or_else(|why| panic!("{why:?}: {:?}", rig.hands.asked()));
+    assert!(
+        !rig.hands
+            .asked()
+            .iter()
+            .any(|line| line.contains("worktree")),
+        "{:?}",
+        rig.hands.asked()
     );
     // Outside a repository there is no such choice, and the page says why.
     let (rig, mut page) = open_rig(WIDE, true, &["claude"]);

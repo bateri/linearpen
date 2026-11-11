@@ -411,7 +411,7 @@ fn the_options_say_which_agents_are_there_and_what_a_worktree_would_need() {
     let heard = home.ask(
         &in_bateri()
             .env("PATH", &path)
-            .call("work_options", json!({ "ids": ["issue-412"] })),
+            .call("work_options", json!({})),
     );
     let options = heard[0].result();
     assert_eq!(
@@ -432,7 +432,7 @@ fn the_options_say_which_agents_are_there_and_what_a_worktree_would_need() {
         "{options}"
     );
     // Outside bateri nothing can be started, and the options say why.
-    let heard = home.ask(&keyed().call("work_options", json!({ "ids": ["issue-412"] })));
+    let heard = home.ask(&keyed().call("work_options", json!({})));
     assert!(
         heard[0].result()["unavailable"]
             .as_str()

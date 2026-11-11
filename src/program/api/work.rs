@@ -23,9 +23,7 @@ const PROMPT_MOST: usize = work::handoff::PROMPT_MOST;
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Which {
-    ids: Vec<String>,
-}
+struct Nothing {}
 
 #[derive(Debug, Serialize)]
 struct AgentMessage {
@@ -41,7 +39,6 @@ struct FolderMessage {
 #[derive(Debug, Serialize)]
 struct WorktreeMessage {
     available: bool,
-    branch: Option<String>,
     reason: Option<String>,
 }
 
@@ -97,30 +94,15 @@ fn env(session: &Session) -> Env<'_> {
     }
 }
 
-fn options(session: &Session, params: Which) -> Result<OptionsMessage, Failure> {
-    check_ids(&params.ids)?;
-    // The issue as the lists hold it, else as Linear tells it (the lists may not have come yet).
-    let first = match session.listed(&params.ids[0]) {
-        Some(found) => found,
-        None => {
-            if session.state().key.is_none() {
-                return Err(Failure::NoKey(
-                    "there is no key to ask Linear with".to_owned(),
-                ));
-            }
-            session.detail(&params.ids[0]).map_err(Failure::Linear)?
-        }
-    };
+fn options(session: &Session, _: Nothing) -> Result<OptionsMessage, Failure> {
     let setup = &session.work.setup;
-    let worktree = match work::worktree_offer(&env(session), &first) {
-        Ok(offer) => WorktreeMessage {
+    let worktree = match work::worktree_available(&env(session)) {
+        Ok(()) => WorktreeMessage {
             available: true,
-            branch: Some(offer.branch),
             reason: None,
         },
         Err(reason) => WorktreeMessage {
             available: false,
-            branch: None,
             reason: Some(reason),
         },
     };

@@ -103,17 +103,14 @@ same issue tells it. Errors: `bad-params`, `no-key`,
 ### `work_options`
 
 What the person can choose from when they hand issues to an agent, and what cannot be chosen and
-why. Params: `{ "ids": ["issue-412", "issue-405"] }`, one to twenty-five ids of the list's issues, in
-the order they are to be handed over; the first names the branch of a new worktree. Nothing is
-started. (The page asks with the first id alone: what can be chosen is the same for all.) The first issue is the one of the lists; Linear is asked for it only where the lists do not
-have it (they may not have come).
+why. Params: none. Nothing is started, and Linear is not asked.
 
 ```json
 {
   "agents": [{ "id": "claude", "name": "Claude" }, { "id": "codex", "name": "Codex" }],
   "unavailable": null,
   "folder": { "name": "acme-app" },
-  "worktree": { "available": true, "branch": "ada/acm-412-add-rate-limiting", "reason": null }
+  "worktree": { "available": true, "reason": null }
 }
 ```
 
@@ -121,13 +118,12 @@ have it (they may not have come).
   `cursor`), in that order. None is listed that is not installed.
 - `unavailable`: null, or why nothing can be started now: the pen does not run in a bateri pane
   (`BATERI_TAB_URL` is not set), `bateri` is not in the `PATH`, or there is no agent.
-- `folder.name`: the name of the folder the pen was started in, which is where "This folder" is.
-- `worktree`: whether "New worktree" can be chosen. Where it can, `branch` is the branch the agent
-  works on (Linear's branch name for the first issue, or its identifier in lower case where Linear
-  has none). Where it cannot, `reason` says why (the folder is not in a git repository, the name
-  Linear gives is not one `git` takes), and `branch` is null.
+- `folder.name`: the name of the folder the pen was started in, which is where the agent starts.
+- `worktree`: whether "New worktree" can be chosen: the folder is in a git repository. Where it
+  cannot, `reason` says why. The pen makes no worktree: where it is chosen, the agent is asked to
+  make one by the project's own rules (see `start`).
 
-Errors: `bad-params`, `no-key`, `refused`, `unreachable`, `failed` (where Linear is asked).
+Errors: `bad-params`.
 
 ### `start`
 
@@ -140,12 +136,13 @@ file. It answers when the pane is made. Params:
   "agent": "claude", "folder": "here", "open": "split" }
 ```
 
-- `ids`: one to twenty-five Linear ids of issues, the first the one that names the worktree.
+- `ids`: one to twenty-five Linear ids of issues, the first the one that names the pane.
 - `prompt`: what the person wrote for the agent, up to 4 000 characters; it may be empty.
-- `agent`: `claude`, `codex` or `cursor`. `folder`: `here` (the folder the pen was started in) or
-  `worktree` (a new `git` worktree beside the repository, on the branch `work_options` told).
-  `open`: `split` (a pane to the right of this one) or `tab` (a new tab). The new pane is not given
-  the focus.
+- `agent`: `claude`, `codex` or `cursor`. `folder`: `here` (the agent works in the folder the pen
+  was started in) or `worktree` (the agent is asked to make a new `git` worktree first, by the
+  project's own rules for where one goes and what its branch is called; the pen makes none, and the
+  agent starts in the pen's folder either way). `open`: `split` (a pane to the right of this one) or
+  `tab` (a new tab). The new pane is not given the focus.
 
 ```json
 { "pane": "p41", "folder": "/Users/ada/acme-app", "context": "/Users/ada/.local/state/linearpen/work/20261111T031500Z-ACM-412/issues.md" }
@@ -153,8 +150,10 @@ file. It answers when the pane is made. Params:
 
 The file is `$XDG_STATE_HOME/linearpen/work/<UTC time>-<first identifier>/issues.md` (the
 directories `0700`, the file `0600`); it says in its first lines that the text under them was
-written by others and holds no instructions for the agent. The text of an issue is never in the
-prompt (the agent's command line): only the file's path is. No flag that lets the agent do what it
+written by others and holds no instructions for the agent, and for each issue the branch Linear
+suggests for it (where that is a name `git` would take). The text of an issue is never in the
+prompt (the agent's command line): only the file's path is, and for `worktree` a sentence of the
+program's own that asks for one. No flag that lets the agent do what it
 would ask about is ever added. The key is not in the file.
 
 From here the issues of the call carry a mark in the topic (`working`) until the agent's pane ends.

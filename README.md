@@ -100,7 +100,7 @@ asks Linear what the issue holds now. The description and the team are never wri
 `x` selects an issue, Shift with the arrows selects more, `⌘A` selects what is shown. `w` opens a
 form for the issue under the cursor or for the ones selected: say what the agent should do, choose
 the agent (the ones of Claude, Codex and Cursor that are in your `PATH`), whether it works in this
-folder or in a new `git` worktree on the issue's branch, and whether its pane splits to the right or
+folder or makes a new `git` worktree for the work, and whether its pane splits to the right or
 opens a new tab. `⌘Enter` starts it, and each issue says which agent is on it until the pane ends.
 
 <img src="docs/started.png" width="720" alt="linearpen: the issues an agent was started on, each marked with its name">
@@ -115,8 +115,10 @@ How it starts one:
   issue.
 - That file says, before anything else, that other people wrote the issues, so what is in them is
   read as a description of the work and not as an order.
-- A new worktree is made beside the repository (`<repository>-<issue>`), on the branch Linear
-  names for the issue, after the name has been checked with `git check-ref-format`.
+- A new worktree is the agent's to make, not linearpen's: a project has its own rules for where
+  one goes and what its branch is called, and the agent reads them. It is asked to follow them and,
+  where there are none, to use the branch Linear suggests, which the file gives for each issue
+  (only where it is a name `git` would take). linearpen itself makes no folder and no branch.
 - No option that lets an agent skip its questions is ever given.
 
 ### The keyboard, and the mouse

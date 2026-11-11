@@ -28,8 +28,9 @@
   Page Up and Page Down scroll it.
 - **Work on an issue, or the ones you selected, with an agent.** `w` (or the button over the list)
   opens a form beside the list: the issues, what to tell the agent, which agent (Claude, Codex or
-  Cursor, the ones in your `PATH`), whether it works in this folder or in a new `git` worktree on the
-  issue's branch, and whether its pane splits to the right or opens a new tab. `Cmd Enter` starts it
+  Cursor, the ones in your `PATH`), whether it works in this folder or makes a new `git` worktree
+  first (by the project's own rules for one; where it has none, on the branch Linear suggests, which
+  the file of issues gives), and whether its pane splits to the right or opens a new tab. `Cmd Enter` starts it
   in a pane of bateri, and each issue says which agent works on it until the pane ends. The issues
   are written, with their descriptions and comments, to a file only you can read, under
   `~/.local/state/linearpen/work`; the agent is told where the file is and that other people wrote

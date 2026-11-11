@@ -178,7 +178,7 @@ fn an_agent_is_started_in_a_pane_with_a_prompt_that_names_the_file_and_never_hol
 }
 
 #[test]
-fn a_new_worktree_is_made_before_the_pane_and_the_pane_is_in_it() {
+fn a_new_worktree_is_the_agents_to_make_the_pen_makes_none_and_the_prompt_asks_for_one() {
     let bin = bin(&["bateri", "claude"]);
     let state = tempfile::tempdir().unwrap();
     let runner = Recorder::new();
@@ -191,39 +191,47 @@ fn a_new_worktree_is_made_before_the_pane_and_the_pane_is_in_it() {
         now: 0,
     };
     let started = start(&env, &request(&issues, Folder::Worktree)).unwrap();
-    assert_eq!(started.folder, Path::new("/work/acme-app-acm-412"));
+    // The agent starts in the pen's folder, where the project's own notes for it are.
+    assert_eq!(started.folder, Path::new("/work/acme-app/api"));
     let asked = runner.asked();
-    let at = |prefix: &str| asked.iter().position(|line| line.starts_with(prefix));
+    // The pen asks `git` one thing, whether the folder is in a repository, and makes nothing.
     assert_eq!(asked[0], "git rev-parse --show-toplevel");
+    for made in [
+        "git worktree",
+        "git branch",
+        "git check-ref-format",
+        "git checkout",
+    ] {
+        assert!(
+            !asked.iter().any(|line| line.starts_with(made)),
+            "{made}: {asked:?}"
+        );
+    }
+    let split = asked.last().unwrap();
+    assert!(split.starts_with("bateri split"), "{asked:?}");
+    assert!(split.contains("--cwd /work/acme-app/api "), "{asked:?}");
+    assert!(split.contains(handoff::WORKTREE), "{asked:?}");
+    assert!(split.ends_with("Start with the limiter."), "{asked:?}");
+    // The branch Linear suggests is in the file, not in the command.
+    assert!(!split.contains("ada/acm-412"), "{asked:?}");
+    let text = std::fs::read_to_string(&started.context).unwrap();
     assert!(
-        at("git check-ref-format --branch ada/acm-412-add-rate-limiting").is_some(),
-        "{asked:?}"
+        text.contains("- Branch Linear suggests: ada/acm-412-add-rate-limiting"),
+        "{text}"
     );
-    assert!(
-        asked.iter().any(|line| line
-            == "git worktree add -b ada/acm-412-add-rate-limiting /work/acme-app-acm-412 HEAD"),
-        "{asked:?}"
-    );
-    assert!(
-        at("git worktree").unwrap() < at("bateri split").unwrap(),
-        "{asked:?}"
-    );
-    assert!(
-        asked
-            .last()
-            .unwrap()
-            .contains("--cwd /work/acme-app-acm-412 "),
-        "{asked:?}"
-    );
+    // In this folder nothing of a worktree is said.
+    let here = start(&env, &request(&issues, Folder::Here)).unwrap();
+    assert_eq!(here.folder, Path::new("/work/acme-app/api"));
+    assert!(!runner.asked().last().unwrap().contains("worktree"));
 }
 
 #[test]
-fn a_branch_name_git_would_take_for_an_option_stops_everything_before_anything_is_made() {
+fn a_branch_name_git_would_not_take_is_left_out_of_the_file_and_reaches_no_command() {
     let bin = bin(&["bateri", "claude"]);
     let state = tempfile::tempdir().unwrap();
-    let runner = Recorder::new();
     let setup = setup(&bin, true);
     for bad in ["-x", "a..b", "has space"] {
+        let runner = Recorder::new();
         let mut issue = fixture_issue();
         issue.branch_name = Some(bad.to_owned());
         let issues = [issue];
@@ -233,14 +241,52 @@ fn a_branch_name_git_would_take_for_an_option_stops_everything_before_anything_i
             state: Some(state.path()),
             now: 0,
         };
-        let refused = start(&env, &request(&issues, Folder::Worktree)).unwrap_err();
-        assert!(
-            matches!(&refused, Refused::Failed(why) if why.contains("branch name")),
-            "{bad}: {refused:?}"
-        );
+        let started = start(&env, &request(&issues, Folder::Worktree)).unwrap();
+        let text = std::fs::read_to_string(&started.context).unwrap();
+        assert!(!text.contains("Branch Linear suggests"), "{bad}: {text}");
+        for line in runner.asked() {
+            assert!(!line.contains(bad), "{bad}: {line}");
+        }
     }
-    // No git, no pane, no file.
-    assert!(runner.asked().is_empty(), "{:?}", runner.asked());
+}
+
+#[test]
+fn outside_a_repository_a_new_worktree_is_refused_before_anything_is_made() {
+    /// `git` that says the folder is in no repository.
+    struct Nowhere(Recorder);
+    impl Runner for Nowhere {
+        fn run(&self, program: &str, args: &[String], cwd: Option<&Path>) -> std::io::Result<Ran> {
+            if program == "git" {
+                self.0.run(program, &["rev-parse".to_owned()], cwd)
+            } else {
+                self.0.run(program, args, cwd)
+            }
+        }
+    }
+    let bin = bin(&["bateri", "claude"]);
+    let state = tempfile::tempdir().unwrap();
+    let runner = Nowhere(Recorder::new());
+    let setup = setup(&bin, true);
+    let issues = [fixture_issue()];
+    let env = Env {
+        setup: &setup,
+        runner: &runner,
+        state: Some(state.path()),
+        now: 0,
+    };
+    let refused = start(&env, &request(&issues, Folder::Worktree)).unwrap_err();
+    assert!(
+        matches!(&refused, Refused::Failed(why) if why.contains("not in a git repository")),
+        "{refused:?}"
+    );
+    // No pane, no file.
+    assert!(
+        !runner
+            .0
+            .asked()
+            .iter()
+            .any(|line| line.starts_with("bateri"))
+    );
     assert!(!state.path().join("work").exists());
 }
 
@@ -290,13 +336,12 @@ fn where_the_pane_is_refused_what_was_made_for_it_is_taken_away() {
         now: 0,
     };
     assert!(start(&env, &request(&issues, Folder::Worktree)).is_err());
+    // The pen made nothing with `git`, so there is nothing of `git`'s to take away.
     let asked = runner.asked();
-    assert_eq!(
-        &asked[asked.len() - 2..],
-        [
-            "git worktree remove /work/acme-app-acm-412",
-            "git branch -d ada/acm-412-add-rate-limiting"
-        ],
+    assert!(
+        !asked
+            .iter()
+            .any(|line| line.starts_with("git worktree") || line.starts_with("git branch")),
         "{asked:?}"
     );
     // The file of the issues is not left behind: nothing is in the folder of the files.

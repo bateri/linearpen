@@ -1,4 +1,4 @@
-//! Handing issues to an agent: which agents there are, the file of issues, the worktree and the pane
+//! Handing issues to an agent: which agents there are, the file of issues, and the pane
 //! of bateri that runs the agent. It takes and gives plain Rust values and knows nothing of the page.
 //!
 //! What it needs of the machine (the `PATH`, whether the pen runs in bateri, the folder it started
@@ -7,7 +7,7 @@
 //!
 //!   agents     which agents are installed, and the command that starts one
 //!   handoff    the file of issues, and the prompt that names it
-//!   worktree   a new `git` worktree for the agent
+//!   worktree   what the agent is told of a new `git` worktree (the pen makes none)
 //!   bateri     the pane that runs the agent, and the wait for its end
 
 pub mod agents;
@@ -77,7 +77,7 @@ impl Setup {
 pub enum Folder {
     /// The folder the pen was started in.
     Here,
-    /// A new worktree of the repository that holds it.
+    /// A new worktree, which the agent makes by the project's own rules.
     Worktree,
 }
 
@@ -94,7 +94,7 @@ impl Folder {
 
 /// What is asked.
 pub struct Request<'a> {
-    /// The issues with their descriptions and comments, the first the one that names the worktree.
+    /// The issues with their descriptions and comments, the first the one that names the pane.
     pub issues: &'a [Issue],
     /// What the person wrote for the agent.
     pub prompt: &'a str,
@@ -130,27 +130,22 @@ pub struct Env<'a> {
     pub now: u64,
 }
 
-/// What a new worktree would be for the first of `issues`, or why there can be none.
+/// Whether the agent can be asked for a new worktree from the pen's folder.
 ///
 /// # Errors
 ///
-/// The words of why there can be no worktree.
-pub fn worktree_offer(env: &Env<'_>, first: &Issue) -> Result<worktree::Offer, String> {
+/// The words of why not.
+pub fn worktree_available(env: &Env<'_>) -> Result<(), String> {
     let folder = env
         .setup
         .folder
         .as_deref()
         .ok_or_else(|| "the folder the pen was started in is not known".to_owned())?;
-    worktree::offer(
-        env.runner,
-        folder,
-        &first.identifier,
-        first.branch_name.as_deref(),
-    )
+    worktree::available(env.runner, folder)
 }
 
-/// Hands the issues to the agent: writes the file, makes the worktree where it is asked for, and
-/// makes the pane that runs the agent.
+/// Hands the issues to the agent: writes the file and makes the pane that runs the agent, in the
+/// pen's folder. A new worktree is the agent's to make: the prompt asks it for one.
 ///
 /// # Errors
 ///
@@ -173,10 +168,10 @@ pub fn start(env: &Env<'_>, request: &Request<'_>) -> Result<Started, Refused> {
         Refused::Failed("the folder the pen was started in is not known".to_owned())
     })?;
     // Everything that can be wrong is found before anything is made.
-    let offer = match request.folder {
-        Folder::Here => None,
-        Folder::Worktree => Some(worktree_offer(env, first).map_err(Refused::Failed)?),
-    };
+    let worktree = request.folder == Folder::Worktree;
+    if worktree {
+        worktree_available(env).map_err(Refused::Failed)?;
+    }
     let state = env
         .state
         .ok_or_else(|| Refused::Failed("there is no folder to keep the issues in".to_owned()))?;
@@ -187,38 +182,25 @@ pub fn start(env: &Env<'_>, request: &Request<'_>) -> Result<Started, Refused> {
         request.issues,
     )
     .map_err(|why| Refused::Failed(format!("the issues could not be written: {why}")))?;
-    let (folder, made) = match &offer {
-        Some(offer) => match worktree::create(env.runner, offer) {
-            Ok(new_branch) => (offer.path.clone(), Some((offer, new_branch))),
-            Err(why) => {
-                handoff::discard(&context);
-                return Err(Refused::Failed(why));
-            }
-        },
-        None => (here, None),
-    };
-    let prompt = handoff::prompt(request.prompt, &context);
+    let prompt = handoff::prompt(request.prompt, &context, worktree);
     let pane = bateri::launch(
         env.runner,
         request.place,
-        &folder,
+        &here,
         &first.identifier,
         &request.agent.command(&prompt),
     )
     .map_err(|no| {
-        // Nothing runs there, so what was made for it goes, and a start tried again finds the
-        // folder and the branch free. (Where a pane may be there, it is left what it runs on.)
+        // Nothing runs there, so the file made for it goes. (Where a pane may be there, it is
+        // left what it runs on.)
         if !no.maybe {
-            if let Some((offer, new_branch)) = made {
-                worktree::undo(env.runner, offer, new_branch);
-            }
             handoff::discard(&context);
         }
         Refused::Failed(no.why)
     })?;
     Ok(Started {
         pane,
-        folder,
+        folder: here,
         context,
     })
 }

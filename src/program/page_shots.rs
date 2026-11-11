@@ -237,7 +237,9 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
         "Start with the rate limiter. The two others touch the same middleware, so do them in the same branch and say what you left out.",
     )?;
     page.click("work-folder/item/worktree")?;
-    page.wait_for(Duration::from_secs(20), |page| page.says("ada/acm-412"))?;
+    page.wait_for(Duration::from_secs(20), |page| {
+        page.says("The agent makes it")
+    })?;
     page.advance(0.4)?;
     save(&page, &fonts, Palette::Dark, "work.png");
     page.press("mod+enter")?;

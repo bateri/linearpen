@@ -332,19 +332,6 @@ impl Session {
         self
     }
 
-    /// The issue with Linear's `id` as the lists hold it, with no asking of Linear.
-    pub fn listed(&self, id: &str) -> Option<Issue> {
-        let state = self.shared.lock();
-        let lists = state.lists.as_ref()?;
-        lists
-            .mine
-            .issues
-            .iter()
-            .chain(&lists.all.issues)
-            .find(|issue| issue.id == id)
-            .cloned()
-    }
-
     /// An agent was started on the issues `ids`, in `pane`: they carry its mark until the pane's
     /// program ends, which a thread waits for.
     pub fn watch(&self, ids: &[String], agent: &'static str, pane: &str) {

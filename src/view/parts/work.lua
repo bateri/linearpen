@@ -82,17 +82,15 @@ function work.startable()
 		and #work.ids() <= work.MOST
 end
 
--- Asks the program what can be chosen for the issues (the first names the branch of a worktree).
+-- Asks the program what can be chosen (it is the same whichever the issues are), once for a form.
 local function ask(ids)
-	local first = ids[1]
-	if first == nil or W.asked == first then
+	if ids[1] == nil or W.asked then
 		return
 	end
-	W.asked = first
+	W.asked = true
 	W.options = { status = "loading" }
-	-- Only the first is told: what can be chosen is the same for all, and the branch is the first's.
-	kit.call("work_options", { ids = { first } }, function(result, err)
-		if W.asked ~= first then
+	kit.call("work_options", {}, function(result, err)
+		if not W.asked then
 			return true
 		end
 		if err then
@@ -304,7 +302,7 @@ local function folder_control(options)
 		items[#items + 1] = {
 			key = "worktree",
 			title = "New worktree",
-			tip = "Work on a branch of its own, in a folder beside the repository",
+			tip = "The agent makes a worktree first, by this project's own rules",
 		}
 	end
 	return u:segments(FOLDER, { value = W.folder, items = items })
@@ -383,8 +381,8 @@ function work.view(width)
 	else
 		content:child(field("Agent", agents_control(options)))
 		content:child(field("Folder", folder_control(options)))
-		if W.folder == "worktree" and options.worktree.branch ~= nil then
-			content:child(note("branch " .. options.worktree.branch, true))
+		if W.folder == "worktree" then
+			content:child(note("The agent makes it, by this project's own rules", true))
 		elseif not options.worktree.available and options.worktree.reason ~= nil then
 			content:child(note("No new worktree: " .. options.worktree.reason))
 		end
