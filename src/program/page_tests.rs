@@ -877,17 +877,76 @@ fn letters_typed_in_the_filter_are_its_own_and_the_buttons_answer_the_keyboard()
     assert!(page.says("My issues 14"), "{}", said(&page));
     page.press("escape").expect("escape clears");
     page.press("escape").expect("escape leaves the field");
-    // A button the pointer pressed has the keyboard, and Enter presses it again.
+    // Tab brings the keyboard to a button (the control of the scope, the filter, then Refresh), and
+    // Enter presses it.
+    for _ in 0..3 {
+        page.press("tab").expect("tab");
+    }
+    page.press("enter").expect("enter");
+    page.wait_for(WITHIN, |_| linear.times("MyIssues") == 2)
+        .expect("Enter on the button asked Linear again");
+    page.wait_for(WITHIN, |_| !session.state().refreshing)
+        .expect("the answer came");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn after_the_button_of_an_empty_list_is_clicked_enter_opens_an_issue() {
+    let linear = Canned::new(Mode::NothingAssigned);
+    let session = session_over(&linear, Some("lin_api_test"), None);
+    let mut page =
+        open(&session, WIDE, None, "Nothing is assigned to you").expect("the page opens");
+    page.click("show-all").expect("the button is pressed");
+    page.wait_for(WITHIN, |page| page.says("ACM-417"))
+        .expect("all issues are shown");
+    page.press("enter").expect("enter");
+    page.wait_for(WITHIN, |page| page.bounds("panel-close").is_some())
+        .unwrap_or_else(|why| panic!("Enter opens the issue: {why:?}: {}", said(&page)));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn after_the_control_of_the_scope_is_clicked_the_arrows_and_enter_are_the_lists() {
+    let (_linear, _session, mut page) = open_lists(WIDE);
+    page.click("scope/item/all")
+        .expect("the control is pressed");
+    page.wait_for(WITHIN, |page| page.says("ACM-417"))
+        .expect("all issues are shown");
+    // The cursor was on ACM-412 and the arrow is the list's: it goes on, and Enter opens that issue.
+    page.press("down").expect("down");
+    cursor_on(&mut page, "ACM-398");
+    page.press("enter").expect("enter");
+    page.wait_for(WITHIN, |page| page.bounds("panel-close").is_some())
+        .unwrap_or_else(|why| panic!("Enter opens the issue: {why:?}: {}", said(&page)));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn after_refresh_is_clicked_enter_opens_the_issue_and_asks_linear_nothing() {
+    let (linear, session, mut page) = open_lists(WIDE);
     page.click("refresh").expect("refresh is pressed");
     page.wait_for(WITHIN, |_| linear.times("MyIssues") == 2)
         .expect("Linear was asked again");
     page.wait_for(WITHIN, |_| !session.state().refreshing)
         .expect("the answer came");
-    // The page is told, and the button is pressable again.
     page.advance(0.5).expect("a moment");
     page.press("enter").expect("enter");
-    page.wait_for(WITHIN, |_| linear.times("MyIssues") == 3)
-        .expect("Enter on the button asked Linear once more");
+    page.wait_for(WITHIN, |page| page.bounds("panel-close").is_some())
+        .unwrap_or_else(|why| panic!("Enter opens the issue: {why:?}: {}", said(&page)));
+    assert_eq!(linear.times("MyIssues"), 2, "Linear was not asked again");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn after_the_button_that_closes_the_issue_is_clicked_enter_opens_it_again() {
+    let (_linear, _session, mut page) = open_lists(WIDE);
+    open_the_issue(&mut page);
+    page.click("panel-close").expect("the button is pressed");
+    page.wait_for(WITHIN, |page| page.bounds("panel-close").is_none())
+        .expect("the issue is closed");
+    page.press("enter").expect("enter");
+    page.wait_for(WITHIN, |page| page.bounds("panel-close").is_some())
+        .unwrap_or_else(|why| panic!("Enter opens the issue again: {why:?}: {}", said(&page)));
 }
 
 /// Opens the issue under the cursor with Enter, and waits for what the program tells of it.
@@ -2512,4 +2571,33 @@ fn the_project_has_a_key_and_what_it_picks_is_written() {
         linear.changed()[0],
         serde_json::json!({ "ids": ["issue-412"], "input": { "projectId": "p-1" } })
     );
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn after_a_value_is_picked_from_the_panel_enter_is_the_lists_and_not_the_controls() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    open_the_controls(&mut page);
+    page.click("panel-value:priority").expect("priority");
+    page.pick_titled("Low").expect("Low");
+    changed(&linear, &mut page, 1);
+    page.wait_for(WITHIN, |page| {
+        page.words_in("panel-value:priority")
+            .contains(&"Low".to_owned())
+    })
+    .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    // The control was pressed with the pointer: Enter does not open its menu again.
+    page.press("enter").expect("enter");
+    page.advance(0.5).expect("a moment");
+    assert!(page.menu().is_none(), "{}", said(&page));
+    assert_eq!(linear.changed().len(), 1);
+    // The arrows and Enter are the list's: the cursor goes on and Enter keeps that issue open.
+    page.press("down").expect("down");
+    cursor_on(&mut page, "ACM-398");
+    page.press("enter").expect("enter");
+    page.wait_for(WITHIN, |page| {
+        page.words_in("panel-title-edit")
+            .contains(&"Checkout test fails one run in ten".to_owned())
+    })
+    .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
 }

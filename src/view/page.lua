@@ -378,6 +378,9 @@ local function key(event)
 		and (event.key == "enter" or event.key == " ")
 		and target ~= nil
 		and (kit.buttons[target] or string.sub(target, 1, 11) == "work-check:")
+		-- (A button that is not drawn any more, such as the one the person pressed and that went with its
+		-- screen, is not pressed by a key.)
+		and b.layout.bounds(target) ~= nil
 	then
 		return press(target)
 	end
@@ -495,6 +498,19 @@ local function handle(event)
 		end
 	elseif kind == "key" and not taken then
 		reply = b.merge(reply, key(event))
+	end
+	-- A click does not leave the keyboard on what it pressed: the list has the arrows and Enter again,
+	-- and only Tab takes the keyboard to a button. A form, a card, a field (the filter, the title) keeps
+	-- the keyboard it was given, and so does a reply that sends it into a field.
+	if
+		kind == "release"
+		and S.screen == "list"
+		and not modal()
+		and not form_open()
+		and u.holder == "page"
+		and not (type(reply) == "table" and type(reply.keyboard) == "table")
+	then
+		reply = b.merge(reply, u:focus(nil))
 	end
 	follow()
 	return kit.take(reply)

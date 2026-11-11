@@ -121,7 +121,9 @@ How it starts one:
 ### The keyboard, and the mouse
 
 Everything the mouse does, the keys do too. The line at the foot says what the keys do where you are,
-`?` lists them all and `⌘K` finds a command by its name.
+`?` lists them all and `⌘K` finds a command by its name. A click does not move the keyboard to what it
+pressed: the arrows and `Enter` stay the list's, and `Tab` takes the keyboard to a button, which `Enter`
+or `Space` then presses.
 
 | Key                   | What it does                                                         |
 | --------------------- | -------------------------------------------------------------------- |
