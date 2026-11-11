@@ -14,7 +14,7 @@ use std::time::Duration;
 use pencere_drive::headless::Error;
 use pencere_drive::shot::{Fonts, Palette};
 
-use crate::page_tests::{Canned, Mode, PANE, Page, open, pressable, rig, session_over};
+use crate::page_tests::{Canned, Mode, PANE, Page, cursor, open, pressable, rig, session_over};
 
 /// A page as large as a terminal pane on a laptop.
 const BIG: (f32, f32) = (1280.0, 800.0);
@@ -65,6 +65,24 @@ fn one_team(size: (f32, f32), fonts: &Fonts) -> Result<(Arc<Canned>, Page), Erro
     let session = session_over(&linear, Some("lin_api_test"), None);
     let page = open(&session, size, Some(fonts), "ACM-412")?;
     Ok((linear, page))
+}
+
+/// Selects the issues the agent is shown being handed: two that are in progress and one in Todo, which
+/// has not begun, so that the form has its Status row.
+fn select_for_work(page: &mut Page) -> Result<(), Error> {
+    page.press("x")?;
+    for issue in ["ACM-405", "ACM-415"] {
+        for _ in 0..30 {
+            if cursor(page).contains(issue) {
+                break;
+            }
+            page.press("down")?;
+            page.advance(0.05)?;
+        }
+        page.press("x")?;
+    }
+    // (A pane as narrow as 80 columns does not say how many are selected: the boxes do.)
+    page.advance(0.3)
 }
 
 /// The new issue form, opened with `c`, once the choices are there.
@@ -228,11 +246,9 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     let linear = Canned::new(Mode::Fine);
     let machine = rig(&linear, true, &["claude", "codex", "cursor-agent"]);
     let mut page = open(&machine.session, BIG, Some(&fonts), "ACM-412")?;
-    page.press("x")?;
-    page.press("shift+down")?;
-    page.press("shift+down")?;
+    select_for_work(&mut page)?;
     page.press("w")?;
-    page.wait_for(Duration::from_secs(20), |page| page.says("Open in"))?;
+    page.wait_for(Duration::from_secs(20), |page| page.says("Unchanged"))?;
     page.type_text(
         "Start with the rate limiter. The two others touch the same middleware, so do them in the same branch and say what you left out.",
     )?;
@@ -249,14 +265,15 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     page.advance(0.4)?;
     save(&page, &fonts, Palette::Dark, "started.png");
     machine.hands.end();
+    // (Linear is made again: the issue that was moved is in progress now, and has no Status to say.)
+    let linear = Canned::new(Mode::Fine);
     let machine = rig(&linear, true, &["claude", "codex", "cursor-agent"]);
     let mut page = open(&machine.session, PANE, Some(&fonts), "ACM-412")?;
-    page.press("x")?;
-    page.press("shift+down")?;
-    page.press("shift+down")?;
+    select_for_work(&mut page)?;
     page.press("w")?;
-    page.wait_for(Duration::from_secs(20), |page| page.says("Open in"))?;
+    page.wait_for(Duration::from_secs(20), |page| page.says("Unchanged"))?;
     page.type_text("Start with the rate limiter.")?;
+    page.click("work-folder/item/worktree")?;
     page.advance(0.4)?;
     save(&page, &fonts, Palette::Dark, "narrow-work.png");
     machine.hands.end();

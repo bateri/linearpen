@@ -9,10 +9,12 @@
 //!   handoff    the file of issues, and the prompt that names it
 //!   worktree   what the agent is told of a new `git` worktree (the pen makes none)
 //!   bateri     the pane that runs the agent, and the wait for its end
+//!   progress   what a start moves in Linear where the person chose it (issues not begun, forward)
 
 pub mod agents;
 pub mod bateri;
 pub mod handoff;
+pub mod progress;
 pub mod runner;
 pub mod worktree;
 

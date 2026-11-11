@@ -4,6 +4,7 @@
 -- asks it what can be chosen and what the person chose.
 
 local kit = require("../lib/kit")
+local change = require("./change")
 local commands = require("./commands")
 local list = require("./list")
 local panel = require("./panel")
@@ -28,12 +29,15 @@ local W = {
 	agent = nil,
 	folder = "here",
 	place = "split",
+	-- Whether the issues that have not begun are moved to their team's state of work in progress
+	-- when the agent starts ("progress"), or left as they are ("keep").
+	status = "progress",
 	starting = false,
 	error = nil,
 }
 work.state = W
 
-local AGENT, FOLDER, PLACE = "work-agent", "work-folder", "work-place"
+local AGENT, FOLDER, PLACE, STATUS = "work-agent", "work-folder", "work-place", "work-status"
 
 -- The most issues one agent is started on (the program's limit, docs/calls.md).
 work.MOST = 25
@@ -58,6 +62,50 @@ end
 -- What the program said can be chosen, once it has.
 local function chosen()
 	return W.options ~= nil and W.options.status == "ready" and W.options.data or nil
+end
+
+-- The kinds of state that have not begun: the issues in them are what Status moves.
+local NOT_BEGUN = { triage = true, backlog = true, unstarted = true }
+
+-- The first state of work in progress of a team's choices (they come in the order of their kinds, and
+-- by position within one), or nil.
+local function first_started(data)
+	for _, state in data.states do
+		if state.kind == "started" then
+			return state
+		end
+	end
+	return nil
+end
+
+-- What Status would do for the issues of the form: how many have not begun and are of a team whose
+-- state of work in progress is known, and what that state is called (one name, or "Started" where the
+-- teams call it differently). nil where none would move. The program decides again, by what Linear
+-- says then; this is only what the form can promise.
+function work.moving()
+	local count, name, mixed = 0, nil, false
+	for _, id in work.ids() do
+		local item = list.item(id)
+		local team, kind
+		if item ~= nil then
+			team, kind = item.row.teamId, item.group.kind
+		elseif W.rows[id] ~= nil then
+			team, kind = W.rows[id].teamId, W.rows[id].kind
+		end
+		local data = team ~= nil and NOT_BEGUN[kind] and change.options(team) or nil
+		local state = data ~= nil and first_started(data) or nil
+		if state ~= nil then
+			count += 1
+			if name ~= nil and name ~= state.name then
+				mixed = true
+			end
+			name = name or state.name
+		end
+	end
+	if count == 0 then
+		return nil
+	end
+	return { count = count, name = mixed and "Started" or name }
 end
 
 -- What Work on is for, which is also where its button stands: "marks", the issues selected where
@@ -138,6 +186,12 @@ end
 function work.sync()
 	if W.open then
 		ask(work.ids())
+		-- What Status can move the issues to is what their teams say can be chosen.
+		for _, id in work.ids() do
+			local item = list.item(id)
+			local team = item ~= nil and item.row.teamId or (W.rows[id] ~= nil and W.rows[id].teamId or nil)
+			change.ask(team, false)
+		end
 	end
 end
 
@@ -153,7 +207,12 @@ function work.show()
 	if target == "panel" then
 		local info = panel.info()
 		ids = { info.id }
-		rows[info.id] = { identifier = info.identifier, title = info.title }
+		rows[info.id] = {
+			identifier = info.identifier,
+			title = info.title,
+			teamId = info.teamId,
+			kind = info.state ~= nil and info.state.kind or nil,
+		}
 	elseif target == "cursor" then
 		ids = { list.current().row.id }
 	end
@@ -179,6 +238,8 @@ function work.start()
 	local length = b.layout.editor_length(name) or 0
 	local words = b.layout.editor_text(name, 1, length + 1) or ""
 	W.starting, W.error = true, nil
+	-- Only what the form said it would move is asked for: Status is not a thing to ask for blind.
+	local progress = W.status == "progress" and work.moving() ~= nil
 	local serial = W.serial
 	kit.call("start", {
 		ids = work.ids(),
@@ -186,7 +247,8 @@ function work.start()
 		agent = W.agent,
 		folder = W.folder,
 		open = W.place,
-	}, function(_, err)
+		progress = progress,
+	}, function(result, err)
 		W.starting = false
 		-- The form it was sent from may have been put away, and another opened: that one is not done.
 		if W.serial ~= serial or not W.open then
@@ -196,7 +258,11 @@ function work.start()
 			W.error = err.message or err.code
 			return true
 		end
-		-- It is on its way: the form is done, and what was selected was for it.
+		-- It is on its way: the form is done, and what was selected was for it. Where the issues were to
+		-- move and Linear did not, the list's strip says so (the agent is started all the same).
+		if result ~= nil and result.notMoved ~= nil then
+			change.note(result.notMoved)
+		end
 		W.open = false
 		list.clear_marks()
 		return u:focus(nil)
@@ -344,6 +410,22 @@ local function place_control()
 	})
 end
 
+-- Whether the issues that have not begun are moved: to what their team calls its state of work in
+-- progress, or not.
+local function status_control(moving)
+	return u:segments(STATUS, {
+		value = W.status,
+		items = {
+			{
+				key = "progress",
+				title = moving.name,
+				tip = "Move the issues that have not begun to " .. moving.name .. " when the agent starts",
+			},
+			{ key = "keep", title = "Unchanged", tip = "Leave the status of the issues as it is" },
+		},
+	})
+end
+
 local function start_label()
 	local options = chosen()
 	if options ~= nil then
@@ -407,12 +489,18 @@ function work.view(width)
 	else
 		content:child(field("Agent", agents_control(options)))
 		content:child(field("Folder", folder_control(options)))
-		if W.folder == "worktree" then
+		-- (In a short pane the line under Folder is left out, for Start to stay on the page: the
+		-- choice's tip says it.)
+		if W.folder == "worktree" and not compact then
 			content:child(note("The agent makes it, by this project's own rules", true))
 		elseif not options.worktree.available and options.worktree.reason ~= nil then
 			content:child(note("No new worktree: " .. options.worktree.reason))
 		end
 		content:child(field("Open in", place_control()))
+		local moving = work.moving()
+		if moving ~= nil then
+			content:child(field("Status", status_control(moving)))
+		end
 	end
 	local button, why = start_button()
 	local foot = b.div():row():items_center():gap(12):no_shrink():child(button)
@@ -458,6 +546,8 @@ function work.action(action)
 		W.folder = action.key
 	elseif action.from == PLACE then
 		W.place = action.key
+	elseif action.from == STATUS then
+		W.status = action.key
 	else
 		return nil
 	end
@@ -477,7 +567,7 @@ local function order()
 		end
 	end
 	names[#names + 1] = u:field(prompt_name())
-	local controls = { { AGENT, W.agent }, { FOLDER, W.folder }, { PLACE, W.place } }
+	local controls = { { AGENT, W.agent }, { FOLDER, W.folder }, { PLACE, W.place }, { STATUS, W.status } }
 	for _, control in controls do
 		local name = control[2] ~= nil and u:name(control[1], "item", control[2]) or nil
 		if name ~= nil and b.layout.bounds(name) ~= nil then

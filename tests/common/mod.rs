@@ -148,6 +148,8 @@ pub struct Call {
     pub env_key: String,
     /// The configuration on its stdin: the address, the key, the body.
     pub stdin: String,
+    /// How many calls the stand-in `bateri` had had when this one came.
+    pub bateri_before: usize,
 }
 
 /// A home of its own, and the environment of a process in it.
@@ -243,17 +245,21 @@ impl Home {
             let (head, stdin) = block.split_once("stdin:\n").unwrap_or((block, ""));
             let mut argv = Vec::new();
             let mut env_key = String::new();
+            let mut bateri_before = 0;
             for line in head.lines() {
                 if let Some(arg) = line.strip_prefix("argv: ") {
                     argv.push(arg.to_owned());
                 } else if let Some(said) = line.strip_prefix("env LINEAR_API_KEY: ") {
                     env_key = said.to_owned();
+                } else if let Some(count) = line.strip_prefix("bateri calls so far: ") {
+                    bateri_before = count.trim().parse().unwrap_or(0);
                 }
             }
             calls.push(Call {
                 argv,
                 env_key,
                 stdin: stdin.to_owned(),
+                bateri_before,
             });
         }
         calls

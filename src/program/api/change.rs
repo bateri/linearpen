@@ -133,21 +133,25 @@ fn read(params: Edit) -> Result<(Vec<String>, Change), Failure> {
     Ok((kept, change))
 }
 
+/// The words of why a change was not made, for the person.
+pub(super) fn said(error: &Error) -> String {
+    match error {
+        Error::Refused | Error::Unreachable(_) => error.to_string(),
+        Error::Forbidden => "Linear did not change it: this key cannot change issues".to_owned(),
+        Error::Unsure => "Linear did not answer whole, so it may have changed it".to_owned(),
+        Error::Failed(why) => format!(
+            "Linear did not change it: {}",
+            why.strip_prefix("Linear said: ").unwrap_or(why)
+        ),
+    }
+}
+
 /// What a call that wrote tells of a failure: a key Linear does not take, and a network that failed,
 /// are said as they are for every call; Linear not making the change is `change-failed`.
 fn told(error: Error) -> Failure {
     match error {
         Error::Refused | Error::Unreachable(_) => Failure::Linear(error),
-        Error::Forbidden => Failure::ChangeFailed(
-            "Linear did not change it: this key cannot change issues".to_owned(),
-        ),
-        Error::Unsure => Failure::ChangeFailed(
-            "Linear did not answer whole, so it may have changed it".to_owned(),
-        ),
-        Error::Failed(why) => Failure::ChangeFailed(format!(
-            "Linear did not change it: {}",
-            why.strip_prefix("Linear said: ").unwrap_or(&why)
-        )),
+        other => Failure::ChangeFailed(said(&other)),
     }
 }
 

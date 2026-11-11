@@ -522,6 +522,12 @@ function change.strip()
 	})
 end
 
+-- Says `words` in the strip at the head of the list, for what is not of one issue's controls (an agent
+-- was started and Linear did not move the issues): the person puts it away with Dismiss.
+function change.note(words)
+	C.error = { ids = {}, words = words, strip = words }
+end
+
 -- What the person did to the menu, the title or the strip. The reply, or nil where it was not ours.
 function change.action(action)
 	local from, kind = action.from, action.kind

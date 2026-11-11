@@ -19,7 +19,10 @@ the person and never hold the key.
 
 The pen writes two things: the issue the person makes (`create`), and the change the person makes to
 issues (`change`): one of their status, priority, assignee, labels, project or title. The description
-and the team are never written, by any call. Nothing else here changes anything in Linear.
+and the team are never written, by any call. One more call writes, and only as `change` does: `start`
+moves the issues that have not begun to their team's first state of work in progress, where the
+person chose that (`progress`), once the agent's pane is made. Nothing else here changes anything in
+Linear.
 
 ## Calls
 
@@ -133,7 +136,7 @@ file. It answers when the pane is made. Params:
 
 ```json
 { "ids": ["issue-412", "issue-405"], "prompt": "Start with the rate limiter.",
-  "agent": "claude", "folder": "here", "open": "split" }
+  "agent": "claude", "folder": "here", "open": "split", "progress": true }
 ```
 
 - `ids`: one to twenty-five Linear ids of issues, the first the one that names the pane.
@@ -143,10 +146,24 @@ file. It answers when the pane is made. Params:
   project's own rules for where one goes and what its branch is called; the pen makes none, and the
   agent starts in the pen's folder either way). `open`: `split` (a pane to the right of this one) or
   `tab` (a new tab). The new pane is not given the focus.
+- `progress`: optional, false where it is not given. With it the program moves the issues whose
+  state, as Linear says it now, is of the kind `triage`, `backlog` or `unstarted` to the first
+  `started` state (by position) of the team each is of, with the `change` write of a status, one for
+  each team, **after** the pane is made. Nothing else is written: an issue that has begun, is done or
+  is canceled is left as it is, and the move is never a way to give an issue to someone or to take
+  one from a team. Where no issue would move, nothing is sent. The page sends it only where the
+  person chose to move the issues and the form said which of them would.
 
 ```json
-{ "pane": "p41", "folder": "/Users/ada/acme-app", "context": "/Users/ada/.local/state/linearpen/work/20261111T031500Z-ACM-412/issues.md" }
+{ "pane": "p41", "folder": "/Users/ada/acme-app", "context": "/Users/ada/.local/state/linearpen/work/20261111T031500Z-ACM-412/issues.md",
+  "moved": 1, "notMoved": null }
 ```
+
+`moved` is how many issues were moved (0 where `progress` was not asked or none had to move), and
+`notMoved` says why some that were to move did not (Linear refused, did not answer, or a team has no
+state of work in progress), or is null. The agent is started either way: a refusal is not an error of
+`start`, and the move is not sent again. The lists are changed in place, as after `change`, and the
+issues keep the mark below.
 
 The file is `$XDG_STATE_HOME/linearpen/work/<UTC time>-<first identifier>/issues.md` (the
 directories `0700`, the file `0600`); it says in its first lines that the text under them was

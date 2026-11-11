@@ -87,7 +87,14 @@ pub(crate) struct Canned {
     edits: Mutex<std::collections::HashMap<String, Vec<serde_json::Value>>>,
     /// The team of an issue where it is not Acme's: the id and the key.
     teams_of: Mutex<std::collections::HashMap<String, (String, String)>>,
+    /// Where each `IssueBatchUpdate` is written down as it comes, with what `Hands` is asked to run,
+    /// where a test wants to know which came first.
+    ledger: Mutex<Option<Ledger>>,
 }
+
+/// What came, in the order it came: `Canned`'s writes (`linear IssueBatchUpdate <input>`) and what
+/// `Hands` runs (`bateri split`).
+pub(crate) type Ledger = Arc<Mutex<Vec<String>>>;
 
 /// How Linear answers a change.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -115,7 +122,13 @@ impl Canned {
             changes: Mutex::new(Vec::new()),
             edits: Mutex::new(std::collections::HashMap::new()),
             teams_of: Mutex::new(std::collections::HashMap::new()),
+            ledger: Mutex::new(None),
         })
+    }
+
+    /// From now on each `IssueBatchUpdate` is written in `ledger` as it comes.
+    pub(crate) fn keep_ledger(&self, ledger: &Ledger) {
+        *self.ledger.lock().unwrap() = Some(Arc::clone(ledger));
     }
 
     /// How a change is answered from now on.
@@ -197,14 +210,30 @@ impl Canned {
         value.to_string()
     }
 
-    fn options_text(&self) -> String {
-        if !*self.bare.lock().unwrap() {
+    /// What a new issue of the team `team` can be given. The fixtures are Acme's; the team of the web
+    /// (`team-web`, see `set_team_of`) has the same states, and calls its first state of work Doing.
+    fn options_text(&self, team: &str) -> String {
+        let web = team == "team-web";
+        if !*self.bare.lock().unwrap() && !web {
             return NEW_ISSUE_OPTIONS.to_owned();
         }
         let mut value: serde_json::Value = serde_json::from_str(NEW_ISSUE_OPTIONS).unwrap();
-        value["data"]["team"]["labels"]["nodes"] = serde_json::json!([]);
-        value["data"]["team"]["projects"]["nodes"] = serde_json::json!([]);
-        value["data"]["issueLabels"]["nodes"] = serde_json::json!([]);
+        if *self.bare.lock().unwrap() {
+            value["data"]["team"]["labels"]["nodes"] = serde_json::json!([]);
+            value["data"]["team"]["projects"]["nodes"] = serde_json::json!([]);
+            value["data"]["issueLabels"]["nodes"] = serde_json::json!([]);
+        }
+        if web {
+            value["data"]["team"]["id"] = serde_json::json!(team);
+            for state in value["data"]["team"]["states"]["nodes"]
+                .as_array_mut()
+                .unwrap()
+            {
+                if state["id"] == "s-prog" {
+                    state["name"] = serde_json::json!("Doing");
+                }
+            }
+        }
         value.to_string()
     }
 
@@ -445,11 +474,21 @@ impl Transport for Canned {
                     }
                 }
                 "NewIssueTeams" => reply(200, &self.teams_text()),
-                "NewIssueOptions" => reply(200, &self.options_text()),
+                "NewIssueOptions" => {
+                    let asked: serde_json::Value = serde_json::from_str(body).unwrap();
+                    let team = asked["variables"]["team"].as_str().unwrap_or("team-acm");
+                    reply(200, &self.options_text(team))
+                }
                 "IssueBatchUpdate" => {
                     let asked: serde_json::Value = serde_json::from_str(body).unwrap();
                     self.changes.lock().unwrap().push(serde_json::json!({
                         "ids": asked["variables"]["ids"], "input": asked["variables"]["input"] }));
+                    if let Some(ledger) = self.ledger.lock().unwrap().as_ref() {
+                        ledger.lock().unwrap().push(format!(
+                            "linear IssueBatchUpdate {}",
+                            asked["variables"]["input"]
+                        ));
+                    }
                     if *self.change.lock().unwrap() == Change::Refused {
                         return reply(400, CHANGE_REFUSED);
                     }
@@ -1201,6 +1240,7 @@ pub(crate) struct Hands {
     repo: Mutex<bool>,
     split_says: Mutex<Option<String>>,
     ended: Mutex<bool>,
+    ledger: Mutex<Option<Ledger>>,
 }
 
 impl Hands {
@@ -1210,12 +1250,23 @@ impl Hands {
             repo: Mutex::new(true),
             split_says: Mutex::new(None),
             ended: Mutex::new(false),
+            ledger: Mutex::new(None),
         })
+    }
+
+    /// From now on what is run is written in `ledger` as it comes (`bateri split`).
+    pub(crate) fn keep_ledger(&self, ledger: &Ledger) {
+        *self.ledger.lock().unwrap() = Some(Arc::clone(ledger));
     }
 
     /// What was run, a line each (`bateri wait p41` is one of them).
     fn asked(&self) -> Vec<String> {
         self.asked.lock().unwrap().clone()
+    }
+
+    /// From now on `bateri split` and `bateri tab` fail, saying `words`.
+    pub(crate) fn refuse_the_pane(&self, words: &str) {
+        *self.split_says.lock().unwrap() = Some(words.to_owned());
     }
 
     /// The agent's pane ends.
@@ -1236,6 +1287,12 @@ impl crate::work::runner::Runner for Hands {
             .lock()
             .unwrap()
             .push(format!("{program} {}", args.join(" ")));
+        if let Some(ledger) = self.ledger.lock().unwrap().as_ref() {
+            ledger.lock().unwrap().push(format!(
+                "{program} {}",
+                args.first().map_or("", String::as_str)
+            ));
+        }
         let said = |ok: bool, out: &str, err: &str| {
             Ok(Ran {
                 ok,
@@ -1316,10 +1373,16 @@ pub(crate) fn rig(linear: &Arc<Canned>, in_bateri: bool, agents: &[&str]) -> Rig
 
 /// The page over a rig, with the cursor on the first issue.
 fn open_rig(size: (f32, f32), in_bateri: bool, agents: &[&str]) -> (Rig, Page) {
+    let (_linear, rig, page) = open_machine(size, in_bateri, agents);
+    (rig, page)
+}
+
+/// The same, with Linear it is over, for a test that says what was written to it.
+fn open_machine(size: (f32, f32), in_bateri: bool, agents: &[&str]) -> (Arc<Canned>, Rig, Page) {
     let linear = Canned::new(Mode::Fine);
     let rig = rig(&linear, in_bateri, agents);
     let page = open(&rig.session, size, None, "ACM-412").expect("the page opens");
-    (rig, page)
+    (linear, rig, page)
 }
 
 /// Opens the form with `w` and waits until the program has said what can be chosen.
@@ -1598,6 +1661,228 @@ fn in_an_80_by_24_pane_the_form_takes_the_pane_and_keeps_start_inside_it() {
             "{name}: {at:?}"
         );
     }
+}
+
+/// Puts the cursor on the line that says `words`, going down from where it is.
+fn go_down_to(page: &mut Page, words: &str) {
+    for _ in 0..40 {
+        if cursor(page).contains(words) {
+            return;
+        }
+        page.press("down").expect("down");
+        page.advance(0.05).expect("a moment");
+    }
+    panic!("the cursor reaches {words:?}; it is on {:?}", cursor(page));
+}
+
+/// Opens the form on the issue under the cursor and waits until it says Status (the choices of the
+/// team have come), or, with `row` false, until it is open.
+fn open_form_with_status(page: &mut Page, row: bool) {
+    open_form(page);
+    if row {
+        page.wait_for(WITHIN, |page| page.says("Unchanged"))
+            .unwrap_or_else(|why| panic!("the Status row is drawn: {why:?}: {}", said(page)));
+    }
+}
+
+/// Waits until the form is put away (what it started is on its way, and answered).
+fn form_done(page: &mut Page) {
+    page.wait_for(WITHIN, |page| !page.says("Open in"))
+        .unwrap_or_else(|why| panic!("the form is done: {why:?}: {}", said(page)));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_status_row_is_drawn_only_where_an_issue_has_not_begun_and_start_moves_it_and_the_mark_stays()
+{
+    let (linear, rig, mut page) = open_machine(WIDE, true, &["claude"]);
+    // ACM-412 is in progress: there is nothing to move, and the row is not there.
+    open_form_with_status(&mut page, false);
+    assert!(!page.says("Status"), "{}", said(&page));
+    assert!(!page.says("Unchanged"), "{}", said(&page));
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| !page.says("Open in"))
+        .expect("the form is put away");
+    // ACM-415 is in Todo: the row is there, and says where it goes.
+    go_down_to(&mut page, "ACM-415");
+    open_form_with_status(&mut page, true);
+    for words in ["Status", "In Progress", "Unchanged"] {
+        assert!(page.says(words), "{words}: {}", said(&page));
+    }
+    assert!(group_says(&page, "Todo, 6"), "{}", said(&page));
+    page.press("mod+enter").expect("mod+enter");
+    form_done(&mut page);
+    // The pane was made, then the one issue was moved, to In Progress and to nothing else.
+    assert_eq!(
+        linear.changed(),
+        [serde_json::json!({ "ids": ["issue-415"], "input": { "stateId": "s-prog" } })]
+    );
+    assert!(
+        rig.hands
+            .asked()
+            .iter()
+            .any(|line| line.starts_with("bateri split")),
+        "{:?}",
+        rig.hands.asked()
+    );
+    // It is in its new group, in the list, with its mark: the agent still works on it.
+    page.wait_for(WITHIN, |page| {
+        group_says(page, "In Progress, 5") && group_says(page, "Todo, 5")
+    })
+    .unwrap_or_else(|why| panic!("the issue changes group: {why:?}: {}", said(&page)));
+    assert!(page.says("Claude"), "the mark stays: {}", said(&page));
+    rig.hands.end();
+    page.wait_for(WITHIN, |page| !page.says("Claude"))
+        .unwrap_or_else(|why| panic!("the mark goes with the pane: {why:?}: {}", said(&page)));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn unchanged_sends_nothing_and_the_mouse_and_tab_choose_the_status_like_the_other_rows() {
+    // The pointer: a press on Unchanged chooses it, and Cmd Enter starts from there.
+    let (linear, rig, mut page) = open_machine(WIDE, true, &["claude"]);
+    go_down_to(&mut page, "ACM-415");
+    open_form_with_status(&mut page, true);
+    page.click("work-status/item/keep")
+        .expect("the segment is pressed");
+    page.advance(0.2).expect("a moment");
+    page.press("mod+enter").expect("mod+enter");
+    form_done(&mut page);
+    assert!(linear.changed().is_empty(), "{:?}", linear.changed());
+    assert_eq!(linear.times("IssueBatchUpdate"), 0);
+    rig.hands.end();
+
+    // A form keeps the keyboard a press gave its control, as its other rows do: the arrow then
+    // chooses in it, and it is not the list's (the cursor does not move).
+    let (linear, rig, mut page) = open_machine(WIDE, true, &["claude"]);
+    go_down_to(&mut page, "ACM-415");
+    open_form_with_status(&mut page, true);
+    let on = cursor(&page);
+    page.click("work-status/item/keep")
+        .expect("the segment is pressed");
+    page.press("left").expect("left");
+    page.advance(0.2).expect("a moment");
+    assert_eq!(cursor(&page), on, "the list did not move");
+    page.press("mod+enter").expect("mod+enter");
+    form_done(&mut page);
+    assert_eq!(
+        linear.changed().len(),
+        1,
+        "the arrow chose the first again: {:?}",
+        linear.changed()
+    );
+    rig.hands.end();
+
+    // Tab: the Status row is in the order of the form, after Open in and before Start, and the
+    // arrows choose in it.
+    let (linear, rig, mut page) = open_machine(WIDE, true, &["claude"]);
+    go_down_to(&mut page, "ACM-415");
+    open_form_with_status(&mut page, true);
+    for _ in 0..4 {
+        page.press("tab").expect("tab");
+    }
+    page.press("right").expect("right");
+    page.advance(0.2).expect("a moment");
+    page.press("tab").expect("tab");
+    page.press("enter").expect("enter on Start");
+    form_done(&mut page);
+    assert!(
+        linear.changed().is_empty(),
+        "the arrow chose Unchanged: {:?}",
+        linear.changed()
+    );
+    rig.hands.end();
+
+    let (linear, rig, mut page) = open_machine(WIDE, true, &["claude"]);
+    go_down_to(&mut page, "ACM-415");
+    open_form_with_status(&mut page, true);
+    for _ in 0..4 {
+        page.press("tab").expect("tab");
+    }
+    page.press("right").expect("right");
+    page.press("left").expect("left");
+    page.advance(0.2).expect("a moment");
+    page.press("mod+enter").expect("mod+enter");
+    form_done(&mut page);
+    assert_eq!(linear.changed().len(), 1, "{:?}", linear.changed());
+    rig.hands.end();
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn teams_that_call_their_state_differently_are_asked_to_move_to_started() {
+    let linear = Canned::new(Mode::Fine);
+    linear.set_team_of("issue-420", "team-web", "WEB");
+    let rig = rig(&linear, true, &["claude"]);
+    let mut page = open(&rig.session, WIDE, None, "ACM-412").expect("the page opens");
+    go_down_to(&mut page, "ACM-420");
+    page.press("x").expect("x");
+    page.press("down").expect("down");
+    page.press("down").expect("down");
+    page.press("down").expect("down");
+    // ACM-420 (the web team: Doing) and ACM-415 or another of Todo (Acme: In Progress) are selected.
+    page.press("x").expect("x");
+    page.wait_for(WITHIN, |page| page.says("2 selected"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    page.click("work").expect("the header button is pressed");
+    page.wait_for(WITHIN, |page| page.says("Unchanged"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    assert!(page.says("Started"), "{}", said(&page));
+    assert!(!page.says("Doing"), "{}", said(&page));
+    page.press("mod+enter").expect("mod+enter");
+    form_done(&mut page);
+    // One change for each team.
+    assert_eq!(linear.changed().len(), 2, "{:?}", linear.changed());
+    rig.hands.end();
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_move_linear_refuses_is_said_in_the_strip_and_the_agent_is_started_all_the_same() {
+    let (linear, rig, mut page) = open_machine(WIDE, true, &["claude"]);
+    linear.set_change(Change::Refused);
+    go_down_to(&mut page, "ACM-415");
+    open_form_with_status(&mut page, true);
+    page.press("mod+enter").expect("mod+enter");
+    form_done(&mut page);
+    page.wait_for(WITHIN, |page| page.says("Linear did not move the issues"))
+        .unwrap_or_else(|why| panic!("the strip says so: {why:?}: {}", said(&page)));
+    assert!(page.says("Claude"), "the agent is on it: {}", said(&page));
+    assert!(
+        rig.hands
+            .asked()
+            .iter()
+            .any(|line| line.starts_with("bateri split")),
+        "{:?}",
+        rig.hands.asked()
+    );
+    // The person puts the words away.
+    page.click("change-problem").ok();
+    rig.hands.end();
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn in_an_80_by_24_pane_start_stays_inside_it_with_a_worktree_and_the_status_row() {
+    let (_linear, _rig, mut page) = open_machine(PANE, true, &["claude", "codex"]);
+    go_down_to(&mut page, "ACM-415");
+    open_form_with_status(&mut page, true);
+    page.click("work-folder/item/worktree")
+        .expect("the segment is pressed");
+    page.advance(0.3).expect("a moment");
+    // The line under Folder is left out here, and Status and Start are on the page.
+    assert!(!page.says("The agent makes it"), "{}", said(&page));
+    let status = page
+        .bounds("work-status/item/progress")
+        .expect("the Status row is laid out");
+    let start = page.bounds("work-start").expect("Start is laid out");
+    for (name, at) in [("Status", status), ("Start", start)] {
+        assert!(
+            at.x >= 0.0 && at.x + at.w <= PANE.0 + 0.5 && at.y + at.h <= PANE.1 + 0.5,
+            "{name}: {at:?}"
+        );
+    }
+    assert!(status.y < start.y, "{status:?} {start:?}");
 }
 
 // --- A new issue ---------------------------------------------------------------------------------

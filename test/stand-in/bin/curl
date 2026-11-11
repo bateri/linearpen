@@ -16,6 +16,11 @@
 #   STANDIN_CREATE=lost       Linear makes the issue and the answer never comes: curl times out
 #   STANDIN_CHANGE=refused    Linear does not make the change: a GraphQL error, HTTP 400
 #   STANDIN_CHANGE=lost       Linear makes the change and the answer never comes: curl times out
+#   STANDIN_ISSUE=todo        `Issue` tells the issue it answers with (issue.json) as one in Todo, which
+#                             has not begun, where it is In Progress
+#
+# Each call is recorded with how many calls the stand-in `bateri` (STANDIN_BATERI_LOG) had had by
+# then, so that a test can say which came first: Linear or the pane.
 #
 # An issue that was created (by IssueCreate, answered or lost) is kept in "$STANDIN_LOG.created" (its
 # id and its title): the lists tell it first from then on, and `Issue` finds it by that id. An id
@@ -45,6 +50,11 @@ if [ -n "${STANDIN_LOG-}" ]; then
 	else
 		record="${record}env LINEAR_API_KEY: unset$nl"
 	fi
+	seen=0
+	if [ -n "${STANDIN_BATERI_LOG-}" ] && [ -f "$STANDIN_BATERI_LOG" ]; then
+		seen=$(tr -cd '\001' <"$STANDIN_BATERI_LOG" | wc -c | tr -d ' ')
+	fi
+	record="${record}bateri calls so far: $seen$nl"
 	record="${record}stdin:$nl$config$nl--- end$nl"
 	mine="$STANDIN_LOG.$$"
 	printf '%s' "$record" >"$mine"
@@ -340,7 +350,13 @@ if is Issue; then
 		exit 0
 		;;
 	esac
-	cat "$here/issue.json"
+	case "${STANDIN_ISSUE-}" in
+	todo)
+		sed -e 's/"id": "s-prog"/"id": "s-todo"/' -e 's/"name": "In Progress"/"name": "Todo"/' \
+			-e 's/"type": "started"/"type": "unstarted"/' "$here/issue.json"
+		;;
+	*) cat "$here/issue.json" ;;
+	esac
 	printf '\n200'
 	exit 0
 fi

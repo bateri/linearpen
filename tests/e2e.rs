@@ -270,6 +270,11 @@ fn hand(ids: &[&str], prompt: &str) -> serde_json::Value {
     json!({ "ids": ids, "prompt": prompt, "agent": "claude", "folder": "here", "open": "split" })
 }
 
+/// A start of `ids` that also asks for the issues that have not begun to be moved.
+fn hand_moving(ids: &[&str]) -> serde_json::Value {
+    json!({ "ids": ids, "prompt": "", "agent": "claude", "folder": "here", "open": "split", "progress": true })
+}
+
 /// A script that is run in a pane of bateri, which is where an agent can be started.
 fn in_bateri() -> Script {
     keyed().env("BATERI_TAB_URL", "unix:/not-a-real-pane")
@@ -330,6 +335,103 @@ fn an_agent_is_started_in_a_pane_that_is_given_the_file_of_the_issues_and_not_th
             .any(|word| word.contains("--focus") || word.contains(common::KEY)),
         "{call:?}"
     );
+}
+
+#[test]
+fn a_start_that_asks_for_it_moves_what_has_not_begun_after_the_pane_with_the_one_status_write() {
+    let home = Home::new();
+    let heard = home.ask(
+        &in_bateri()
+            .env("STANDIN_ISSUE", "todo")
+            .call("start", hand_moving(&["issue-412"])),
+    );
+    let started = heard[0].result();
+    assert_eq!(started["pane"], "p41");
+    assert_eq!(started["moved"], 1, "{started}");
+    assert!(started["notMoved"].is_null(), "{started}");
+    let sent = asked_of(&home, "IssueBatchUpdate");
+    assert_eq!(sent.len(), 1, "{:?}", home.calls());
+    assert_eq!(sent[0].argv, ["--config", "-"]);
+    assert_eq!(sent[0].env_key, "unset");
+    assert!(sent[0].stdin.contains(common::KEY));
+    for part in ["issue-412", "stateId", "s-prog"] {
+        assert!(sent[0].stdin.contains(part), "{part}: {}", sent[0].stdin);
+    }
+    // Only the status: nothing of what the pen may not write is in the request.
+    let variables = sent[0]
+        .stdin
+        .split("variables")
+        .nth(1)
+        .expect("the request has variables");
+    for word in ["description", "teamId", "assigneeId", "title", "priority"] {
+        assert!(!variables.contains(word), "{word}: {variables}");
+    }
+    // The pane was made first: the issue's text was asked for before bateri had a call, and the
+    // write after it.
+    let asked = home.calls();
+    let text = asked_of(&home, "Issue");
+    assert!(text.iter().all(|call| call.bateri_before == 0), "{asked:?}");
+    assert!(sent[0].bateri_before >= 1, "{asked:?}");
+    // The key is in no word the page hears, and nothing but this one request writes.
+    assert!(!heard[0].result().to_string().contains(common::KEY));
+    for call in asked {
+        if !call
+            .stdin
+            .contains("\\\"operationName\\\":\\\"IssueBatchUpdate\\\"")
+        {
+            assert!(
+                !call.stdin.to_lowercase().contains("mutation"),
+                "{}",
+                call.stdin
+            );
+        }
+    }
+}
+
+#[test]
+fn a_start_that_does_not_ask_for_it_or_has_nothing_to_move_writes_nothing() {
+    let home = Home::new();
+    let heard = home.ask(
+        &in_bateri()
+            .env("STANDIN_ISSUE", "todo")
+            .call("start", hand(&["issue-412"], "")),
+    );
+    assert_eq!(heard[0].result()["moved"], 0, "{:?}", heard[0]);
+    assert!(asked_of(&home, "IssueBatchUpdate").is_empty());
+    // An issue that has begun is not moved, whatever is asked.
+    let home = Home::new();
+    let heard = home.ask(&in_bateri().call("start", hand_moving(&["issue-412"])));
+    assert_eq!(heard[0].result()["moved"], 0, "{:?}", heard[0]);
+    assert!(heard[0].result()["notMoved"].is_null());
+    assert!(asked_of(&home, "IssueBatchUpdate").is_empty());
+    // And where there is no pane, Linear is not written either.
+    let home = Home::new();
+    let heard = home.ask(
+        &in_bateri()
+            .env("STANDIN_BATERI", "refuse")
+            .env("STANDIN_ISSUE", "todo")
+            .call("start", hand_moving(&["issue-412"])),
+    );
+    assert!(heard[0].failed("start-failed"), "{:?}", heard[0]);
+    assert!(asked_of(&home, "IssueBatchUpdate").is_empty());
+}
+
+#[test]
+fn a_move_linear_refuses_leaves_the_start_whole_and_is_not_sent_again() {
+    let home = Home::new();
+    let heard = home.ask(
+        &in_bateri()
+            .env("STANDIN_ISSUE", "todo")
+            .env("STANDIN_CHANGE", "refused")
+            .call("start", hand_moving(&["issue-412"])),
+    );
+    let started = heard[0].result();
+    assert_eq!(started["pane"], "p41", "{:?}", heard[0]);
+    assert_eq!(started["moved"], 0);
+    let why = started["notMoved"].as_str().expect("the reason is told");
+    assert!(why.starts_with("Linear did not move the issues"), "{why}");
+    assert!(!why.contains(common::KEY));
+    assert_eq!(asked_of(&home, "IssueBatchUpdate").len(), 1);
 }
 
 #[test]

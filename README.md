@@ -102,8 +102,10 @@ form for the issues selected, else for the issue that is open, else for the one 
 Its button stands by what it works on: by the count of what is selected, in the panel of the issue
 that is open, or at the end of the head, where it names the issue under the cursor. In the form,
 say what the agent should do, choose the agent (the ones of Claude, Codex and Cursor that are in your `PATH`), whether it works in this
-folder or makes a new `git` worktree for the work, and whether its pane splits to the right or
-opens a new tab. `⌘Enter` starts it, and each issue says which agent is on it until the pane ends.
+folder or makes a new `git` worktree for the work, whether its pane splits to the right or
+opens a new tab, and whether the issues that have not begun move to the status of work in progress
+(`Status`: the name of your team's first such state, or `Unchanged`; the row is not there when every
+issue has begun). `⌘Enter` starts it, and each issue says which agent is on it until the pane ends.
 
 <img src="docs/started.png" width="720" alt="linearpen: the issues an agent was started on, each marked with its name">
 
@@ -111,6 +113,11 @@ How it starts one:
 
 - It asks bateri for the pane (`bateri split` or `bateri tab`), so nothing is started outside a
   bateri pane, and the form says why.
+- Then, if `Status` says so, the issues in Triage, Backlog or Todo go to the first state of work in
+  progress of their team, one change for each team. Only forward and only the status: an issue that
+  has begun, is done or is canceled is left as it is, and nothing is written if the pane was not
+  made. If Linear says no, the agent is started all the same and the list says the issues did not
+  move.
 - The issues, with their descriptions and comments, are written to a file that only you can read, in
   `~/.local/state/linearpen/work` (`$XDG_STATE_HOME`), and the agent is told where it is. What the
   agent is started with is a sentence that names the file and what you wrote, never the text of an
@@ -154,7 +161,8 @@ or `Space` then presses.
 linearpen tells Linear a new issue and a change to the issues you have, and nothing else. It has two
 mutations, `IssueCreate` (sent when you press Create in the form) and `IssueBatchUpdate` (sent when you
 choose a status, a priority, an assignee, a label, a project or a title, for one issue or for those you
-selected), and the list of mutations it may send is one place in the program that a test checks every
+selected; and sent once more, only for the status, when you start an agent with `Status` set to move
+the issues that have not begun), and the list of mutations it may send is one place in the program that a test checks every
 query against, refusing any other before it is sent. What a change can be is a type of its own with
 those six fields in it: the description and the team of an issue cannot be written by it, and a
 test looks for them in what is sent. A comment, an archive or a deletion changed from here would be a

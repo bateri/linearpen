@@ -38,6 +38,13 @@
   `~/.local/state/linearpen/work`; the agent is told where the file is and that other people wrote
   it, and is started with no option that lets it skip its questions. Nothing is started outside a
   bateri pane, and the form says why.
+- **Starting an agent can move the issues to work in progress.** The form has a `Status` row,
+  `In Progress` (your team's first state of work, by its own name) or `Unchanged`, and it is not
+  there when every issue has begun. Chosen, it moves the issues in Triage, Backlog or Todo to that
+  state once the pane is made, one change for each team, and nothing else: a started, done or
+  canceled issue is left as it is, and nothing is written if the pane was not made. A move Linear
+  refuses does not stop the agent; the list says it did not happen. In a short pane the line
+  under Folder is left out, so that Start stays on the page.
 - **New issue.** `c` (or the button over the list) opens a form beside the list with a title, a
   description, and the values Linear's own form asks for: team (where there are several), status,
   priority, assignee (you, to begin with), labels and project, each a button that opens a menu of the
