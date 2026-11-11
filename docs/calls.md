@@ -12,10 +12,12 @@ the call takes: a member it does not know, a value out of range; the words say w
 `refused` (Linear did not accept the key), `unreachable` (Linear was not reached: `curl` is not
 installed, or the network, the name or the time failed), `failed` (Linear answered, but not with
 what was asked), `unavailable` (an agent cannot be started from here: bateri or the agent is not
-there) and `start-failed` (it was tried and did not start: the words say why). The words of an error
-are for the person and never hold the key.
+there), `start-failed` (it was tried and did not start: the words say why) and `create-failed` (an
+issue was to be made and Linear did not make it: the words say why). The words of an error are for
+the person and never hold the key.
 
-The pen only reads: nothing here changes anything in Linear.
+The pen writes one thing: the issue the person makes (`create`). Nothing else here changes anything
+in Linear.
 
 ## Calls
 
@@ -152,10 +154,83 @@ From here the issues of the call carry a mark in the topic (`working`) until the
 Errors: `bad-params`, `no-key`, `refused`, `unreachable`, `failed` (the issues are asked of Linear
 for their text), `unavailable`, `start-failed`.
 
+### `new_options`
+
+What a new issue can be given, and a new id for its draft. Asked when the form is opened (and again
+for another team); nothing is made. Params: `{ "team": "ACM" }`, optional: a team's id or its key,
+whatever the case. A team that is not named, or not there, is the first by name. Up to 64 letters,
+digits and dashes.
+
+```json
+{
+  "draft": "5c1c2a58-7d5e-4c0b-9b43-1c8f0f6f2d11",
+  "teams": [{ "id": "team-acm", "key": "ACM", "name": "Acme" }, { "id": "team-web", "key": "WEB", "name": "Web" }],
+  "team": "team-acm", "defaultState": "s-todo",
+  "states": [{ "id": "s-todo", "name": "Todo", "kind": "unstarted" }],
+  "labels": [{ "id": "l-api", "name": "api", "color": "#3e63dd" }],
+  "projects": [{ "id": "p-1", "name": "Billing" }],
+  "members": [{ "id": "u-ada", "name": "Ada", "me": true }]
+}
+```
+
+- `draft`: the id of a draft of an issue, a UUID the program made. It is a new one each time; the
+  page keeps the first it was given until its issue is made, and sends it as `create`'s `id`.
+- `teams`: the teams an issue can be made in, by name (at most 50). `team`: the id of the team the
+  rest is of.
+- `states`: the open states of the team: `triage`, `backlog`, `unstarted`, `started`, in that order
+  and by position within a kind (Done and Canceled are not offered). `defaultState` is the team's own
+  state for a new issue, else the first `unstarted`, else the first `backlog`; it is one of `states`
+  or null.
+- `labels`: the team's labels and the workspace's, once each, by name; a label that is a group of
+  labels is not offered. `color` is Linear's own (`#rrggbb`). At most 100.
+- `projects`: the team's projects that are not finished or canceled, by name (at most 50).
+- `members`: the team's people who are active, by name (at most 100); `me` marks the person whose
+  key it is.
+
+The teams and what each offers are asked of Linear when first needed and kept for the run; they are
+let go whenever the program asks for the lists again (`refresh`, and every five minutes). Errors:
+`bad-params`, `no-key`, `refused`, `unreachable`, `failed` (also where Linear has no team).
+
+### `create`
+
+Makes the issue in Linear. Params:
+
+```json
+{ "id": "5c1c2a58-7d5e-4c0b-9b43-1c8f0f6f2d11", "team": "team-acm", "title": "Fix the login",
+  "description": "It fails on the second try.", "state": "s-todo", "priority": "high",
+  "assignee": "u-ada", "labels": ["l-api"], "project": "p-1" }
+```
+
+- `id`: the id of the draft (`new_options`' `draft`), a UUID. Linear takes it as the id of the issue.
+- `team`: the id of the team. `title`: one to 255 characters once white space at both ends is gone.
+- Optional: `description` (markdown, at most 50 000 characters; white space alone is none), `state`,
+  `assignee`, `project` (ids from `new_options`), `labels` (at most 50 ids), `priority` (`none`,
+  `urgent`, `high`, `medium` or `low`; sent to Linear as 0 to 4). What is left out, or empty, is not
+  sent.
+
+```json
+{ "id": "5c1c2a58-7d5e-4c0b-9b43-1c8f0f6f2d11", "identifier": "ACM-413" }
+```
+
+The issue is sent **once**. If Linear's answer did not come whole (nothing came, or an error), the
+program does not send it again: it asks Linear for the issue by the draft's id, and if it is there
+the issue was made and that is the answer. If it is not, the call fails; the person may ask again,
+with the same `id`, which cannot make a second issue. A key Linear does not take (`refused`) or one
+that may not create issues is not asked about.
+
+The program asks for both lists again when the issue is made, and the topic `issues` tells them when
+they come: the answer does not wait for them, and the page looks for the row in what the topic tells.
+
+Errors: `bad-params` (also an `id` that is not a UUID), `no-key`, `refused`, `unreachable`, and
+`create-failed`: Linear did not make it. The words say why: `Linear did not make it: this key cannot
+create issues` where the key is one that reads and may not write, else Linear's own words
+(`Linear did not make it: ...`).
+
 ### `refresh`
 
-Asks Linear for both lists again. It answers at once with `{}`; the topic tells the lists when they
-come. Params: none. Errors: `no-key`.
+Asks Linear for both lists again, and for the teams and choices of a new issue the next time they are
+needed. It answers at once with `{}`; the topic tells the lists when they come. Params: none. Errors:
+`no-key`.
 
 ## Topic
 

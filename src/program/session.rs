@@ -5,13 +5,18 @@
 //! The worker is one thread. It asks for both lists (My issues and All issues), one after the other,
 //! and puts them in `State` as a whole; a failure leaves the lists as they were and says why. Whoever
 //! changes `State` bumps `generation` and wakes the topic's threads and the worker.
+//!
+//! The one thing the program writes, a new issue, is `create`: it sends once and, where no answer
+//! came, asks for the issue by the id of the draft before it says it failed.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use crate::linear::{self, Error, Issue, Key, Listing, Scope, Transport, Viewer};
+use crate::linear::{
+    self, Created, Error, Issue, Key, Listing, NewIssue, Options, Scope, Team, Transport, Viewer,
+};
 use crate::state::Paths;
 use crate::state::credentials::{self, Problem, Source};
 use crate::work::runner::{Runner, System};
@@ -77,10 +82,22 @@ pub struct State {
     /// Issues opened, as Linear told them (with their description and comments), by id: they are
     /// kept for the run, so that an issue seen again is not asked for again.
     details: HashMap<String, Issue>,
+    /// The teams an issue can be made in, and what each offers, as Linear last said: they are let go
+    /// whenever the lists are asked for again.
+    teams: Option<Vec<Team>>,
+    choices: HashMap<String, Options>,
     generation: u64,
     refresh_wanted: bool,
     worker: bool,
     closed: bool,
+}
+
+impl State {
+    /// Lets go of the teams and what each offers, so that the next question asks Linear again.
+    pub fn forget_choices(&mut self) {
+        self.teams = None;
+        self.choices.clear();
+    }
 }
 
 struct Shared {
@@ -153,6 +170,8 @@ fn work(shared: &Shared) {
             }
             state.refresh_wanted = false;
             state.refreshing = true;
+            // The asking of the lists is the asking of the choices too (`r` and the five minutes).
+            state.forget_choices();
             shared.changed(&mut state);
             state.key.clone()
         };
@@ -203,6 +222,8 @@ impl Session {
                 },
                 working: HashMap::new(),
                 details: HashMap::new(),
+                teams: None,
+                choices: HashMap::new(),
                 view_seen: [0; 3],
                 generation: 0,
                 refresh_wanted: false,
@@ -358,6 +379,68 @@ impl Session {
         Ok(issue)
     }
 
+    /// The key to ask Linear with.
+    fn key(&self) -> Result<Key, Error> {
+        self.shared
+            .lock()
+            .key
+            .clone()
+            .ok_or_else(|| Error::Failed("there is no key to ask Linear with".to_owned()))
+    }
+
+    /// The teams an issue can be made in: as they were kept, else asked of Linear (without holding
+    /// the state while it is).
+    pub fn teams(&self) -> Result<Vec<Team>, Error> {
+        if let Some(kept) = self.shared.lock().teams.clone() {
+            return Ok(kept);
+        }
+        let teams = linear::teams(self.transport(), &self.key()?)?;
+        self.shared.lock().teams = Some(teams.clone());
+        Ok(teams)
+    }
+
+    /// What a new issue of the team with Linear's id `team` can be given: as it was kept, else asked.
+    pub fn options(&self, team: &str) -> Result<Options, Error> {
+        if let Some(kept) = self.shared.lock().choices.get(team) {
+            return Ok(kept.clone());
+        }
+        let options = linear::options(self.transport(), &self.key()?, team)?;
+        self.shared
+            .lock()
+            .choices
+            .insert(team.to_owned(), options.clone());
+        Ok(options)
+    }
+
+    /// Makes the issue of the draft in Linear: the program's one write. It is sent once. Where it
+    /// did not come back whole (no answer, or an error), the issue is asked for by the id of the
+    /// draft, which Linear took as the issue's own: if it is there it was made, and that is the
+    /// answer; if not, the failure is told and nothing is sent again unless the person asks again,
+    /// with the same id. A key Linear does not take cannot have made it, and is not asked about.
+    pub fn create(&self, input: &NewIssue) -> Result<Created, Error> {
+        let key = self.key()?;
+        let transport = self.transport();
+        let failure = match linear::create(transport, &key, input) {
+            Ok(created) => {
+                self.refresh();
+                return Ok(created);
+            }
+            Err(failure @ (Error::Refused | Error::Forbidden)) => return Err(failure),
+            Err(failure) => failure,
+        };
+        match linear::fetch_issue(transport, &key, &input.id) {
+            // `issue(id:)` takes an identifier too: only the issue of this draft is the answer.
+            Ok(issue) if issue.id.eq_ignore_ascii_case(&input.id) => {
+                self.refresh();
+                Ok(Created {
+                    id: issue.id,
+                    identifier: issue.identifier,
+                })
+            }
+            _ => Err(failure),
+        }
+    }
+
     /// A page that begins again numbers its `view` calls from the start: what was held of the last
     /// one's numbers is let go.
     pub fn forget_view_order(&self) {
@@ -463,6 +546,180 @@ mod tests {
             None,
             Duration::from_secs(3600),
         )
+    }
+
+    use std::collections::VecDeque;
+
+    use crate::linear::{Created, NewIssue, Priority};
+
+    /// Answers from a list, one to each request, and keeps the bodies it was sent.
+    struct Scripted {
+        replies: Mutex<VecDeque<Result<Reply, Error>>>,
+        sent: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl Transport for Scripted {
+        fn post(&self, _: &Key, body: &str) -> Result<Reply, Error> {
+            self.sent.lock().unwrap().push(body.to_owned());
+            self.replies
+                .lock()
+                .unwrap()
+                .pop_front()
+                .unwrap_or_else(|| Err(Error::Unreachable("no more replies".to_owned())))
+        }
+    }
+
+    /// A session with a key that is answered from `replies`; and what it sends.
+    fn answered(replies: Vec<Result<Reply, Error>>) -> (Session, Arc<Mutex<Vec<String>>>) {
+        let sent = Arc::new(Mutex::new(Vec::new()));
+        let transport = Scripted {
+            replies: Mutex::new(replies.into()),
+            sent: Arc::clone(&sent),
+        };
+        let session = Session::new(
+            Arc::new(transport),
+            Paths {
+                config: None,
+                state: None,
+            },
+            Some("lin_api_test"),
+            Duration::from_secs(3600),
+        );
+        (session, sent)
+    }
+
+    fn said(body: &str) -> Result<Reply, Error> {
+        Ok(Reply {
+            status: 200,
+            body: body.to_owned(),
+        })
+    }
+
+    const DRAFT: &str = "11111111-2222-4333-8444-555555555555";
+
+    fn draft() -> NewIssue {
+        NewIssue {
+            id: DRAFT.to_owned(),
+            team_id: "team-acm".to_owned(),
+            title: "Fix the login".to_owned(),
+            description: None,
+            state_id: None,
+            priority: Priority::None,
+            assignee_id: None,
+            label_ids: Vec::new(),
+            project_id: None,
+        }
+    }
+
+    fn found(id: &str) -> Result<Reply, Error> {
+        said(&format!(
+            r#"{{"data":{{"issue":{{"id":"{id}","identifier":"ACM-900","title":"Fix the login","priority":0,
+            "updatedAt":"2026-11-09T14:20:00.000Z","url":"https://linear.app/x/900",
+            "state":{{"id":"s","name":"Todo","type":"unstarted","position":0}},
+            "labels":{{"nodes":[]}},"team":{{"key":"ACM"}},"cycle":null,"project":null,"assignee":null}}}}}}"#
+        ))
+    }
+
+    const MADE: &str = r#"{"data":{"issueCreate":{"success":true,"issue":{"id":"issue-900","identifier":"ACM-900"}}}}"#;
+
+    #[test]
+    fn a_create_that_is_answered_is_sent_once() {
+        let (session, sent) = answered(vec![said(MADE)]);
+        let made = session.create(&draft()).unwrap();
+        assert_eq!(
+            made,
+            Created {
+                id: "issue-900".to_owned(),
+                identifier: "ACM-900".to_owned()
+            }
+        );
+        assert_eq!(sent.lock().unwrap().len(), 1);
+    }
+
+    /// No answer came: the program does not send again, it asks whether the issue is there, by the
+    /// id of the draft, and it is.
+    #[test]
+    fn a_create_with_no_answer_asks_for_the_issue_by_the_draft_id_and_finds_it() {
+        let (session, sent) = answered(vec![
+            Err(Error::Unreachable("down".to_owned())),
+            found(DRAFT),
+        ]);
+        let made = session.create(&draft()).unwrap();
+        assert_eq!(made.id, DRAFT);
+        assert_eq!(made.identifier, "ACM-900");
+        let sent = sent.lock().unwrap();
+        assert_eq!(sent.len(), 2);
+        assert!(sent[0].contains(r#""operationName":"IssueCreate""#));
+        assert!(sent[1].contains(r#""operationName":"Issue""#));
+        assert!(sent[1].contains(&format!(r#""variables":{{"id":"{DRAFT}"}}"#)));
+        assert_eq!(
+            sent.iter().filter(|b| b.contains("IssueCreate")).count(),
+            1,
+            "never sent twice"
+        );
+    }
+
+    #[test]
+    fn a_create_that_failed_and_has_no_issue_is_the_failure_it_was() {
+        let (session, sent) = answered(vec![
+            said(r#"{"errors":[{"message":"title is too long"}]}"#),
+            said(r#"{"errors":[{"message":"Entity not found: Issue"}]}"#),
+        ]);
+        let failed = session.create(&draft()).unwrap_err();
+        assert_eq!(
+            failed,
+            Error::Failed("Linear said: title is too long".to_owned())
+        );
+        assert_eq!(sent.lock().unwrap().len(), 2);
+    }
+
+    /// `issue(id:)` takes an identifier too, and a copy of another issue is not ours.
+    #[test]
+    fn an_issue_found_with_another_id_is_not_the_draft() {
+        let (session, _) = answered(vec![
+            Err(Error::Unreachable("down".to_owned())),
+            found("another-issue"),
+        ]);
+        assert_eq!(
+            session.create(&draft()).unwrap_err(),
+            Error::Unreachable("down".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_key_linear_does_not_take_is_not_asked_about() {
+        for refusal in [
+            Ok(Reply {
+                status: 401,
+                body: String::new(),
+            }),
+            Ok(Reply {
+                status: 403,
+                body: String::new(),
+            }),
+        ] {
+            let (session, sent) = answered(vec![refusal]);
+            assert!(session.create(&draft()).is_err());
+            assert_eq!(sent.lock().unwrap().len(), 1);
+        }
+    }
+
+    const TEAMS: &str =
+        r#"{"data":{"teams":{"nodes":[{"id":"team-acm","key":"ACM","name":"Acme"}]}}}"#;
+    const OPTIONS: &str = r#"{"data":{"team":{"id":"team-acm","defaultIssueState":null,"states":{"nodes":[]},
+        "labels":{"nodes":[]},"projects":{"nodes":[]},"members":{"nodes":[]}},"issueLabels":{"nodes":[]}}}"#;
+
+    #[test]
+    fn the_choices_are_kept_until_the_lists_are_asked_for_again() {
+        let (session, sent) = answered(vec![said(TEAMS), said(OPTIONS), said(OPTIONS)]);
+        assert_eq!(session.teams().unwrap().len(), 1);
+        assert_eq!(session.teams().unwrap().len(), 1);
+        session.options("team-acm").unwrap();
+        session.options("team-acm").unwrap();
+        assert_eq!(sent.lock().unwrap().len(), 2, "each asked for once");
+        session.state().forget_choices();
+        session.options("team-acm").unwrap();
+        assert_eq!(sent.lock().unwrap().len(), 3);
     }
 
     #[test]

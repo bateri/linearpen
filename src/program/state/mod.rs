@@ -6,6 +6,7 @@
 //! directory it is given and never of the home of whoever runs it.
 
 pub mod credentials;
+pub mod draft;
 
 use std::path::PathBuf;
 

@@ -277,3 +277,355 @@ fn an_issue_that_is_not_there_is_said() {
         Err(Error::Failed(_))
     ));
 }
+
+#[test]
+fn a_mutation_that_is_not_listed_is_not_sent_at_all() {
+    // The name says the one that is listed, the text is another: the text is what is read.
+    let disguised = Operation {
+        name: "IssueCreate",
+        text: "mutation IssueDelete($id: String!) { issueDelete(id: $id) { success } }",
+    };
+    // A query that carries a mutation behind it.
+    let hidden = Operation {
+        name: "Hidden",
+        text: "query Hidden { viewer { id } } mutation IssueCreate { issueCreate { success } }",
+    };
+    let transport = Scripted::new(Vec::new());
+    for bad in [disguised, hidden] {
+        let got: Result<VerifyData, Error> = run::<(), _>(&transport, &key(), &bad, None);
+        assert!(matches!(got, Err(Error::Failed(_))), "{}", bad.name);
+    }
+    assert!(transport.sent().is_empty());
+}
+
+/// The one mutation leaves from `create` and from nowhere else: the places that name it are the
+/// file that lists it and the one function that sends it.
+#[test]
+fn only_create_names_the_mutation() {
+    fn sources(dir: &std::path::Path, found: &mut Vec<(std::path::PathBuf, String)>) {
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                sources(&path, found);
+            } else if path.extension().is_some_and(|ext| ext == "rs") {
+                let text = std::fs::read_to_string(&path).unwrap();
+                found.push((path, text));
+            }
+        }
+    }
+    let mut found = Vec::new();
+    sources(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/program"),
+        &mut found,
+    );
+    for (path, text) in &found {
+        let name = path.file_name().unwrap().to_str().unwrap();
+        let uses = text.matches("ISSUE_CREATE").count();
+        match (
+            path.parent()
+                .unwrap()
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            name,
+        ) {
+            // Where it is defined and listed (and its guards).
+            ("linear", "query.rs") => assert!(uses >= 1),
+            // Where it is sent: once.
+            ("linear", "mod.rs") => assert_eq!(uses, 1, "{}", path.display()),
+            // The tests of the client may name it.
+            ("linear", "tests.rs") => {}
+            _ => assert_eq!(uses, 0, "{} names the mutation", path.display()),
+        }
+    }
+}
+
+const TEAM_ID: &str = "team-acm";
+
+/// What `NewIssueOptions` answers: states in no order, a group among the labels, a finished project,
+/// a member who has left, and a label the workspace has that the team has not.
+const OPTIONS: &str = r##"{"data":{"team":{"id":"team-acm","defaultIssueState":{"id":"s-todo"},
+"states":{"nodes":[
+ {"id":"s-prog","name":"In Progress","type":"started","position":2},
+ {"id":"s-done","name":"Done","type":"completed","position":3},
+ {"id":"s-todo","name":"Todo","type":"unstarted","position":1},
+ {"id":"s-back","name":"Backlog","type":"backlog","position":0},
+ {"id":"s-tri","name":"Triage","type":"triage","position":0},
+ {"id":"s-rev","name":"In Review","type":"started","position":1},
+ {"id":"s-cancel","name":"Canceled","type":"canceled","position":4}]},
+"labels":{"nodes":[
+ {"id":"l-bug","name":"bug","color":"#eb5757","isGroup":false},
+ {"id":"l-area","name":"Area","color":"#999999","isGroup":true},
+ {"id":"l-api","name":"api","color":"#3e63dd","isGroup":false}]},
+"projects":{"nodes":[
+ {"id":"p-1","name":"Billing","completedAt":null,"canceledAt":null},
+ {"id":"p-2","name":"Old","completedAt":"2026-01-01T00:00:00.000Z","canceledAt":null},
+ {"id":"p-3","name":"Dropped","completedAt":null,"canceledAt":"2026-02-01T00:00:00.000Z"}]},
+"members":{"nodes":[
+ {"id":"u-deniz","displayName":"deniz","isMe":false,"active":true},
+ {"id":"u-gone","displayName":"Gone","isMe":false,"active":false},
+ {"id":"u-ada","displayName":"Ada","isMe":true,"active":true}]}},
+"issueLabels":{"nodes":[
+ {"id":"l-bug","name":"bug","color":"#eb5757","isGroup":false},
+ {"id":"l-ws","name":"Customer","color":"#f2994a","isGroup":false}]}}}"##;
+
+fn asked_options(body: &str) -> Options {
+    let transport = Scripted::new(vec![Ok(Reply {
+        status: 200,
+        body: body.to_owned(),
+    })]);
+    let got = options(&transport, &key(), TEAM_ID).unwrap();
+    let sent = transport.sent();
+    assert_eq!(sent.len(), 1);
+    assert!(
+        sent[0].contains(r#""operationName":"NewIssueOptions""#),
+        "{}",
+        sent[0]
+    );
+    // Which team is a variable, not a part of the text.
+    assert!(
+        sent[0].contains(r#""variables":{"team":"team-acm"}"#),
+        "{}",
+        sent[0]
+    );
+    got
+}
+
+#[test]
+fn the_choices_are_the_open_states_in_order_the_labels_without_groups_the_projects_not_finished_and_the_members_who_are_there()
+ {
+    let got = asked_options(OPTIONS);
+    assert_eq!(got.team, "team-acm");
+    let states: Vec<&str> = got.states.iter().map(|s| s.name.as_str()).collect();
+    // Triage, backlog, unstarted, started; within a kind by position. Done and Canceled are not offered.
+    assert_eq!(
+        states,
+        ["Triage", "Backlog", "Todo", "In Review", "In Progress"]
+    );
+    assert_eq!(got.states[2].kind, types::StateKind::Unstarted);
+    // The team's labels and the workspace's, once each, by name whatever the case, with no group.
+    let labels: Vec<&str> = got.labels.iter().map(|l| l.name.as_str()).collect();
+    assert_eq!(labels, ["api", "bug", "Customer"]);
+    assert_eq!(got.labels[0].id, "l-api");
+    assert_eq!(got.labels[0].color, "#3e63dd");
+    let projects: Vec<&str> = got.projects.iter().map(|p| p.name.as_str()).collect();
+    assert_eq!(projects, ["Billing"]);
+    let members: Vec<(&str, bool)> = got
+        .members
+        .iter()
+        .map(|m| (m.name.as_str(), m.me))
+        .collect();
+    assert_eq!(members, [("Ada", true), ("deniz", false)]);
+    assert_eq!(got.default_state.as_deref(), Some("s-todo"));
+}
+
+#[test]
+fn the_state_a_new_issue_begins_in_is_the_teams_default_else_the_first_unstarted_else_the_first_backlog()
+ {
+    let with = |default: &str, states: &str| {
+        let body = format!(
+            r#"{{"data":{{"team":{{"id":"team-acm","defaultIssueState":{default},"states":{{"nodes":[{states}]}},
+            "labels":{{"nodes":[]}},"projects":{{"nodes":[]}},"members":{{"nodes":[]}}}},"issueLabels":{{"nodes":[]}}}}}}"#
+        );
+        asked_options(&body).default_state
+    };
+    let backlog = r#"{"id":"b","name":"Backlog","type":"backlog","position":0}"#;
+    let todo2 = r#"{"id":"t2","name":"Next","type":"unstarted","position":2}"#;
+    let todo1 = r#"{"id":"t1","name":"Todo","type":"unstarted","position":1}"#;
+    let done = r#"{"id":"d","name":"Done","type":"completed","position":3}"#;
+    let states = format!("{backlog},{todo2},{todo1},{done}");
+    assert_eq!(
+        with(r#"{"id":"t2"}"#, &states).as_deref(),
+        Some("t2"),
+        "the team's own"
+    );
+    assert_eq!(
+        with("null", &states).as_deref(),
+        Some("t1"),
+        "the first unstarted"
+    );
+    assert_eq!(
+        with("null", backlog).as_deref(),
+        Some("b"),
+        "the first backlog"
+    );
+    // A default that is not among the states offered (it is a finished one) is not used.
+    assert_eq!(
+        with(r#"{"id":"d"}"#, &states).as_deref(),
+        Some("t1"),
+        "not a state that is finished"
+    );
+    assert_eq!(with("null", done), None, "nothing to begin in");
+}
+
+#[test]
+fn what_linear_names_is_plain_in_the_choices() {
+    let body = OPTIONS.replace("Billing", "Bill\\u001b[31ming");
+    let got = asked_options(&body);
+    assert_eq!(got.projects[0].name, "Bill [31ming");
+}
+
+#[test]
+fn a_team_that_is_not_there_is_said() {
+    let transport = Scripted::new(vec![Ok(Reply {
+        status: 200,
+        body: r#"{"data":{"team":null,"issueLabels":{"nodes":[]}}}"#.to_owned(),
+    })]);
+    assert!(matches!(
+        options(&transport, &key(), "nope"),
+        Err(Error::Failed(_))
+    ));
+}
+
+#[test]
+fn the_teams_are_asked_for_by_name_and_listed_by_name() {
+    let transport = Scripted::new(vec![Ok(Reply {
+        status: 200,
+        body: r#"{"data":{"teams":{"nodes":[
+            {"id":"t2","key":"WEB","name":"web"},{"id":"t1","key":"ACM","name":"Acme"}]}}}"#
+            .to_owned(),
+    })]);
+    let got = teams(&transport, &key()).unwrap();
+    let keys: Vec<&str> = got.iter().map(|t| t.key.as_str()).collect();
+    assert_eq!(keys, ["ACM", "WEB"]);
+    assert_eq!(got[0].id, "t1");
+    assert!(
+        transport.sent()[0].contains(r#""operationName":"NewIssueTeams""#),
+        "{}",
+        transport.sent()[0]
+    );
+}
+
+fn new_issue() -> NewIssue {
+    NewIssue {
+        id: "11111111-2222-4333-8444-555555555555".to_owned(),
+        team_id: "team-acm".to_owned(),
+        title: "Fix the login".to_owned(),
+        description: None,
+        state_id: None,
+        priority: Priority::None,
+        assignee_id: None,
+        label_ids: Vec::new(),
+        project_id: None,
+    }
+}
+
+#[test]
+fn the_input_leaves_out_what_is_empty_and_says_the_priority_as_a_number() {
+    let bare = serde_json::to_value(new_issue()).unwrap();
+    assert_eq!(
+        bare,
+        serde_json::json!({
+            "id": "11111111-2222-4333-8444-555555555555",
+            "teamId": "team-acm",
+            "title": "Fix the login"
+        })
+    );
+    let full = serde_json::to_value(NewIssue {
+        description: Some("The words".to_owned()),
+        state_id: Some("s-todo".to_owned()),
+        priority: Priority::High,
+        assignee_id: Some("u-ada".to_owned()),
+        label_ids: vec!["l-api".to_owned(), "l-bug".to_owned()],
+        project_id: Some("p-1".to_owned()),
+        ..new_issue()
+    })
+    .unwrap();
+    assert_eq!(
+        full,
+        serde_json::json!({
+            "id": "11111111-2222-4333-8444-555555555555",
+            "teamId": "team-acm",
+            "title": "Fix the login",
+            "description": "The words",
+            "stateId": "s-todo",
+            "priority": 2,
+            "assigneeId": "u-ada",
+            "labelIds": ["l-api", "l-bug"],
+            "projectId": "p-1"
+        })
+    );
+    for (priority, number) in [
+        (Priority::None, 0),
+        (Priority::Urgent, 1),
+        (Priority::High, 2),
+        (Priority::Medium, 3),
+        (Priority::Low, 4),
+    ] {
+        assert_eq!(priority.number(), number);
+        assert_eq!(Priority::parse(priority.name()), Some(priority));
+    }
+    assert_eq!(Priority::parse("loud"), None);
+}
+
+const MADE: &str = r#"{"data":{"issueCreate":{"success":true,"issue":{"id":"issue-900","identifier":"ACM-900"}}}}"#;
+
+#[test]
+fn create_sends_the_one_mutation_once_with_the_draft_id_as_a_variable() {
+    let transport = Scripted::new(vec![Ok(Reply {
+        status: 200,
+        body: MADE.to_owned(),
+    })]);
+    let made = create(&transport, &key(), &new_issue()).unwrap();
+    assert_eq!(made.id, "issue-900");
+    assert_eq!(made.identifier, "ACM-900");
+    let sent = transport.sent();
+    assert_eq!(sent.len(), 1, "one request, however it ends");
+    let body: serde_json::Value = serde_json::from_str(&sent[0]).unwrap();
+    assert_eq!(body["operationName"], "IssueCreate");
+    assert!(
+        body["query"]
+            .as_str()
+            .unwrap()
+            .starts_with("mutation IssueCreate(")
+    );
+    assert_eq!(
+        body["variables"]["input"]["id"],
+        "11111111-2222-4333-8444-555555555555"
+    );
+    // What the person typed is a variable: it is not in the text of the mutation.
+    assert!(!body["query"].as_str().unwrap().contains("Fix the login"));
+}
+
+#[test]
+fn a_create_that_says_it_did_not_succeed_is_a_failure() {
+    for body in [
+        r#"{"data":{"issueCreate":{"success":false,"issue":null}}}"#,
+        r#"{"data":{"issueCreate":{"success":true,"issue":null}}}"#,
+        r#"{"data":{"issueCreate":null}}"#,
+    ] {
+        let transport = Scripted::new(vec![Ok(Reply {
+            status: 200,
+            body: body.to_owned(),
+        })]);
+        assert!(
+            matches!(
+                create(&transport, &key(), &new_issue()),
+                Err(Error::Failed(_))
+            ),
+            "{body}"
+        );
+        assert_eq!(transport.sent().len(), 1);
+    }
+}
+
+#[test]
+fn a_key_that_may_not_write_is_forbidden_not_refused() {
+    let transport = Scripted::new(vec![Ok(Reply {
+        status: 403,
+        body: r#"{"errors":[{"message":"Forbidden"}]}"#.to_owned(),
+    })]);
+    assert_eq!(
+        create(&transport, &key(), &new_issue()),
+        Err(Error::Forbidden)
+    );
+    let transport = Scripted::new(vec![Ok(Reply {
+        status: 200,
+        body: r#"{"errors":[{"message":"x","extensions":{"type":"forbidden"}}]}"#.to_owned(),
+    })]);
+    assert_eq!(
+        create(&transport, &key(), &new_issue()),
+        Err(Error::Forbidden)
+    );
+}

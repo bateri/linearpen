@@ -13,16 +13,20 @@ pub enum Error {
     /// Linear answered, but not with what was asked: GraphQL `errors`, another HTTP status, or a
     /// body that is not what the query says.
     Failed(String),
+    /// Linear took the key and said it may not do this (HTTP 403, or an error of the kind
+    /// `forbidden`): a key that can read and not write.
+    Forbidden,
 }
 
 impl Error {
-    /// The name the page is told: `refused`, `unreachable` or `failed` (`docs/calls.md`).
+    /// The name the page is told: `refused`, `unreachable` or `failed` (`docs/calls.md`); a key that
+    /// may not do what was asked is `failed` too, and the call that writes says it in its own words.
     #[must_use]
     pub fn kind(&self) -> &'static str {
         match self {
             Self::Refused => "refused",
             Self::Unreachable(_) => "unreachable",
-            Self::Failed(_) => "failed",
+            Self::Failed(_) | Self::Forbidden => "failed",
         }
     }
 }
@@ -33,6 +37,7 @@ impl fmt::Display for Error {
             Self::Refused => out.write_str("Linear did not accept the key"),
             Self::Unreachable(why) => write!(out, "Linear could not be reached: {why}"),
             Self::Failed(why) => out.write_str(why),
+            Self::Forbidden => out.write_str("Linear did not allow this key to do that"),
         }
     }
 }
@@ -73,6 +78,7 @@ mod tests {
         assert_eq!(Error::Refused.kind(), "refused");
         assert_eq!(Error::Unreachable(String::new()).kind(), "unreachable");
         assert_eq!(Error::Failed(String::new()).kind(), "failed");
+        assert_eq!(Error::Forbidden.kind(), "failed");
     }
 
     #[test]

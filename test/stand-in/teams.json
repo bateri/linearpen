@@ -1,0 +1,10 @@
+{
+  "data": {
+    "teams": {
+      "nodes": [
+        { "id": "team-web", "key": "WEB", "name": "web" },
+        { "id": "team-acm", "key": "ACM", "name": "Acme" }
+      ]
+    }
+  }
+}

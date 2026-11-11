@@ -11,20 +11,32 @@
 #   STANDIN_MODE=broken    a body that is not JSON, HTTP 200
 #   STANDIN_MODE=down      curl could not resolve the host: exit 6, no output
 #   STANDIN_MY=empty       the person has no issues assigned
+#   STANDIN_CREATE=refused    Linear does not make the issue: a GraphQL error, HTTP 400
+#   STANDIN_CREATE=forbidden  the key may not create issues: HTTP 403
+#   STANDIN_CREATE=lost       Linear makes the issue and the answer never comes: curl times out
+#
+# An issue that was created (by IssueCreate, answered or lost) is kept in "$STANDIN_LOG.created" (its
+# id and its title): the lists tell it first from then on, and `Issue` finds it by that id. An id
+# that is a UUID and not that one is not found; any other id is the issue of issue.json.
 here=$(cd "$(dirname "$0")/.." && pwd)
 config=$(cat)
 
+# One write for the whole record: calls run at the same time (the lists are asked for while an
+# issue is made), and a record in pieces would be mixed with another's.
 if [ -n "${STANDIN_LOG-}" ]; then
-	{
-		echo "--- call"
-		for arg in "$@"; do
-			echo "argv: $arg"
-		done
-		if [ -n "${LINEAR_API_KEY+x}" ]; then echo "env LINEAR_API_KEY: set"; else echo "env LINEAR_API_KEY: unset"; fi
-		echo "stdin:"
-		printf '%s\n' "$config"
-		echo "--- end"
-	} >>"$STANDIN_LOG"
+	nl='
+'
+	record="--- call$nl"
+	for arg in "$@"; do
+		record="${record}argv: $arg$nl"
+	done
+	if [ -n "${LINEAR_API_KEY+x}" ]; then
+		record="${record}env LINEAR_API_KEY: set$nl"
+	else
+		record="${record}env LINEAR_API_KEY: unset$nl"
+	fi
+	record="${record}stdin:$nl$config$nl--- end$nl"
+	printf '%s' "$record" >>"$STANDIN_LOG"
 fi
 
 case "${STANDIN_MODE-}" in
@@ -48,17 +60,107 @@ down)
 	;;
 esac
 
-case "$config" in
-*operationName*MyIssues*)
-	if [ "${STANDIN_MY-}" = empty ]; then file=my-issues-empty.json; else file=my-issues.json; fi
-	;;
-*operationName*AllIssues*) file=all-issues.json ;;
-*operationName*Verify*) file=verify.json ;;
-*operationName*Issue*) file=issue.json ;;
-*)
-	echo "stand-in curl: a query it does not know" >&2
-	exit 2
-	;;
-esac
-cat "$here/$file"
-printf '\n200'
+# The body as the page's operation names it, with the quotes of the configuration undone.
+plain=$(printf '%s' "$config" | sed 's/\\"/"/g')
+is() {
+	case "$plain" in
+	*"\"operationName\":\"$1\""*) return 0 ;;
+	esac
+	return 1
+}
+
+created=""
+if [ -n "${STANDIN_LOG-}" ]; then created="$STANDIN_LOG.created"; fi
+
+# A file of test/stand-in/ with @ID@ and @TITLE@ filled in.
+fill() {
+	ID="$id" TITLE="$title" awk '
+	function swap(s, pat, val,   out, i) {
+		out = ""
+		while ((i = index(s, pat)) > 0) { out = out substr(s, 1, i - 1) val; s = substr(s, i + length(pat)) }
+		return out s
+	}
+	{ print swap(swap($0, "@ID@", ENVIRON["ID"]), "@TITLE@", ENVIRON["TITLE"]) }' "$1"
+}
+
+# A list with the created issue, if there is one, first.
+listing() {
+	if [ -n "$created" ] && [ -f "$created" ]; then
+		id=$(sed -n 1p "$created")
+		title=$(sed -n 2p "$created")
+		NODE=$(fill "$here/created-issue.json") awk '
+		{
+			i = index($0, "\"nodes\": [")
+			if (!done && i > 0) {
+				rest = substr($0, i + 10)
+				sep = (rest ~ /^[ ]*\]/) ? "" : ","
+				print substr($0, 1, i + 9) ENVIRON["NODE"] sep rest
+				done = 1
+			} else print
+		}' "$here/$1"
+	else
+		cat "$here/$1"
+	fi
+	printf '\n200'
+}
+
+if is IssueCreate; then
+	id=$(printf '%s' "$plain" | sed -n 's/.*"input":{"id":"\([^"]*\)".*/\1/p')
+	title=$(printf '%s' "$plain" | sed -n 's/.*"title":"\([^"]*\)".*/\1/p')
+	remember() {
+		if [ -n "$created" ]; then printf '%s\n%s\n' "$id" "$title" >"$created"; fi
+	}
+	case "${STANDIN_CREATE-}" in
+	refused)
+		cat "$here/create-refused.json"
+		printf '\n400'
+		exit 0
+		;;
+	forbidden)
+		printf '{"errors":[{"message":"Forbidden"}]}\n403'
+		exit 0
+		;;
+	lost)
+		remember
+		echo "curl: (28) Operation timed out" >&2
+		exit 28
+		;;
+	esac
+	remember
+	fill "$here/issue-create.json"
+	printf '\n200'
+	exit 0
+fi
+
+if is Issue; then
+	want=$(printf '%s' "$plain" | sed -n 's/.*"variables":{"id":"\([^"]*\)".*/\1/p')
+	if [ -n "$created" ] && [ -f "$created" ] && [ "$want" = "$(sed -n 1p "$created")" ]; then
+		id=$want
+		title=$(sed -n 2p "$created")
+		printf '{"data":{"issue":'
+		fill "$here/created-issue.json"
+		printf '}}\n200'
+		exit 0
+	fi
+	case "$want" in
+	????????-????-????-????-????????????)
+		printf '{"data":{"issue":null},"errors":[{"message":"Entity not found: Issue"}]}\n200'
+		exit 0
+		;;
+	esac
+	cat "$here/issue.json"
+	printf '\n200'
+	exit 0
+fi
+
+if is MyIssues; then
+	if [ "${STANDIN_MY-}" = empty ]; then listing my-issues-empty.json; else listing my-issues.json; fi
+	exit 0
+fi
+if is AllIssues; then listing all-issues.json; exit 0; fi
+if is Verify; then cat "$here/verify.json"; printf '\n200'; exit 0; fi
+if is NewIssueTeams; then cat "$here/teams.json"; printf '\n200'; exit 0; fi
+if is NewIssueOptions; then cat "$here/new-issue-options.json"; printf '\n200'; exit 0; fi
+
+echo "stand-in curl: a query it does not know" >&2
+exit 2

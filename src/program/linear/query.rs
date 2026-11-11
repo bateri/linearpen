@@ -1,11 +1,16 @@
-//! What is asked of Linear: every query of the program, as constant text. The pen only reads, so
-//! none of them is a `mutation`: `ALL` lists them for the test that scans for one, and the client
-//! refuses to send what is not a plain `query` (`mod.rs`). Nothing from outside is put into the
-//! text: what varies goes in the `variables` of the request.
+//! What is asked of Linear: every operation of the program, as constant text. The pen reads, and
+//! writes one thing: the issue the person makes. Every operation is a plain `query` except
+//! `IssueCreate`, and `ALLOWED_MUTATIONS` is the one list of what may be a `mutation`: the client
+//! refuses to send any other (`mod.rs`), and the tests scan `ALL` for one. Nothing from outside is
+//! put into the text: what varies goes in the `variables` of the request.
 
 use serde::Serialize;
 
-/// One query: its name (which the stand-in `curl` of the tests tells them apart by) and its text.
+/// The mutations the program may send, by name: the one list of what it may write. Anything else
+/// that is a `mutation` is refused before it is sent, however it is named.
+pub const ALLOWED_MUTATIONS: [&str; 1] = ["IssueCreate"];
+
+/// One operation: its name (which the stand-in `curl` of the tests tells them apart by) and its text.
 #[derive(Debug, Clone, Copy)]
 pub struct Operation {
     pub name: &'static str,
@@ -20,6 +25,31 @@ impl Operation {
         lower.trim_start().starts_with("query ")
             && !lower.contains("mutation")
             && !lower.contains("subscription")
+    }
+
+    /// Whether the text is one `mutation` of the list, named as the text names it: it is the text
+    /// that is read, not the `name`, and there is no second operation behind it.
+    #[must_use]
+    pub fn is_listed_write(&self) -> bool {
+        let lower = self.text.to_ascii_lowercase();
+        let Some(rest) = self.text.strip_prefix("mutation ") else {
+            return false;
+        };
+        let named: String = rest
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+            .collect();
+        ALLOWED_MUTATIONS.contains(&named.as_str())
+            && named == self.name
+            && lower.matches("mutation").count() == 1
+            && !lower.contains("subscription")
+            && !lower.contains("query ")
+    }
+
+    /// Whether the client may send it: a plain query, or the one mutation that is listed.
+    #[must_use]
+    pub fn allowed(&self) -> bool {
+        self.reads_only() || self.is_listed_write()
     }
 }
 
@@ -84,14 +114,60 @@ pub const ISSUE: Operation = Operation {
     ),
 };
 
-/// Every query there is, for the test that scans for a `mutation`.
+/// The teams an issue can be made in.
+pub const NEW_ISSUE_TEAMS: Operation = Operation {
+    name: "NewIssueTeams",
+    text: "query NewIssueTeams { teams(first: 50) { nodes { id key name } } }",
+};
+
+/// What a new issue of one team can be given: its states, labels, projects and members, and the
+/// labels of the whole workspace (they belong to no team).
+pub const NEW_ISSUE_OPTIONS: Operation = Operation {
+    name: "NewIssueOptions",
+    text: "query NewIssueOptions($team: String!) { team(id: $team) { id defaultIssueState { id } \
+         states(first: 50) { nodes { id name type position } } \
+         labels(first: 100) { nodes { id name color isGroup } } \
+         projects(first: 50) { nodes { id name completedAt canceledAt } } \
+         members(first: 100) { nodes { id displayName isMe active } } } \
+         issueLabels(first: 100, filter: { team: { null: true } }) { nodes { id name color isGroup } } }",
+};
+
+/// The one thing the pen writes: the issue the person made in the form. Sent by `linear::create`
+/// and by nothing else.
+pub const ISSUE_CREATE: Operation = Operation {
+    name: "IssueCreate",
+    text: "mutation IssueCreate($input: IssueCreateInput!) { issueCreate(input: $input) { \
+           success issue { id identifier } } }",
+};
+
+/// Every operation there is, for the test that scans for a `mutation`.
 #[cfg(test)]
-pub const ALL: [Operation; 4] = [VERIFY, MY_ISSUES, ALL_ISSUES, ISSUE];
+pub const ALL: [Operation; 7] = [
+    VERIFY,
+    MY_ISSUES,
+    ALL_ISSUES,
+    ISSUE,
+    NEW_ISSUE_TEAMS,
+    NEW_ISSUE_OPTIONS,
+    ISSUE_CREATE,
+];
 
 /// The variables of the question for one issue: Linear's id of it, or its identifier.
 #[derive(Debug, Serialize)]
 pub struct Lookup<'a> {
     pub id: &'a str,
+}
+
+/// The variables of the question for the choices of one team.
+#[derive(Debug, Serialize)]
+pub struct Team<'a> {
+    pub team: &'a str,
+}
+
+/// The variables of `IssueCreate`.
+#[derive(Debug, Serialize)]
+pub struct Create<'a> {
+    pub input: &'a super::NewIssue,
 }
 
 /// The variables of a page of issues.
@@ -136,22 +212,39 @@ impl Filter {
 mod tests {
     use super::*;
 
-    /// The pen reads. This is the guard: no query of the program writes, and each is one plain query.
+    /// The guard: each operation is a plain query, or is the one mutation of the list; and it is
+    /// named by its text.
     #[test]
-    fn no_query_writes() {
+    fn every_operation_reads_or_is_the_one_listed_write() {
+        let mut writes = Vec::new();
         for operation in ALL {
-            let lower = operation.text.to_ascii_lowercase();
-            assert!(!lower.contains("mutation"), "{}", operation.name);
-            assert!(!lower.contains("subscription"), "{}", operation.name);
-            assert!(operation.reads_only(), "{}", operation.name);
-            assert!(
-                operation
-                    .text
-                    .starts_with(&format!("query {}", operation.name)),
-                "{} is named by its text",
-                operation.name
-            );
+            assert!(operation.allowed(), "{}", operation.name);
+            if operation.reads_only() {
+                let lower = operation.text.to_ascii_lowercase();
+                assert!(!lower.contains("mutation"), "{}", operation.name);
+                assert!(!lower.contains("subscription"), "{}", operation.name);
+                assert!(
+                    operation
+                        .text
+                        .starts_with(&format!("query {}", operation.name)),
+                    "{} is named by its text",
+                    operation.name
+                );
+            } else {
+                assert!(operation.is_listed_write(), "{}", operation.name);
+                assert!(
+                    operation
+                        .text
+                        .starts_with(&format!("mutation {}(", operation.name)),
+                    "{} is named by its text",
+                    operation.name
+                );
+                writes.push(operation.name);
+            }
         }
+        // The pen writes one thing, and the list says which.
+        assert_eq!(ALLOWED_MUTATIONS, ["IssueCreate"]);
+        assert_eq!(writes, ["IssueCreate"]);
     }
 
     /// A query added and left out of `ALL` would not be scanned: every `Operation` of this file is in it.
@@ -168,17 +261,36 @@ mod tests {
     }
 
     #[test]
-    fn the_guard_sees_a_mutation() {
-        let bad = Operation {
-            name: "Bad",
-            text: "mutation Bad { issueDelete(id: \"x\") { success } }",
+    fn a_mutation_that_is_not_listed_is_not_allowed_however_it_is_dressed() {
+        let not_allowed = |name, text| {
+            let operation = Operation { name, text };
+            assert!(!operation.allowed(), "{text}");
         };
-        assert!(!bad.reads_only());
-        let hidden = Operation {
-            name: "Hidden",
-            text: "query Hidden { viewer { id } } mutation M { x }",
-        };
-        assert!(!hidden.reads_only());
+        not_allowed("Bad", "mutation Bad { issueDelete(id: \"x\") { success } }");
+        // Named as the listed one, and another mutation.
+        not_allowed(
+            "IssueCreate",
+            "mutation IssueDelete($id: String!) { issueDelete(id: $id) { success } }",
+        );
+        // Text of the listed one, under another name.
+        not_allowed("Other", ISSUE_CREATE.text);
+        // A query with a mutation behind it, and the listed mutation with another behind it.
+        not_allowed("Hidden", "query Hidden { viewer { id } } mutation M { x }");
+        not_allowed(
+            "IssueCreate",
+            "mutation IssueCreate($input: IssueCreateInput!) { issueCreate(input: $input) { success } } \
+             mutation IssueDelete { issueDelete(id: \"x\") { success } }",
+        );
+        not_allowed(
+            "IssueCreate",
+            "mutation IssueCreate { issueCreate { success } } query Q { viewer { id } }",
+        );
+        not_allowed("Live", "subscription Live { issueUpdated { id } }");
+        // The listed one is allowed and is not a query.
+        assert!(ISSUE_CREATE.allowed());
+        assert!(!ISSUE_CREATE.reads_only());
+        assert!(VERIFY.allowed());
+        assert!(!VERIFY.is_listed_write());
     }
 
     #[test]

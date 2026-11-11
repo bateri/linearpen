@@ -1,0 +1,43 @@
+{
+  "data": {
+    "team": {
+      "id": "team-acm",
+      "defaultIssueState": { "id": "s-todo" },
+      "states": {
+        "nodes": [
+          { "id": "s-prog", "name": "In Progress", "type": "started", "position": 2.0 },
+          { "id": "s-done", "name": "Done", "type": "completed", "position": 3.0 },
+          { "id": "s-todo", "name": "Todo", "type": "unstarted", "position": 1.0 },
+          { "id": "s-back", "name": "Backlog", "type": "backlog", "position": 0.0 },
+          { "id": "s-cancel", "name": "Canceled", "type": "canceled", "position": 4.0 }
+        ]
+      },
+      "labels": {
+        "nodes": [
+          { "id": "l-bug", "name": "bug", "color": "#eb5757", "isGroup": false },
+          { "id": "l-area", "name": "Area", "color": "#999999", "isGroup": true },
+          { "id": "l-api", "name": "api", "color": "#3e63dd", "isGroup": false }
+        ]
+      },
+      "projects": {
+        "nodes": [
+          { "id": "p-1", "name": "Billing", "completedAt": null, "canceledAt": null },
+          { "id": "p-2", "name": "Old site", "completedAt": "2026-01-01T00:00:00.000Z", "canceledAt": null }
+        ]
+      },
+      "members": {
+        "nodes": [
+          { "id": "u-deniz", "displayName": "Deniz", "isMe": false, "active": true },
+          { "id": "u-gone", "displayName": "Gone", "isMe": false, "active": false },
+          { "id": "u-ada", "displayName": "Ada", "isMe": true, "active": true }
+        ]
+      }
+    },
+    "issueLabels": {
+      "nodes": [
+        { "id": "l-bug", "name": "bug", "color": "#eb5757", "isGroup": false },
+        { "id": "l-customer", "name": "Customer", "color": "#f2994a", "isGroup": false }
+      ]
+    }
+  }
+}

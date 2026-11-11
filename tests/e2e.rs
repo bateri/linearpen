@@ -440,3 +440,233 @@ fn the_options_say_which_agents_are_there_and_what_a_worktree_would_need() {
             .contains("bateri pane")
     );
 }
+
+/// The id of a draft, as the page would hold it.
+const DRAFT: &str = "11111111-2222-4333-8444-555555555555";
+
+/// The calls the stand-in `curl` had that were of the operation `name`.
+fn asked_of(home: &Home, name: &str) -> Vec<common::Call> {
+    let mark = format!("\\\"operationName\\\":\\\"{name}\\\"");
+    home.calls()
+        .into_iter()
+        .filter(|call| call.stdin.contains(&mark))
+        .collect()
+}
+
+fn make(title: &str) -> serde_json::Value {
+    json!({
+        "id": DRAFT, "team": "team-acm", "title": title, "description": "The words",
+        "state": "s-todo", "priority": "high", "assignee": "u-ada",
+        "labels": ["l-api", "l-bug"], "project": "p-1"
+    })
+}
+
+#[test]
+fn new_options_tell_the_teams_and_the_choices_of_one_and_a_new_draft_id() {
+    let home = Home::new();
+    let heard = home.ask(
+        &keyed()
+            .call("new_options", json!({}))
+            .call("new_options", json!({ "team": "WEB" }))
+            .call("new_options", json!({ "team": "no-such-team" }))
+            .call("new_options", json!({ "team": "has a space" }))
+            .call("new_options", json!({ "speed": 1 })),
+    );
+    let first = heard[0].result();
+    let teams: Vec<&str> = first["teams"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|team| team["key"].as_str().unwrap())
+        .collect();
+    assert_eq!(teams, ["ACM", "WEB"]);
+    assert_eq!(first["team"], "team-acm", "the first, where none is named");
+    let draft = first["draft"].as_str().unwrap();
+    assert_eq!(draft.len(), 36, "{draft}");
+    assert_ne!(draft, heard[1].result()["draft"].as_str().unwrap());
+    let states: Vec<&str> = first["states"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|state| state["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(states, ["Backlog", "Todo", "In Progress"]);
+    assert_eq!(first["defaultState"], "s-todo");
+    let labels: Vec<&str> = first["labels"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|label| label["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(labels, ["api", "bug", "Customer"], "no group, no repeat");
+    assert_eq!(first["projects"].as_array().unwrap().len(), 1);
+    let members = first["members"].as_array().unwrap();
+    assert_eq!(members.len(), 2, "the one who has left is not offered");
+    assert_eq!(members[0]["me"], true);
+    // A team named by its key; one that is not there is the first; the rest is refused.
+    assert_eq!(heard[1].result()["team"], "team-web");
+    assert_eq!(heard[2].result()["team"], "team-acm");
+    assert!(heard[3].failed("bad-params"), "{:?}", heard[3]);
+    assert!(heard[4].failed("bad-params"), "{:?}", heard[4]);
+    // The teams were asked for once, and the choices of each team once.
+    assert_eq!(asked_of(&home, "NewIssueTeams").len(), 1);
+    assert_eq!(asked_of(&home, "NewIssueOptions").len(), 2);
+    assert!(asked_of(&home, "IssueCreate").is_empty());
+}
+
+#[test]
+fn new_options_need_a_key() {
+    let home = Home::new();
+    let heard = home.ask(&Script::new().call("new_options", json!({})));
+    assert!(heard[0].failed("no-key"), "{:?}", heard[0]);
+}
+
+#[test]
+fn create_sends_the_one_mutation_once_with_the_key_on_stdin_alone_and_the_issue_is_in_the_list_after()
+ {
+    let home = Home::new();
+    let log = home.record(
+        &keyed()
+            .call("create", make("Fix the login"))
+            .host_args(&["--subscribe", "issues"])
+            .then(&["--then", "wait"])
+            .limit(6),
+    );
+    let heard = answers(&log);
+    assert!(!heard.is_empty(), "{log}");
+    let made = heard[0].result();
+    assert_eq!(made["id"], DRAFT);
+    assert_eq!(made["identifier"], "ACM-900");
+    let sent = asked_of(&home, "IssueCreate");
+    assert_eq!(sent.len(), 1, "{:?}", home.calls());
+    assert_eq!(sent[0].argv, ["--config", "-"]);
+    assert_eq!(sent[0].env_key, "unset");
+    assert!(sent[0].stdin.contains(KEY));
+    for part in [
+        DRAFT,
+        "team-acm",
+        "Fix the login",
+        "The words",
+        "s-todo",
+        "u-ada",
+        "l-bug",
+        "p-1",
+    ] {
+        assert!(sent[0].stdin.contains(part), "{part}: {}", sent[0].stdin);
+    }
+    // Nothing else of the pen writes: every other request is a query.
+    for call in home.calls() {
+        if !call
+            .stdin
+            .contains("\\\"operationName\\\":\\\"IssueCreate\\\"")
+        {
+            assert!(
+                !call.stdin.to_lowercase().contains("mutation"),
+                "{}",
+                call.stdin
+            );
+        }
+    }
+    // The lists are asked for again, and what the topic tells then has the issue.
+    let told = pushes(&log);
+    assert!(
+        told.iter().any(|list| list.to_string().contains("ACM-900")),
+        "the new issue is in a list that was told: {told:?}"
+    );
+    assert!(!log.contains(KEY), "the key is not in what the page heard");
+}
+
+#[test]
+fn a_create_whose_answer_is_lost_is_not_sent_again_and_the_issue_is_found_by_its_id() {
+    let home = Home::new();
+    let heard = home.ask(
+        &keyed()
+            .env("STANDIN_CREATE", "lost")
+            .call("create", make("Fix the login")),
+    );
+    let made = heard[0].result();
+    assert_eq!(made["id"], DRAFT, "{made}");
+    assert_eq!(made["identifier"], "ACM-900");
+    assert_eq!(asked_of(&home, "IssueCreate").len(), 1, "sent once");
+    let asked = asked_of(&home, "Issue");
+    assert_eq!(asked.len(), 1, "then asked for by the draft id");
+    assert!(asked[0].stdin.contains(DRAFT));
+}
+
+#[test]
+fn a_create_linear_refuses_is_create_failed_and_the_words_do_not_hold_the_key() {
+    let home = Home::new();
+    let heard = home.ask(
+        &keyed()
+            .env("STANDIN_CREATE", "refused")
+            .call("create", make("Fix the login")),
+    );
+    assert!(heard[0].failed("create-failed"), "{:?}", heard[0]);
+    let words = heard[0].message();
+    assert!(words.starts_with("Linear did not make it"), "{words}");
+    assert!(!words.contains(KEY));
+    assert_eq!(asked_of(&home, "IssueCreate").len(), 1, "never sent twice");
+}
+
+#[test]
+fn a_key_that_cannot_create_issues_is_told_so() {
+    let home = Home::new();
+    let heard = home.ask(
+        &keyed()
+            .env("STANDIN_CREATE", "forbidden")
+            .call("create", make("Fix the login")),
+    );
+    assert!(heard[0].failed("create-failed"), "{:?}", heard[0]);
+    assert_eq!(
+        heard[0].message(),
+        "Linear did not make it: this key cannot create issues"
+    );
+    // A key Linear does not take at all is `refused`, as for every call.
+    let home = Home::new();
+    let heard = home.ask(
+        &keyed()
+            .env("STANDIN_MODE", "refused")
+            .call("create", make("x")),
+    );
+    assert!(heard[0].failed("refused"), "{:?}", heard[0]);
+}
+
+#[test]
+fn create_reads_its_params_before_it_sends_anything() {
+    let home = Home::new();
+    let mut no_title = make("   ");
+    let mut not_a_uuid = make("t");
+    not_a_uuid["id"] = json!("issue-412");
+    let mut loud = make("t");
+    loud["priority"] = json!("loud");
+    let mut many = make("t");
+    many["labels"] = json!((0..51).map(|n| format!("l-{n}")).collect::<Vec<_>>());
+    let mut spaced = make("t");
+    spaced["project"] = json!("has a space");
+    let mut extra = make("t");
+    extra["cycle"] = json!(3);
+    let long = make(&"x".repeat(256));
+    no_title["title"] = json!("   ");
+    let heard = home.ask(
+        &keyed()
+            .call("create", no_title)
+            .call("create", not_a_uuid)
+            .call("create", loud)
+            .call("create", many)
+            .call("create", spaced)
+            .call("create", extra)
+            .call("create", long)
+            .call("create", json!({ "title": "no id and no team" })),
+    );
+    for (n, answer) in heard.iter().enumerate() {
+        assert!(answer.failed("bad-params"), "{n}: {answer:?}");
+    }
+    assert!(
+        asked_of(&home, "IssueCreate").is_empty(),
+        "nothing was sent"
+    );
+    // And a key is needed.
+    let home = Home::new();
+    let heard = home.ask(&Script::new().call("create", make("t")));
+    assert!(heard[0].failed("no-key"), "{:?}", heard[0]);
+}

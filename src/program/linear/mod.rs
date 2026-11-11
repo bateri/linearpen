@@ -1,17 +1,21 @@
-//! Linear: the questions the program asks it and how the answers are read. Read only: the queries
-//! are in `query.rs`, all of them plain `query`, and `run` refuses anything else. The way to Linear
-//! is `curl` (`transport.rs`). It knows nothing of the page; it takes and gives plain Rust values.
+//! Linear: the questions the program asks it and how the answers are read. It reads, and writes one
+//! thing, the issue the person makes: the operations are in `query.rs`, all of them plain `query`
+//! but `IssueCreate`, and `run` refuses anything that is not listed there. `create` is the only
+//! function that sends the mutation, and sends it once. The way to Linear is `curl`
+//! (`transport.rs`). It knows nothing of the page; it takes and gives plain Rust values.
 
 mod error;
 mod key;
+mod new_issue;
 pub mod query;
 pub mod transport;
 pub mod types;
 
 pub use error::{Error, plain, tidy};
 pub use key::{Key, KeyError};
+pub use new_issue::{Created, NewIssue, Options, Team};
 pub use transport::Transport;
-pub use types::{Issue, Viewer};
+pub use types::{Issue, Priority, Viewer};
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -75,6 +79,18 @@ struct GraphqlError {
 struct Extensions {
     #[serde(default)]
     code: Option<String>,
+    #[serde(default, rename = "type")]
+    kind: Option<String>,
+}
+
+impl Extensions {
+    /// Whether Linear calls the error `forbidden`, by its code or its kind.
+    fn forbidden(&self) -> bool {
+        [&self.code, &self.kind]
+            .into_iter()
+            .flatten()
+            .any(|word| word.eq_ignore_ascii_case("forbidden"))
+    }
 }
 
 #[derive(Deserialize)]
@@ -91,9 +107,9 @@ fn run<V: Serialize, T: DeserializeOwned>(
     operation: &Operation,
     variables: Option<V>,
 ) -> Result<T, Error> {
-    if !operation.reads_only() {
+    if !operation.allowed() {
         return Err(Error::Failed(format!(
-            "{} is not a query, and this program only reads",
+            "{} is not a query, and the one thing this program writes is a new issue",
             operation.name
         )));
     }
@@ -106,6 +122,9 @@ fn run<V: Serialize, T: DeserializeOwned>(
     let reply = transport.post(key, &body)?;
     if reply.status == 401 {
         return Err(Error::Refused);
+    }
+    if reply.status == 403 {
+        return Err(Error::Forbidden);
     }
     let Ok(answer) = serde_json::from_str::<Envelope<T>>(&reply.body) else {
         return Err(Error::Failed(if reply.status == 200 {
@@ -123,6 +142,13 @@ fn run<V: Serialize, T: DeserializeOwned>(
     });
     if refused {
         return Err(Error::Refused);
+    }
+    if answer
+        .errors
+        .iter()
+        .any(|error| error.extensions.as_ref().is_some_and(Extensions::forbidden))
+    {
+        return Err(Error::Forbidden);
     }
     if let Some(first) = answer.errors.first() {
         return Err(Error::Failed(format!(
@@ -223,6 +249,37 @@ pub fn fetch_issue(transport: &dyn Transport, key: &Key, id: &str) -> Result<Iss
     let data: IssueData = run(transport, key, &query::ISSUE, Some(Lookup { id }))?;
     data.issue
         .ok_or_else(|| Error::Failed("Linear has no such issue".to_owned()))
+}
+
+/// The teams an issue can be made in, by name.
+pub fn teams(transport: &dyn Transport, key: &Key) -> Result<Vec<Team>, Error> {
+    let data: new_issue::TeamsData = run::<(), _>(transport, key, &query::NEW_ISSUE_TEAMS, None)?;
+    Ok(data.teams())
+}
+
+/// What a new issue of the team with Linear's id `team` can be given.
+pub fn options(transport: &dyn Transport, key: &Key, team: &str) -> Result<Options, Error> {
+    let data: new_issue::OptionsData = run(
+        transport,
+        key,
+        &query::NEW_ISSUE_OPTIONS,
+        Some(query::Team { team }),
+    )?;
+    data.options()
+        .ok_or_else(|| Error::Failed("Linear has no such team".to_owned()))
+}
+
+/// Makes the issue: the program's one write. It is sent once, whatever comes back; what the person
+/// does of an answer that did not come is `Session::create`'s.
+pub fn create(transport: &dyn Transport, key: &Key, input: &NewIssue) -> Result<Created, Error> {
+    let data: new_issue::CreateData = run(
+        transport,
+        key,
+        &query::ISSUE_CREATE,
+        Some(query::Create { input }),
+    )?;
+    data.created()
+        .ok_or_else(|| Error::Failed("Linear did not make the issue".to_owned()))
 }
 
 #[cfg(test)]

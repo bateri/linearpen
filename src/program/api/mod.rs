@@ -5,6 +5,7 @@
 //! A call's params are read before it runs (what does not fit is `bad-params`, and the work never
 //! runs). A call that panics is `internal`, by pencere.
 
+mod create;
 mod issue;
 mod issues;
 mod params;
@@ -34,6 +35,8 @@ enum Failure {
     Unavailable(String),
     /// An agent was to be started, and was not.
     StartFailed(String),
+    /// An issue was to be made, and Linear did not make it: the words say why.
+    CreateFailed(String),
 }
 
 impl From<Failure> for ViewError {
@@ -43,6 +46,7 @@ impl From<Failure> for ViewError {
             Failure::NoKey(words) => Self::with_message("no-key", words),
             Failure::Unavailable(words) => Self::with_message("unavailable", words),
             Failure::StartFailed(words) => Self::with_message("start-failed", words),
+            Failure::CreateFailed(words) => Self::with_message("create-failed", words),
             Failure::Linear(error) => Self::with_message(error.kind(), error.to_string()),
         }
     }
@@ -72,5 +76,6 @@ pub fn serve(options: Options, session: &Arc<Session>) -> Options {
     let options = session::calls(options, session);
     let options = issue::calls(options, session);
     let options = work::calls(options, session);
+    let options = create::calls(options, session);
     issues::topic(options, session)
 }

@@ -98,6 +98,37 @@ impl Priority {
             Self::Low => "low",
         }
     }
+
+    /// The priority named as `name` says it (`urgent`), or nothing where it is not a name.
+    #[must_use]
+    pub fn parse(name: &str) -> Option<Self> {
+        [
+            Self::None,
+            Self::Urgent,
+            Self::High,
+            Self::Medium,
+            Self::Low,
+        ]
+        .into_iter()
+        .find(|priority| priority.name() == name)
+    }
+
+    /// The number Linear writes it as: 0 none, 1 urgent, 2 high, 3 medium, 4 low.
+    #[must_use]
+    pub fn number(self) -> u8 {
+        match self {
+            Self::None => 0,
+            Self::Urgent => 1,
+            Self::High => 2,
+            Self::Medium => 3,
+            Self::Low => 4,
+        }
+    }
+
+    #[must_use]
+    pub fn is_none(&self) -> bool {
+        *self == Self::None
+    }
 }
 
 impl<'de> Deserialize<'de> for Priority {

@@ -2,8 +2,8 @@
 //! In a terminal that shows pencere views the client opens in the pane; in one that does not, the
 //! program prints the issues as text and ends.
 //!
-//! It only reads: nothing is ever written to Linear. Linear is spoken to with `curl` and nothing
-//! else (`linear/`).
+//! It reads, and writes one thing: the issue the person makes in the form of the new issue. Linear
+//! is spoken to with `curl` and nothing else (`linear/`).
 //!
 //! The program asks Linear and keeps what it was told; the page (`src/view/`, in pencere's kit) is
 //! the client, drawn by the terminal, and asks the program for what it needs with the calls and the
