@@ -7,6 +7,7 @@
 
 pub mod credentials;
 pub mod draft;
+pub mod prefs;
 
 use std::path::PathBuf;
 

@@ -24,6 +24,11 @@ moves the issues that have not begun to their team's first state of work in prog
 person chose that (`progress`), once the agent's pane is made. Nothing else here changes anything in
 Linear.
 
+The program also writes two things of its own, in `$XDG_STATE_HOME/linearpen` (`~/.local/state/linearpen`)
+and never to Linear: the file of the issues handed to an agent, under `work/` (see `start`), which it
+puts away again when it is older than 14 days, and `prefs.json`, four words (`0600`), which `start`
+keeps and `boot` tells.
+
 ## Calls
 
 ### `boot`
@@ -32,12 +37,20 @@ What the page needs before it draws, once; and the program starts asking Linear 
 has a key and has not begun (listening to the topic `issues` begins it too). Params: none.
 
 ```json
-{ "version": "0.1.0", "key": "file", "problem": null }
+{ "version": "0.1.0", "key": "file", "problem": null,
+  "prefs": { "agent": "codex", "folder": "here", "place": "tab", "status": "keep" } }
 ```
 
 `key` says where the key is from: `none` (the page shows Connect), `environment` or `file`.
 `problem` is, where there is a key that cannot be used (it is not one, or its file cannot be read),
 the words that say why; `key` is `none` then.
+
+`prefs` is what the form that hands issues to an agent was left at by the last `start`
+(`$XDG_STATE_HOME/linearpen/prefs.json`): `agent` (`claude`, `codex` or `cursor`), `folder` (`here` or
+`worktree`), `place` (`split` or `tab`) and `status` (`progress` or `keep`). Each is null where the
+file does not say it, is not a word of the form's, or the file is missing or cannot be read. Whether
+the agent is installed and a worktree can be made is not told here: the page takes what it cannot have
+away when `work_options` says what can be chosen.
 
 ### `connect`
 
@@ -146,20 +159,24 @@ file. It answers when the pane is made. Params:
   project's own rules for where one goes and what its branch is called; the pen makes none, and the
   agent starts in the pen's folder either way). `open`: `split` (a pane to the right of this one) or
   `tab` (a new tab). The new pane is not given the focus.
-- `progress`: optional, false where it is not given. With it the program moves the issues whose
+- `progress`: optional; given where the form had the Status row, as the person chose it: `true` to
+  move, `false` to leave the issues as they are (not given where the row was not there, which is
+  where no issue would move). Only `true` writes to Linear. With it the program moves the issues whose
   state, as Linear says it now, is of the kind `triage`, `backlog` or `unstarted` to the first
   `started` state (by position) of the team each is of, with the `change` write of a status, one for
   each team, **after** the pane is made. Nothing else is written: an issue that has begun, is done or
   is canceled is left as it is, and the move is never a way to give an issue to someone or to take
-  one from a team. Where no issue would move, nothing is sent. The page sends it only where the
-  person chose to move the issues and the form said which of them would.
+  one from a team. Where no issue would move, nothing is sent. The page sends `true` only where the
+  person chose to move the issues and the form said which of them would. Where it is given (true or
+  false) it is kept with the choices below, so that the next form is opened with it; where it is not,
+  the choice kept before stays.
 
 ```json
 { "pane": "p41", "folder": "/Users/ada/acme-app", "context": "/Users/ada/.local/state/linearpen/work/20261111T031500Z-ACM-412/issues.md",
   "moved": 1, "notMoved": null }
 ```
 
-`moved` is how many issues were moved (0 where `progress` was not asked or none had to move), and
+`moved` is how many issues were moved (0 where `progress` was not `true` or none had to move), and
 `notMoved` says why some that were to move did not (Linear refused, did not answer, or a team has no
 state of work in progress), or is null. The agent is started either way: a refusal is not an error of
 `start`, and the move is not sent again. The lists are changed in place, as after `change`, and the
@@ -172,6 +189,17 @@ suggests for it (where that is a name `git` would take). The text of an issue is
 prompt (the agent's command line): only the file's path is, and for `worktree` a sentence of the
 program's own that asks for one. No flag that lets the agent do what it
 would ask about is ever added. The key is not in the file.
+
+Once the pane is made, `start` keeps the agent, the folder, the place and (where `progress` was
+given) the status of the call in `$XDG_STATE_HOME/linearpen/prefs.json` (`0600`; a word that is not
+a short word of lowercase letters and dashes is not written; it holds nothing of Linear's and no
+key); that it cannot be kept is not an error of the call. And it puts away old runs: the folders of
+`work/` older than 14 days (by the time in their names), only those that are named as above, are
+real folders (not links), hold nothing but `issues.md` (a real file), and are not the folder of a
+pane this run of the program watches (a pane left from an earlier run is not known to it, and its
+file goes at that age too: the agent read it long before). The file and then the folder are
+removed, never a tree, and nothing outside `work/` is touched. The program does the same once as
+it begins.
 
 From here the issues of the call carry a mark in the topic (`working`) until the agent's pane ends,
 and the program looks at the panes (see `working`) for as long as there is one.

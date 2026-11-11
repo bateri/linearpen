@@ -51,6 +51,23 @@
   colour, in place of the ring and the name, and the ring is back when the pane writes. Where bateri
   does not say (a list it cannot read, a pane it does not hold) the row stays as it was; nothing is
   looked at while no agent is on.
+- **A title you typed is not lost.** The title of the open issue is saved when its field loses the
+  keyboard (a press anywhere else, or `Tab`) as well as on `Enter`, when it is not empty and is not
+  the one it was; only `Esc` leaves the old title.
+- **The form opens as you left it.** The agent, the folder, where the pane goes and `Status` of each
+  start are kept in `prefs.json` in the state folder (`0600`, four words, nothing of Linear's and no
+  key) and the next run opens the form with them. An agent that is no longer installed, or a worktree
+  where there is no repository, is the default again; a file that is broken is read as if it were not
+  there.
+- **Old files of issues are put away.** When linearpen begins and after each start, the folders under
+  `~/.local/state/linearpen/work` that are older than 14 days are removed, but only those linearpen
+  made (named by their time, holding nothing but `issues.md`, not a link) and none whose pane this
+  run of linearpen has started and watches. A folder with anything else in it stays, and nothing
+  outside `work` is touched.
+- **`make install`** builds the program and puts it in `~/.local/bin` (`INSTALL_DIR=` says another
+  folder); `make uninstall` takes it away.
+- **The sentence that asks for a worktree** says "the instructions it keeps for agents, such as
+  CLAUDE.md or AGENTS.md" and no longer names one agent's file.
 - **New issue.** `c` (or the button over the list) opens a form beside the list with a title, a
   description, and the values Linear's own form asks for: team (where there are several), status,
   priority, assignee (you, to begin with), labels and project, each a button that opens a menu of the

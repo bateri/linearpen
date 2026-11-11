@@ -389,6 +389,64 @@ fn a_start_that_asks_for_it_moves_what_has_not_begun_after_the_pane_with_the_one
 }
 
 #[test]
+fn what_a_start_chose_is_kept_and_booted_with_and_runs_of_a_while_ago_are_put_away_as_it_begins() {
+    let home = Home::new();
+    let work = home.path("state/linearpen/work");
+    // What an earlier run left: a run of 2020 (put away), one of the person's own folder named
+    // otherwise, and a run of 2020 that holds more than the file (both stay).
+    let old = work.join("20200101T000000Z-ACM-1");
+    let more = work.join("20200101T000000Z-ACM-2");
+    let notes = work.join("notes");
+    for dir in [&old, &more, &notes] {
+        std::fs::create_dir_all(dir).unwrap();
+        std::fs::write(dir.join("issues.md"), "an old run").unwrap();
+    }
+    std::fs::write(more.join("mine.txt"), "the person's").unwrap();
+    let tab = json!({ "ids": ["issue-412"], "prompt": "", "agent": "claude", "folder": "here", "open": "tab" });
+    // Booting says nothing yet, there being no file; and the program put away what was old as it
+    // began, before any start.
+    let heard = home.ask(&in_bateri().call("boot", json!({})));
+    assert!(
+        heard[0].result()["prefs"]["agent"].is_null(),
+        "{:?}",
+        heard[0]
+    );
+    assert!(
+        !old.exists(),
+        "the run of 2020 is put away as the program begins"
+    );
+    assert!(more.join("issues.md").exists() && more.join("mine.txt").exists());
+    assert!(notes.join("issues.md").exists());
+    let heard = home.ask(&in_bateri().call("start", tab));
+    assert_eq!(heard[0].result()["pane"], "p41");
+    assert!(more.join("issues.md").exists() && notes.join("issues.md").exists());
+    // The choices are in a file only the person reads, of four words and nothing of Linear's.
+    let file = home.path("state/linearpen/prefs.json");
+    let kept = std::fs::read_to_string(&file).unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&kept).unwrap(),
+        json!({ "agent": "claude", "folder": "here", "place": "tab" })
+    );
+    assert!(
+        !kept.contains(common::KEY) && !kept.contains("ACM"),
+        "{kept}"
+    );
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            std::fs::metadata(&file).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+    }
+    // The next run boots with them.
+    let again = home.ask(&in_bateri().call("boot", json!({})));
+    assert_eq!(
+        again[0].result()["prefs"],
+        json!({ "agent": "claude", "folder": "here", "place": "tab", "status": null })
+    );
+}
+
+#[test]
 fn a_start_that_does_not_ask_for_it_or_has_nothing_to_move_writes_nothing() {
     let home = Home::new();
     let heard = home.ask(

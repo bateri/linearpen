@@ -7,6 +7,7 @@ use pencere::Options;
 use serde::{Deserialize, Serialize};
 
 use super::issues::{Snapshot, snapshot};
+use super::work::{Remembered, remembered};
 use super::{Failure, call};
 use crate::linear::{self, Key, Scope};
 use crate::session::Session;
@@ -27,6 +28,8 @@ struct Boot {
     key: &'static str,
     /// Why the key there is cannot be used, where there is one that cannot.
     problem: Option<String>,
+    /// What the form that hands issues to an agent was last left at, to open it with.
+    prefs: Remembered,
 }
 
 fn boot(session: &Session, _: Nothing) -> Result<Boot, Failure> {
@@ -47,6 +50,7 @@ fn boot(session: &Session, _: Nothing) -> Result<Boot, Failure> {
         version: env!("CARGO_PKG_VERSION"),
         key,
         problem,
+        prefs: remembered(session),
     })
 }
 

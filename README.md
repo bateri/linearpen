@@ -23,9 +23,12 @@ linearpen --text     # your issues as text, whatever the terminal is
 There is no release yet: it is built from its source, with Rust and `curl`.
 
 ```sh
-cargo build --release
-target/release/linearpen
+make install                     # builds it and puts it in ~/.local/bin
+make install INSTALL_DIR=~/bin   # or in another folder
+make uninstall                   # takes it away again
 ```
+
+Or run it where it is built: `cargo build --release`, then `target/release/linearpen`.
 
 ### The key
 
@@ -72,7 +75,8 @@ Create issues permission is told so in the form.
 The status, priority, assignee, labels and project of the issue that is open are buttons, the same
 ones the form of a new issue has: each says what it is now and opens a menu of the others, the status
 with every state of the team (Done and Canceled too). The title is changed in place: `e`, or a press
-on it, makes it a field with the words selected, `Enter` saves it and `Esc` leaves the old one. A
+on it, makes it a field with the words selected; `Enter` saves it, and so does a press anywhere else
+or `Tab` (what you typed is not lost), and `Esc` leaves the old one. A
 change is sent when you choose it, with no question; the control is busy until Linear has answered,
 and if Linear says no the words are under the controls and the value is as it was. A change that
 moves the issue puts it in its new group with the cursor on it, and one that takes it out of the list
@@ -106,7 +110,9 @@ folder or makes a new `git` worktree for the work, whether its pane splits to th
 opens a new tab, and whether the issues that have not begun move to the status of work in progress
 (`Status`: the name of your team's first such state, or `Unchanged`; the row is not there when every
 issue has begun). `⌘Enter` starts it, and each issue says which agent is on it until the pane ends.
-When the agent stops writing, the row says `Claude idle` where the ring was.
+When the agent stops writing, the row says `Claude idle` where the ring was. The form opens with what
+you chose last time (agent, folder, where the pane goes and `Status`), which is kept in
+`~/.local/state/linearpen/prefs.json`.
 
 <img src="docs/started.png" width="720" alt="linearpen: the issues an agent was started on, each marked with its name">
 
@@ -136,6 +142,10 @@ How it starts one:
   seconds is an agent that has stopped, because it is done or because it waits for you: linearpen
   cannot tell which, so the row says `Claude idle` and no more, and the ring comes back when the pane
   writes. Where bateri does not say, the row stays as it was.
+- The files of the issues are for the agent to read, and are put away after 14 days: when linearpen
+  begins and after each start, the folders under `work` that it made and that are older than that
+  are removed, unless it is the file of a pane that this run of linearpen started and still
+  watches. A folder with anything else in it is left, and nothing outside `work` is touched.
 - No option that lets an agent skip its questions is ever given.
 
 ### The keyboard, and the mouse

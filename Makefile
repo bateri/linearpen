@@ -1,7 +1,7 @@
 # linearpen is one native file: the program (src/program/, Rust, on the pencere crate) with the page
 # (src/view/, a page of pencere's kit) and the pictures (src/assets/) carried in it by build.rs. The
 # gate and `make dev` are here.
-.PHONY: pin fmt lint test test-page check-timing shots check build pencere-src pencere fake-host pencere-ref dev
+.PHONY: pin fmt lint test test-page check-timing shots check build install uninstall pencere-src pencere fake-host pencere-ref dev
 
 # pencere is pinned in one place, Cargo.lock (Cargo.toml names the commit): the crate the program is
 # built on is of it, and so are the `pencere` command `make dev` runs linearpen under and the
@@ -73,6 +73,18 @@ check: pin lint test test-page
 # build makes target/release/linearpen, the program for this machine, with the page in it.
 build:
 	cargo build --locked --release
+
+# install puts the program in INSTALL_DIR (where `linearpen` is then a command, if that folder is in
+# your PATH), made if it is not there; uninstall takes it away. Only that file is touched: nothing of
+# bateri's own folders, which are the release line's.
+INSTALL_DIR ?= $(HOME)/.local/bin
+install: build
+	install -d "$(INSTALL_DIR)"
+	install -m 755 target/release/linearpen "$(INSTALL_DIR)/linearpen"
+	@echo "linearpen is in $(INSTALL_DIR)"
+
+uninstall:
+	rm -f "$(INSTALL_DIR)/linearpen"
 
 # pencere-src makes PENCERE_SRC ready: fetched at Cargo.lock's ref when it is the cache (one checkout,
 # moved to another ref when Cargo.lock moves, so that cargo builds again only what changed).

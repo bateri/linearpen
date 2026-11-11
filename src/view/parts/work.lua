@@ -32,6 +32,9 @@ local W = {
 	-- Whether the issues that have not begun are moved to their team's state of work in progress
 	-- when the agent starts ("progress"), or left as they are ("keep").
 	status = "progress",
+	-- Whether what the last start chose (which the program kept, and `boot` brought) has been put in
+	-- the form: once for a run of the page, so that what is chosen after is not undone.
+	remembered = false,
 	starting = false,
 	error = nil,
 }
@@ -140,11 +143,31 @@ act.work_target = function()
 	return work.target()
 end
 
+-- Whether what Status would do is known: the choices of the team of each issue that has not begun are
+-- here (or could not come, and then the row is not there and nothing is moved). Until they are, Start
+-- waits, so that what the form promises (the row, and the choice kept for it) is what is sent.
+local function status_known()
+	for _, id in work.ids() do
+		local item = list.item(id)
+		local team, kind
+		if item ~= nil then
+			team, kind = item.row.teamId, item.group.kind
+		elseif W.rows[id] ~= nil then
+			team, kind = W.rows[id].teamId, W.rows[id].kind
+		end
+		if team ~= nil and NOT_BEGUN[kind] and not change.ready(team) then
+			return false
+		end
+	end
+	return true
+end
+
 -- Whether the agent can be started now.
 function work.startable()
 	local options = chosen()
 	return W.open
 		and not W.starting
+		and status_known()
 		and options ~= nil
 		and options.unavailable == nil
 		and W.agent ~= nil
@@ -195,6 +218,32 @@ function work.sync()
 	end
 end
 
+-- Puts what the last start chose into the form, the first time it is opened: the agent, where the
+-- agent works, where its pane goes and Status. What the program says is not there (an agent that is
+-- not installed, a worktree outside a repository) is let go when it says what can be chosen (`ask`).
+local function remember()
+	if W.remembered then
+		return
+	end
+	W.remembered = true
+	local prefs = S.boot ~= nil and S.boot.prefs or nil
+	if prefs == nil then
+		return
+	end
+	if prefs.agent ~= nil then
+		W.agent = prefs.agent
+	end
+	if prefs.folder == "here" or prefs.folder == "worktree" then
+		W.folder = prefs.folder
+	end
+	if prefs.place == "split" or prefs.place == "tab" then
+		W.place = prefs.place
+	end
+	if prefs.status == "progress" or prefs.status == "keep" then
+		W.status = prefs.status
+	end
+end
+
 -- Opens the form for the issues selected, or the one the cursor is on. The reply that gives the
 -- keyboard to the words for the agent.
 function work.show()
@@ -202,6 +251,7 @@ function work.show()
 	if W.open or target == nil then
 		return true
 	end
+	remember()
 	local live = target == "marks"
 	local ids, rows = {}, {}
 	if target == "panel" then
@@ -238,8 +288,12 @@ function work.start()
 	local length = b.layout.editor_length(name) or 0
 	local words = b.layout.editor_text(name, 1, length + 1) or ""
 	W.starting, W.error = true, nil
-	-- Only what the form said it would move is asked for: Status is not a thing to ask for blind.
-	local progress = W.status == "progress" and work.moving() ~= nil
+	-- Status goes only where the form had the row, and then as it said: to move (true) or to leave
+	-- (false). Without the row there is nothing to move and nothing to remember.
+	local progress = nil
+	if work.moving() ~= nil then
+		progress = W.status == "progress"
+	end
 	local serial = W.serial
 	kit.call("start", {
 		ids = work.ids(),

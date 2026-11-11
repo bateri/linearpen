@@ -1365,6 +1365,13 @@ pub(crate) fn rig(linear: &Arc<Canned>, in_bateri: bool, agents: &[&str]) -> Rig
     rig_polling(linear, in_bateri, agents, Duration::from_secs(3))
 }
 
+impl Rig {
+    /// The folder of the state this rig keeps: a folder of its own, never the person's.
+    pub(crate) fn state_dir(&self) -> &std::path::Path {
+        self._state.path()
+    }
+}
+
 /// The same, with the panes of the agents looked at every `poll`.
 pub(crate) fn rig_polling(
     linear: &Arc<Canned>,
@@ -1974,6 +1981,164 @@ fn in_an_80_by_24_pane_start_stays_inside_it_with_a_worktree_and_the_status_row(
         );
     }
     assert!(status.y < start.y, "{status:?} {start:?}");
+}
+
+// --- The form is opened as it was left ----------------------------------------------------------
+
+/// The machine of `open_machine`, with `prefs` in the state folder before the page opens (what a run
+/// before this one left there, or `None` for a state folder that has never held the file).
+fn open_machine_left(
+    size: (f32, f32),
+    agents: &[&str],
+    prefs: Option<&str>,
+    before_open: impl FnOnce(&Rig),
+) -> (Arc<Canned>, Rig, Page) {
+    let linear = Canned::new(Mode::Fine);
+    let rig = rig(&linear, true, agents);
+    if let Some(text) = prefs {
+        std::fs::write(rig.state_dir().join("prefs.json"), text).unwrap();
+    }
+    before_open(&rig);
+    let page = open(&rig.session, size, None, "ACM-412").expect("the page opens");
+    (linear, rig, page)
+}
+
+/// What the pane was asked for with (the form is done, so the pane is made: `start` answers after).
+fn pane_asked(rig: &Rig) -> String {
+    let asked = rig.hands.asked();
+    asked
+        .iter()
+        .find(|line| line.starts_with("bateri split") || line.starts_with("bateri tab"))
+        .cloned()
+        .unwrap_or_else(|| panic!("a pane was asked for: {asked:?}"))
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_start_keeps_what_the_form_chose_in_a_file_for_the_next_run() {
+    let (_linear, rig, mut page) = open_machine(WIDE, true, &["claude", "codex"]);
+    go_down_to(&mut page, "ACM-415");
+    open_form_with_status(&mut page, true);
+    for control in [
+        "work-agent/item/codex",
+        "work-folder/item/worktree",
+        "work-place/item/tab",
+        "work-status/item/keep",
+    ] {
+        page.click(control)
+            .unwrap_or_else(|why| panic!("{control} is pressed: {why:?}"));
+    }
+    page.press("mod+enter").expect("mod+enter");
+    form_done(&mut page);
+    let file = rig.state_dir().join("prefs.json");
+    let kept = std::fs::read_to_string(&file).expect("the choices were kept");
+    let value: serde_json::Value = serde_json::from_str(&kept).unwrap();
+    assert_eq!(
+        value,
+        serde_json::json!({ "agent": "codex", "folder": "worktree", "place": "tab", "status": "keep" })
+    );
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(&file).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+    }
+    // Nothing of Linear's is in it, and no key.
+    for text in ["ACM", "lin_api", "middleware", "Linear"] {
+        assert!(!kept.contains(text), "{text}: {kept}");
+    }
+    rig.hands.end();
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_form_opens_as_the_last_start_left_it() {
+    let left = r#"{"agent":"codex","folder":"worktree","place":"tab","status":"keep"}"#;
+    let (linear, rig, mut page) = open_machine_left(WIDE, &["claude", "codex"], Some(left), |_| {});
+    go_down_to(&mut page, "ACM-415");
+    open_form_with_status(&mut page, true);
+    assert!(page.says("Start Codex"), "{}", said(&page));
+    assert!(page.says("The agent makes it"), "{}", said(&page));
+    // Start with nothing chosen: the agent, the folder, the place and the Status are the last's.
+    page.press("mod+enter").expect("mod+enter");
+    form_done(&mut page);
+    let asked = pane_asked(&rig);
+    assert!(
+        asked.starts_with("bateri tab --cwd /work/acme-app/api --label ACM-415 -- codex"),
+        "{asked}"
+    );
+    assert!(asked.contains("new git worktree"), "{asked}");
+    assert_eq!(
+        linear.times("IssueBatchUpdate"),
+        0,
+        "Status was left as it is"
+    );
+    rig.hands.end();
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn without_a_file_the_form_opens_as_it_always_did() {
+    let (linear, rig, mut page) = open_machine_left(WIDE, &["claude", "codex"], None, |_| {});
+    go_down_to(&mut page, "ACM-415");
+    open_form_with_status(&mut page, true);
+    assert!(page.says("Start Claude"), "{}", said(&page));
+    assert!(!page.says("The agent makes it"), "{}", said(&page));
+    page.press("mod+enter").expect("mod+enter");
+    form_done(&mut page);
+    let asked = pane_asked(&rig);
+    assert!(asked.starts_with("bateri split --right "), "{asked}");
+    assert_eq!(
+        linear.times("IssueBatchUpdate"),
+        1,
+        "Status moves the issue"
+    );
+    rig.hands.end();
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn what_cannot_be_chosen_here_or_is_not_a_choice_falls_back_to_the_default() {
+    // An agent that is not installed, and a worktree where there is no repository.
+    let left = r#"{"agent":"cursor","folder":"worktree","place":"tab","status":"keep"}"#;
+    let (linear, rig, mut page) = open_machine_left(WIDE, &["claude"], Some(left), |rig| {
+        *rig.hands.repo.lock().unwrap() = false;
+    });
+    go_down_to(&mut page, "ACM-415");
+    open_form_with_status(&mut page, true);
+    assert!(page.says("Start Claude"), "{}", said(&page));
+    assert!(!page.says("New worktree"), "{}", said(&page));
+    page.press("mod+enter").expect("mod+enter");
+    form_done(&mut page);
+    let asked = pane_asked(&rig);
+    // The two that can be kept are kept: the place and the Status.
+    assert!(
+        asked.starts_with("bateri tab --cwd /work/acme-app/api --label ACM-415 -- claude"),
+        "{asked}"
+    );
+    assert!(!asked.contains("worktree"), "{asked}");
+    assert_eq!(linear.times("IssueBatchUpdate"), 0);
+    rig.hands.end();
+    // A file that is not one, and one whose words are none of the form's, are no choices at all.
+    for broken in [
+        "not json",
+        r#"{"agent":"emacs","folder":"moon","place":"left","status":"maybe"}"#,
+        r#"{"agent":7,"folder":null,"place":["tab"],"status":{}}"#,
+    ] {
+        let (linear, rig, mut page) =
+            open_machine_left(WIDE, &["claude", "codex"], Some(broken), |_| {});
+        go_down_to(&mut page, "ACM-415");
+        open_form_with_status(&mut page, true);
+        assert!(page.says("Start Claude"), "{broken}: {}", said(&page));
+        page.press("mod+enter").expect("mod+enter");
+        form_done(&mut page);
+        let asked = pane_asked(&rig);
+        assert!(
+            asked.starts_with("bateri split --right "),
+            "{broken}: {asked}"
+        );
+        assert_eq!(linear.times("IssueBatchUpdate"), 1, "{broken}");
+        rig.hands.end();
+    }
 }
 
 // --- A new issue ---------------------------------------------------------------------------------
@@ -2837,7 +3002,7 @@ fn in_an_80_by_24_pane_the_controls_are_inside_the_pane() {
 
 #[test]
 #[ignore = "opens the kit's interpreter: make test-page"]
-fn a_press_on_the_title_makes_it_a_field_and_a_press_elsewhere_leaves_it_as_it_was() {
+fn a_press_on_the_title_makes_it_a_field_and_a_press_elsewhere_keeps_what_was_written() {
     let (linear, _session, mut page) = open_lists(WIDE);
     open_the_controls(&mut page);
     let title = "Add rate limiting to the public API";
@@ -2847,19 +3012,24 @@ fn a_press_on_the_title_makes_it_a_field_and_a_press_elsewhere_leaves_it_as_it_w
     })
     .unwrap_or_else(|why| panic!("the title is a field: {why:?}: {}", said(&page)));
     page.type_text("zz").expect("the words");
-    // Only Enter writes: a press on another line takes the keyboard away, and what was typed goes.
+    // A press on another line takes the keyboard away, and what was typed is kept as Enter keeps it.
     page.click("row:i:issue-398").expect("another line");
     page.wait_for(WITHIN, |page| !has_field(page, "panel-title/field"))
         .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
     cursor_on(&mut page, "ACM-398");
+    changed(&linear, &mut page, 1);
+    assert_eq!(
+        linear.changed(),
+        [serde_json::json!({ "ids": ["issue-412"], "input": { "title": "zz" } })],
+        "the title of the issue that was edited, not of the one pressed"
+    );
     page.advance(0.5).expect("a moment");
-    assert!(linear.changed().is_empty(), "{:?}", linear.changed());
-    assert!(page.says(title), "{}", said(&page));
+    assert_eq!(linear.changed().len(), 1, "once");
 }
 
 #[test]
 #[ignore = "opens the kit's interpreter: make test-page"]
-fn tab_takes_the_keyboard_out_of_the_title_and_nothing_is_written() {
+fn tab_takes_the_keyboard_out_of_the_title_and_what_was_written_is_kept() {
     let (linear, _session, mut page) = open_lists(WIDE);
     open_the_controls(&mut page);
     let title = "Add rate limiting to the public API";
@@ -2872,9 +3042,76 @@ fn tab_takes_the_keyboard_out_of_the_title_and_nothing_is_written() {
     page.press("tab").expect("tab");
     page.wait_for(WITHIN, |page| !has_field(page, "panel-title/field"))
         .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    changed(&linear, &mut page, 1);
+    assert_eq!(
+        linear.changed(),
+        [serde_json::json!({ "ids": ["issue-412"], "input": { "title": "zz" } })]
+    );
+    page.advance(0.5).expect("a moment");
+    assert_eq!(linear.changed().len(), 1, "once");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_title_left_unchanged_or_emptied_or_given_up_with_escape_is_not_sent_by_leaving_it() {
+    let title = "Add rate limiting to the public API";
+    // Nothing was written: leaving the field by a press elsewhere sends nothing.
+    let (linear, _session, mut page) = open_lists(WIDE);
+    open_the_controls(&mut page);
+    page.click("panel-title-edit").expect("the title");
+    page.wait_for(WITHIN, |page| {
+        page.field("panel-title/field") == Some(title)
+    })
+    .unwrap_or_else(|why| panic!("the title is a field: {why:?}: {}", said(&page)));
+    page.click("row:i:issue-398").expect("another line");
+    page.wait_for(WITHIN, |page| !has_field(page, "panel-title/field"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    page.advance(0.5).expect("a moment");
+    assert!(linear.changed().is_empty(), "{:?}", linear.changed());
+    // The same words typed again are no change.
+    let (linear, _session, mut page) = open_lists(WIDE);
+    open_the_controls(&mut page);
+    page.press("e").expect("e");
+    page.wait_for(WITHIN, |page| {
+        page.field("panel-title/field") == Some(title)
+    })
+    .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    page.type_text(title).expect("the same words");
+    page.press("tab").expect("tab");
+    page.wait_for(WITHIN, |page| !has_field(page, "panel-title/field"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    page.advance(0.5).expect("a moment");
+    assert!(linear.changed().is_empty(), "{:?}", linear.changed());
+    // Emptied: nothing to send.
+    let (linear, _session, mut page) = open_lists(WIDE);
+    open_the_controls(&mut page);
+    page.press("e").expect("e");
+    page.wait_for(WITHIN, |page| {
+        page.field("panel-title/field") == Some(title)
+    })
+    .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    page.press("backspace").expect("backspace");
+    page.press("tab").expect("tab");
+    page.wait_for(WITHIN, |page| !has_field(page, "panel-title/field"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
     page.advance(0.5).expect("a moment");
     assert!(linear.changed().is_empty(), "{:?}", linear.changed());
     assert!(page.says(title), "{}", said(&page));
+    // Escape gives it up, and the press that follows does not bring it back.
+    let (linear, _session, mut page) = open_lists(WIDE);
+    open_the_controls(&mut page);
+    page.press("e").expect("e");
+    page.wait_for(WITHIN, |page| {
+        page.field("panel-title/field") == Some(title)
+    })
+    .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    page.type_text("zz").expect("the words");
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| !has_field(page, "panel-title/field"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    page.click("row:i:issue-398").expect("another line");
+    page.advance(0.5).expect("a moment");
+    assert!(linear.changed().is_empty(), "{:?}", linear.changed());
 }
 
 #[test]

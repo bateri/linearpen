@@ -12,6 +12,7 @@ use super::issue::check_id;
 use super::{Failure, call};
 use crate::linear::{Change, Error, Issue};
 use crate::session::{Session, now_seconds};
+use crate::state::prefs;
 use crate::work::agents::{self, Agent};
 use crate::work::bateri::Place;
 use crate::work::{self, Env, Folder, Refused, Request, progress};
@@ -60,10 +61,10 @@ struct Hand {
     agent: String,
     folder: String,
     open: String,
-    /// Move the issues that have not begun to their team's first state of work in progress, once
-    /// the pane is made.
-    #[serde(default)]
-    progress: bool,
+    /// What the form's Status row said, where it had one: move the issues that have not begun to
+    /// their team's first state of work in progress, once the pane is made (`true`), or leave them
+    /// (`false`). Not given where the form had no such row. Only `true` writes to Linear.
+    progress: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -180,13 +181,16 @@ fn start(session: &Session, params: Hand) -> Result<StartedMessage, Failure> {
         Refused::Failed(why) => Failure::StartFailed(why),
     })?;
     // The marks are on the ids the page sent: they are the ones it knows the issues by.
-    session.watch(&params.ids, agent.name(), &started.pane);
+    session.watch(&params.ids, agent.name(), &started.pane, &started.context);
+    // A run of a while ago is put away now and then: here, when a new one has been made.
+    session.tidy();
     // Only now, with the pane made: a start that came to nothing leaves Linear as it was.
-    let moved = if params.progress {
+    let moved = if params.progress == Some(true) {
         move_forward(session, &issues)
     } else {
         Moved::default()
     };
+    remember(session, agent, folder, place, params.progress);
     Ok(StartedMessage {
         pane: started.pane,
         folder: started.folder.display().to_string(),
@@ -194,6 +198,78 @@ fn start(session: &Session, params: Hand) -> Result<StartedMessage, Failure> {
         moved: moved.count,
         not_moved: moved.not,
     })
+}
+
+/// What the form is opened with: the choices of the last start, each only where it is one the form
+/// has (a word the file holds that it has not is as if the file did not say). Whether the agent is
+/// installed and a worktree can be made is for the form to tell, with what `work_options` says.
+#[derive(Debug, Default, Serialize)]
+pub(super) struct Remembered {
+    agent: Option<&'static str>,
+    folder: Option<&'static str>,
+    place: Option<&'static str>,
+    status: Option<&'static str>,
+}
+
+/// The words of the choices, as the page and the file say them.
+fn word_of_folder(folder: Folder) -> &'static str {
+    match folder {
+        Folder::Here => "here",
+        Folder::Worktree => "worktree",
+    }
+}
+
+fn word_of_place(place: Place) -> &'static str {
+    match place {
+        Place::Split => "split",
+        Place::Tab => "tab",
+    }
+}
+
+fn word_of_status(move_them: bool) -> &'static str {
+    if move_them { "progress" } else { "keep" }
+}
+
+/// The choices of the last start, as the state folder keeps them.
+pub(super) fn remembered(session: &Session) -> Remembered {
+    let Some(state) = session.paths.state.as_deref() else {
+        return Remembered::default();
+    };
+    let kept = prefs::load(state);
+    Remembered {
+        agent: kept.agent.as_deref().and_then(Agent::parse).map(Agent::id),
+        folder: kept
+            .folder
+            .as_deref()
+            .and_then(Folder::parse)
+            .map(word_of_folder),
+        place: kept
+            .place
+            .as_deref()
+            .and_then(Place::parse)
+            .map(word_of_place),
+        status: match kept.status.as_deref() {
+            Some("progress") => Some(word_of_status(true)),
+            Some("keep") => Some(word_of_status(false)),
+            _ => None,
+        },
+    }
+}
+
+/// Keeps the choices of a start that was made, for the next form. Best effort: the agent is started
+/// whether or not they can be kept. Status is kept only where the form had the row (`progress` given).
+fn remember(session: &Session, agent: Agent, folder: Folder, place: Place, progress: Option<bool>) {
+    let Some(state) = session.paths.state.as_deref() else {
+        return;
+    };
+    let mut kept = prefs::load(state);
+    kept.agent = Some(agent.id().to_owned());
+    kept.folder = Some(word_of_folder(folder).to_owned());
+    kept.place = Some(word_of_place(place).to_owned());
+    if let Some(move_them) = progress {
+        kept.status = Some(word_of_status(move_them).to_owned());
+    }
+    let _ = prefs::save(state, &kept);
 }
 
 /// What moving the issues came to.
@@ -281,7 +357,7 @@ mod tests {
             agent: "claude".to_owned(),
             folder: "here".to_owned(),
             open: "split".to_owned(),
-            progress,
+            progress: Some(progress),
         }
     }
 
@@ -402,10 +478,13 @@ mod tests {
     fn progress_is_a_boolean_and_nothing_else_is_taken() {
         use crate::api::params::parse;
         let base = json!({ "ids": ["i"], "agent": "claude", "folder": "here", "open": "split" });
-        assert!(!parse::<Hand>(base.clone()).unwrap().progress);
+        assert_eq!(parse::<Hand>(base.clone()).unwrap().progress, None);
         let mut with = base.clone();
         with["progress"] = json!(true);
-        assert!(parse::<Hand>(with).unwrap().progress);
+        assert_eq!(parse::<Hand>(with).unwrap().progress, Some(true));
+        let mut without = base.clone();
+        without["progress"] = json!(false);
+        assert_eq!(parse::<Hand>(without).unwrap().progress, Some(false));
         let mut bad = base.clone();
         bad["progress"] = json!("yes");
         assert!(parse::<Hand>(bad).is_err());
@@ -415,6 +494,180 @@ mod tests {
             parse::<Hand>(more).is_err(),
             "no state is named by the page"
         );
+    }
+
+    // --- Old runs are put away ------------------------------------------------------------------
+
+    /// A run of `days` days ago as `handoff::write` leaves it, in the state folder of the rig.
+    fn old_run(rig: &crate::page_tests::Rig, days: u64, first: &str) -> std::path::PathBuf {
+        let at = now_seconds() - days * 86_400;
+        let dir = rig
+            .state_dir()
+            .join("work")
+            .join(format!("{}-{first}", work::handoff::stamp(at)));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("issues.md"), "issues").unwrap();
+        dir
+    }
+
+    #[test]
+    fn a_start_puts_away_the_runs_of_a_while_ago_and_keeps_the_one_it_made_and_the_recent_ones() {
+        let (_linear, rig) = machine();
+        let old = old_run(&rig, 30, "ACM-1");
+        let recent = old_run(&rig, 3, "ACM-2");
+        let started = start(&rig.session, hand(&["issue-412"], false)).unwrap();
+        assert!(!old.exists(), "a run of thirty days ago is put away");
+        assert!(recent.join("issues.md").exists());
+        assert!(
+            std::path::Path::new(&started.context).exists(),
+            "the file the agent reads from is there"
+        );
+        rig.hands.end();
+    }
+
+    #[test]
+    fn the_run_of_a_pane_that_is_watched_is_kept_while_it_is_and_put_away_after() {
+        let (_linear, rig) = machine();
+        let old = old_run(&rig, 30, "ACM-1");
+        let stale = old_run(&rig, 40, "ACM-2");
+        // An agent of that run is at work in p9: the pane does not end until it is told to.
+        rig.session.watch(
+            &["issue-412".to_owned()],
+            "Claude",
+            "p9",
+            &old.join("issues.md"),
+        );
+        assert_eq!(rig.session.tidy(), 1);
+        assert!(old.join("issues.md").exists(), "its agent reads from it");
+        assert!(!stale.exists());
+        rig.hands.end();
+        until("the pane ended", || rig.session.state().working.is_empty());
+        assert_eq!(rig.session.tidy(), 1);
+        assert!(!old.exists());
+    }
+
+    // --- What the form chose is kept ------------------------------------------------------------
+
+    fn kept(rig: &crate::page_tests::Rig) -> Option<serde_json::Value> {
+        let text = std::fs::read_to_string(rig.state_dir().join("prefs.json")).ok()?;
+        serde_json::from_str(&text).ok()
+    }
+
+    fn said_prefs(rig: &crate::page_tests::Rig) -> serde_json::Value {
+        serde_json::to_value(remembered(&rig.session)).unwrap()
+    }
+
+    #[test]
+    fn a_start_keeps_the_agent_the_folder_the_place_and_the_status_where_the_row_was_there() {
+        let (_linear, rig) = machine();
+        assert_eq!(kept(&rig), None, "nothing before the first start");
+        assert_eq!(
+            said_prefs(&rig),
+            json!({ "agent": null, "folder": null, "place": null, "status": null })
+        );
+        let mut tab = hand(&["issue-415"], false);
+        tab.folder = "worktree".to_owned();
+        tab.open = "tab".to_owned();
+        start(&rig.session, tab).unwrap();
+        let first =
+            json!({ "agent": "claude", "folder": "worktree", "place": "tab", "status": "keep" });
+        assert_eq!(kept(&rig), Some(first.clone()));
+        assert_eq!(said_prefs(&rig), first);
+        // A form that had no Status row says nothing of it: what was kept of it stays.
+        let mut none = hand(&["issue-412"], false);
+        none.progress = None;
+        start(&rig.session, none).unwrap();
+        assert_eq!(
+            kept(&rig),
+            Some(
+                json!({ "agent": "claude", "folder": "here", "place": "split", "status": "keep" })
+            )
+        );
+        // And one that did, and moved the issues, says so.
+        start(&rig.session, hand(&["issue-415"], true)).unwrap();
+        assert_eq!(kept(&rig).unwrap()["status"], "progress");
+        rig.hands.end();
+    }
+
+    #[test]
+    fn a_start_that_came_to_nothing_keeps_nothing() {
+        let (_linear, rig) = machine();
+        rig.hands.refuse_the_pane("the bateri app is not connected");
+        assert!(start(&rig.session, hand(&["issue-415"], true)).is_err());
+        assert_eq!(kept(&rig), None);
+        // Nor does a call that was not understood.
+        let mut odd = hand(&["issue-415"], false);
+        odd.agent = "emacs".to_owned();
+        assert!(start(&rig.session, odd).is_err());
+        assert_eq!(kept(&rig), None);
+    }
+
+    #[test]
+    fn what_the_file_says_that_the_form_has_not_is_not_said() {
+        let (_linear, rig) = machine();
+        let file = rig.state_dir().join("prefs.json");
+        std::fs::write(
+            &file,
+            r#"{ "agent": "emacs", "folder": "moon", "place": "tab", "status": "maybe" }"#,
+        )
+        .unwrap();
+        assert_eq!(
+            said_prefs(&rig),
+            json!({ "agent": null, "folder": null, "place": "tab", "status": null })
+        );
+        std::fs::write(&file, "{ not json").unwrap();
+        assert_eq!(
+            said_prefs(&rig),
+            json!({ "agent": null, "folder": null, "place": null, "status": null })
+        );
+        // Words that are the form's own are said as they are, an agent that is not here among them
+        // (whether it is installed is for the form to say, with what `work_options` tells).
+        std::fs::write(
+            &file,
+            r#"{ "agent": "cursor", "folder": "worktree", "place": "split", "status": "progress" }"#,
+        )
+        .unwrap();
+        assert_eq!(
+            said_prefs(&rig),
+            json!({ "agent": "cursor", "folder": "worktree", "place": "split", "status": "progress" })
+        );
+    }
+
+    #[test]
+    fn with_no_folder_for_the_state_nothing_is_kept_and_nothing_is_said() {
+        let linear = Canned::new(Mode::Fine);
+        let session = crate::page_tests::session_over(&linear, Some("lin_api_test"), None);
+        assert_eq!(
+            serde_json::to_value(remembered(&session)).unwrap(),
+            json!({ "agent": null, "folder": null, "place": null, "status": null })
+        );
+        remember(
+            &session,
+            Agent::Claude,
+            Folder::Here,
+            Place::Split,
+            Some(true),
+        );
+    }
+
+    #[test]
+    fn an_issue_given_to_a_second_agent_keeps_the_file_of_the_first_while_its_pane_is_on() {
+        let (_linear, rig) = machine();
+        let first = old_run(&rig, 30, "ACM-1");
+        let second = old_run(&rig, 30, "ACM-2");
+        let ids = ["issue-412".to_owned()];
+        // The same issue, on two panes: it has one mark, and both files are read from.
+        rig.session
+            .watch(&ids, "Claude", "p9", &first.join("issues.md"));
+        rig.session
+            .watch(&ids, "Codex", "p10", &second.join("issues.md"));
+        assert_eq!(rig.session.tidy(), 0);
+        assert!(first.exists() && second.exists());
+        rig.hands.end();
+        until("both panes ended", || {
+            rig.session.state().working.is_empty()
+        });
+        assert_eq!(rig.session.tidy(), 2);
     }
 
     // --- Looking at the panes: which agent has stopped ---------------------------------------------

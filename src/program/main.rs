@@ -137,18 +137,19 @@ fn session() -> Arc<Session> {
     let transport: Arc<dyn Transport> = Arc::new(Curl::new(
         lookup("LINEARPEN_API_URL").unwrap_or_else(|| DEFAULT_URL.to_owned()),
     ));
-    Arc::new(
-        Session::new(
-            transport,
-            Paths::resolve(&lookup),
-            lookup("LINEAR_API_KEY").as_deref(),
-            REFRESH_EVERY,
-        )
-        .with_work(
-            Setup::resolve(&lookup, std::env::current_dir().ok()),
-            Arc::new(System),
-        ),
+    let session = Session::new(
+        transport,
+        Paths::resolve(&lookup),
+        lookup("LINEAR_API_KEY").as_deref(),
+        REFRESH_EVERY,
     )
+    .with_work(
+        Setup::resolve(&lookup, std::env::current_dir().ok()),
+        Arc::new(System),
+    );
+    // The folders of runs of a while ago are put away as the program begins.
+    session.tidy();
+    Arc::new(session)
 }
 
 fn main() -> ExitCode {

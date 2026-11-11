@@ -433,9 +433,24 @@ function change.editing()
 	return C.rename ~= nil
 end
 
--- The title is let be: what was written is not sent.
+-- The title is put away as it was: what was written is not sent (Esc).
 local function leave()
 	C.rename = nil
+end
+
+-- The title is put away and what was written is kept, as Enter keeps it: sent where it is not empty and
+-- is not the words it had. (Where the keyboard has gone from the field, by a press elsewhere or by Tab,
+-- the person has left it written: only Esc gives it up.)
+local function keep()
+	local edit = C.rename
+	if edit == nil then
+		return
+	end
+	local text = trimmed(edit.state.value)
+	leave()
+	if text ~= "" and text ~= edit.original then
+		send({ edit.id }, "title", text)
+	end
 end
 
 -- Makes the title of the issue `id` (the issue open) a field with the title selected. The reply that
@@ -471,8 +486,9 @@ function change.title(id, words)
 	}))
 end
 
--- The title being edited is let go where the keyboard has left it (a press elsewhere, a menu) or where
--- the issue open is another: only Enter writes it. Every event.
+-- The title being edited is kept where the keyboard has left it (a press elsewhere, Tab, a menu) or where
+-- the issue open is another, as Enter keeps it: the words are sent, of the issue they were written
+-- for, where they are not empty and are new. Only Esc gives them up. Every event.
 function change.sync()
 	-- The choices of the teams of what a command would change are asked for before one is pressed (and
 	-- again when the lists were): the menus open from what is here.
@@ -486,11 +502,11 @@ function change.sync()
 		return
 	end
 	if act.panel_id() ~= edit.id then
-		leave()
+		keep()
 	elseif u:keyboard() == TITLE_FIELD then
 		edit.seen = true
 	elseif edit.seen then
-		leave()
+		keep()
 	end
 end
 
@@ -548,12 +564,7 @@ function change.action(action)
 			leave()
 			return u:focus(nil)
 		elseif kind == "submit" then
-			local text = trimmed(edit.state.value)
-			local id = edit.id
-			leave()
-			if text ~= "" and text ~= edit.original then
-				send({ id }, "title", text)
-			end
+			keep()
 			return u:focus(nil)
 		end
 		return true

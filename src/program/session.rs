@@ -12,6 +12,7 @@
 //! again), and where no answer came asks for the issues it named, one by one.
 
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -24,7 +25,7 @@ use crate::linear::{
 use crate::state::Paths;
 use crate::state::credentials::{self, Problem, Source};
 use crate::work::runner::{Runner, System};
-use crate::work::{Setup, bateri};
+use crate::work::{Setup, bateri, handoff};
 
 /// How long the lists are left before they are asked for again, while the page is open.
 pub const REFRESH_EVERY: Duration = Duration::from_secs(300);
@@ -91,6 +92,10 @@ pub struct State {
     view_seen: [u64; 3],
     /// The issues an agent was started on whose pane has not ended, by Linear's id.
     pub working: HashMap<String, Working>,
+    /// The panes that are watched and the file of issues each one's agent reads from, which is not
+    /// put away while the pane is on. Apart from `working`, which has one entry for each issue: an
+    /// issue given to another agent while the first is on has two panes.
+    held: Vec<(String, PathBuf)>,
     /// Issues opened, as Linear told them (with their description and comments), by id: they are
     /// kept for the run, so that an issue seen again is not asked for again.
     details: HashMap<String, Issue>,
@@ -347,6 +352,7 @@ impl Session {
                     closed: HashMap::new(),
                 },
                 working: HashMap::new(),
+                held: Vec::new(),
                 details: HashMap::new(),
                 teams: None,
                 choices: HashMap::new(),
@@ -396,7 +402,7 @@ impl Session {
 
     /// An agent was started on the issues `ids`, in `pane`: they carry its mark until the pane's
     /// program ends, which a thread waits for.
-    pub fn watch(&self, ids: &[String], agent: &'static str, pane: &str) {
+    pub fn watch(&self, ids: &[String], agent: &'static str, pane: &str, context: &Path) {
         {
             let mut state = self.shared.lock();
             for id in ids {
@@ -409,6 +415,7 @@ impl Session {
                     },
                 );
             }
+            state.held.push((pane.to_owned(), context.to_path_buf()));
             self.shared.changed(&mut state);
         }
         self.poll();
@@ -422,14 +429,32 @@ impl Session {
                 bateri::wait(runner.as_ref(), &waited);
                 let mut state = shared.lock();
                 state.working.retain(|_, working| working.pane != waited);
+                state.held.retain(|(held, _)| *held != waited);
                 shared.changed(&mut state);
             });
         if started.is_err() {
             // Nothing will say when it ends: no mark is better than one that stays.
             let mut state = self.shared.lock();
             state.working.retain(|_, working| working.pane != pane);
+            state.held.retain(|(held, _)| *held != pane);
             self.shared.changed(&mut state);
         }
+    }
+
+    /// Puts away the folders of old runs in the state folder (`handoff::prune`), except those of the
+    /// panes that are watched. Says how many went.
+    pub fn tidy(&self) -> usize {
+        let Some(state) = self.paths.state.as_deref() else {
+            return 0;
+        };
+        let in_use: Vec<PathBuf> = self
+            .shared
+            .lock()
+            .held
+            .iter()
+            .map(|(_, context)| context.clone())
+            .collect();
+        handoff::prune(state, now_seconds(), &in_use)
     }
 
     /// Looks at the panes of the agents from now on, every `Work::poll`, until there is none: one
