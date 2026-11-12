@@ -99,6 +99,21 @@ fn new_form(page: &mut Page) -> Result<(), Error> {
     page.advance(0.6)
 }
 
+/// The cycle of the first team, from the card of lists.
+fn go_to_cycle(page: &mut Page) -> Result<(), Error> {
+    page.press("g")?;
+    page.wait_for(Duration::from_secs(20), |page| {
+        page.says("Bug bash, November")
+    })?;
+    page.advance(0.3)?;
+    page.type_text("Current cycle")?;
+    page.press("enter")?;
+    page.wait_for(Duration::from_secs(20), |page| {
+        page.says("ACM-417") && !page.says("ACM-405")
+    })?;
+    page.advance(0.6)
+}
+
 #[test]
 #[ignore = "shots: draws the page in the fonts of this machine into docs/; make shots"]
 fn the_pictures_of_the_docs() -> Result<(), Error> {
@@ -294,6 +309,124 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     })?;
     page.advance(0.6)?;
     save(&page, &fonts, Palette::Dark, "favorite.png");
+
+    // The cycle of a team, from the card, in a wide and in an 80 by 24 pane; the card in the pane too.
+    let mut page = lists(BIG, &fonts)?;
+    go_to_cycle(&mut page)?;
+    save(&page, &fonts, Palette::Dark, "cycle.png");
+    let mut page = lists(PANE, &fonts)?;
+    page.press("g")?;
+    page.wait_for(Duration::from_secs(20), |page| {
+        page.says("The workspace") && page.says("Bug bash, November")
+    })?;
+    page.advance(0.6)?;
+    save(&page, &fonts, Palette::Dark, "narrow-lists.png");
+    page.press("escape")?;
+    page.advance(0.4)?;
+    go_to_cycle(&mut page)?;
+    save(&page, &fonts, Palette::Dark, "narrow-cycle.png");
+
+    // The filters: the row `f` opens, the keyboard on its first chip; and what is left of it with the
+    // keyboard back on the list, All issues narrowed to what Deniz has with the bug label. The menu of a
+    // chip is the host's, which a picture made without one does not draw.
+    let linear = Canned::new(Mode::Fine);
+    let session = session_over(&linear, Some("lin_api_test"), None);
+    let mut page = open(&session, BIG, Some(&fonts), "ACM-412")?;
+    page.press("2")?;
+    page.wait_for(Duration::from_secs(20), |page| page.says("ACM-417"))?;
+    page.advance(0.4)?;
+    page.press("f")?;
+    page.wait_for(Duration::from_secs(20), |page| {
+        pressable(page, "filters:status")
+    })?;
+    page.wait_for(Duration::from_secs(20), |_| {
+        linear.times("FilterOptions") >= 1
+    })?;
+    page.advance(0.6)?;
+    save(&page, &fonts, Palette::Dark, "filter-bar.png");
+    page.click("filters:assignee")?;
+    page.pick_titled("Deniz")?;
+    page.wait_for(Duration::from_secs(20), |page| page.says("ACM-431"))?;
+    page.click("filters:labels")?;
+    page.pick_titled("bug")?;
+    page.wait_for(Duration::from_secs(20), |_| {
+        linear.variables_of("AllIssues").len() >= 3
+    })?;
+    page.advance(0.4)?;
+    page.press("escape")?;
+    page.advance(0.6)?;
+    save(&page, &fonts, Palette::Dark, "filtered.png");
+    // The same in an 80 by 24 pane, where the chips are in a row that wraps.
+    let linear = Canned::new(Mode::Fine);
+    let session = session_over(&linear, Some("lin_api_test"), None);
+    let mut page = open(&session, PANE, Some(&fonts), "ACM-412")?;
+    page.press("2")?;
+    page.wait_for(Duration::from_secs(20), |page| page.says("ACM-417"))?;
+    page.press("f")?;
+    page.wait_for(Duration::from_secs(20), |page| {
+        pressable(page, "filters:status")
+    })?;
+    page.wait_for(Duration::from_secs(20), |_| {
+        linear.times("FilterOptions") >= 1
+    })?;
+    page.advance(0.4)?;
+    page.click("filters:assignee")?;
+    page.pick_titled("Deniz")?;
+    page.wait_for(Duration::from_secs(20), |page| page.says("ACM-431"))?;
+    page.click("filters:labels")?;
+    page.pick_titled("bug")?;
+    page.wait_for(Duration::from_secs(20), |_| {
+        linear.variables_of("AllIssues").len() >= 3
+    })?;
+    page.advance(0.4)?;
+    save(&page, &fonts, Palette::Dark, "narrow-filter-bar.png");
+    page.press("escape")?;
+    page.advance(0.6)?;
+    save(&page, &fonts, Palette::Dark, "narrow-filtered.png");
+
+    // The search: while the words are typed the line of keys says what Command Enter does; the words
+    // that nothing held matches offer it as a button; and the result is a list of its own.
+    let mut page = lists(BIG, &fonts)?;
+    page.press("/")?;
+    page.type_text("bug")?;
+    page.wait_for(Duration::from_secs(20), |page| page.says("4 of 14"))?;
+    page.advance(0.4)?;
+    save(&page, &fonts, Palette::Dark, "search-hint.png");
+    page.press("escape")?;
+    page.press("escape")?;
+    page.press("/")?;
+    page.type_text("outage")?;
+    page.wait_for(Duration::from_secs(20), |page| {
+        page.says("Nothing in My issues matches")
+    })?;
+    page.advance(0.4)?;
+    save(&page, &fonts, Palette::Dark, "search-none.png");
+    page.press("mod+enter")?;
+    page.wait_for(Duration::from_secs(20), |page| page.says("WEB-190"))?;
+    page.advance(0.6)?;
+    save(&page, &fonts, Palette::Dark, "search.png");
+    let mut page = lists(PANE, &fonts)?;
+    page.press("/")?;
+    page.type_text("outage")?;
+    page.wait_for(Duration::from_secs(20), |page| {
+        page.says("Nothing in My issues matches")
+    })?;
+    page.press("mod+enter")?;
+    page.wait_for(Duration::from_secs(20), |page| page.says("WEB-190"))?;
+    page.advance(0.6)?;
+    save(&page, &fonts, Palette::Dark, "narrow-search.png");
+
+    // All issues in a workspace that has more than the program takes.
+    let linear = Canned::new(Mode::Fine);
+    linear.set_big_all();
+    let session = session_over(&linear, Some("lin_api_test"), None);
+    let mut page = open(&session, BIG, Some(&fonts), "ACM-412")?;
+    page.press("2")?;
+    page.wait_for(Duration::from_secs(20), |page| {
+        page.words_in("lists").iter().any(|word| word == "500+")
+    })?;
+    page.advance(0.6)?;
+    save(&page, &fonts, Palette::Dark, "all-big.png");
 
     // A list that Linear has more of than the program takes: the button says 500+, and a line at the
     // end of the list says which ones it holds.

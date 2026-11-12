@@ -37,6 +37,9 @@ const CYCLE_ISSUES: &str = include_str!("../../test/stand-in/cycle-issues.json")
 const VIEW_ISSUES: &str = include_str!("../../test/stand-in/view-issues.json");
 const PROJECT_ISSUES: &str = include_str!("../../test/stand-in/project-issues.json");
 const LABEL_ISSUES: &str = include_str!("../../test/stand-in/label-issues.json");
+const FILTERED_ISSUES: &str = include_str!("../../test/stand-in/filtered-issues.json");
+const SEARCH_ISSUES: &str = include_str!("../../test/stand-in/search-issues.json");
+const FILTER_OPTIONS: &str = include_str!("../../test/stand-in/filter-options.json");
 const LIST_FAVORITES: &str = include_str!("../../test/stand-in/list-favorites.json");
 const LIST_TEAMS: &str = include_str!("../../test/stand-in/list-teams.json");
 const LIST_VIEWS: &str = include_str!("../../test/stand-in/list-views.json");
@@ -82,6 +85,8 @@ pub(crate) struct Canned {
     mode: Mutex<Mode>,
     create: Mutex<Create>,
     asked: Mutex<Vec<String>>,
+    /// The variables of each request, by the query's name, in order.
+    variables: Mutex<Vec<(String, serde_json::Value)>>,
     key: Mutex<Option<String>>,
     /// The input of each `IssueCreate` that was sent, and the input of the one that made an issue.
     sent: Mutex<Vec<serde_json::Value>>,
@@ -92,6 +97,8 @@ pub(crate) struct Canned {
     one_team: Mutex<bool>,
     /// Whether a team has more issues than the pen takes.
     big_team: Mutex<bool>,
+    /// Whether the workspace has more issues than the pen takes (All issues is cut at 500).
+    big_all: Mutex<bool>,
     /// Whether Linear cannot tell the names of the lists (the issues of a list come).
     no_names: Mutex<bool>,
     /// How a change is answered.
@@ -144,12 +151,14 @@ impl Canned {
             mode: Mutex::new(mode),
             create: Mutex::new(Create::Fine),
             asked: Mutex::new(Vec::new()),
+            variables: Mutex::new(Vec::new()),
             key: Mutex::new(None),
             sent: Mutex::new(Vec::new()),
             made: Mutex::new(None),
             bare: Mutex::new(false),
             one_team: Mutex::new(false),
             big_team: Mutex::new(false),
+            big_all: Mutex::new(false),
             no_names: Mutex::new(false),
             change: Mutex::new(Change::Fine),
             changes: Mutex::new(Vec::new()),
@@ -166,6 +175,12 @@ impl Canned {
     /// From now on a team has more issues than the pen takes (500).
     pub(crate) fn set_big_team(&self) {
         *self.big_team.lock().unwrap() = true;
+    }
+
+    /// From now on the workspace has more issues than the pen takes (500): the first of All issues are
+    /// the fixture's own, the rest are filler.
+    pub(crate) fn set_big_all(&self) {
+        *self.big_all.lock().unwrap() = true;
     }
 
     /// From now on Linear cannot tell the names of the lists.
@@ -441,6 +456,17 @@ impl Canned {
         value.to_string()
     }
 
+    /// The variables of each time the query `name` was asked, in order.
+    pub(crate) fn variables_of(&self, name: &str) -> Vec<serde_json::Value> {
+        self.variables
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(asked, _)| asked == name)
+            .map(|(_, variables)| variables.clone())
+            .collect()
+    }
+
     pub(crate) fn set(&self, mode: Mode) {
         *self.mode.lock().unwrap() = mode;
     }
@@ -485,6 +511,26 @@ fn big_page(page: usize) -> String {
         }
     }
     text
+}
+
+/// The page `page` (from 0) of All issues in a workspace that has more than the pen takes: the issues
+/// of the fixture of All issues first, then filler.
+fn big_all_page(page: usize) -> String {
+    let filler: serde_json::Value = serde_json::from_str(&big_page(page)).unwrap();
+    let real: serde_json::Value = serde_json::from_str(ALL_ISSUES).unwrap();
+    let mut nodes = filler["data"]["team"]["issues"]["nodes"]
+        .as_array()
+        .unwrap()
+        .clone();
+    if page == 0 {
+        let own = real["data"]["issues"]["nodes"].as_array().unwrap().clone();
+        nodes.splice(..own.len(), own);
+    }
+    serde_json::json!({ "data": {
+        "viewer": real["data"]["viewer"],
+        "issues": { "nodes": nodes, "pageInfo": filler["data"]["team"]["issues"]["pageInfo"] },
+    } })
+    .to_string()
 }
 
 /// The state, label, project or member `id` of the options the fixtures have for Acme, as a node
@@ -571,6 +617,40 @@ fn edit_node(node: &mut serde_json::Value, input: &serde_json::Value) {
     node["labels"]["nodes"] = labels.into();
 }
 
+/// Whether the request asks for more than the open issues: it has filters of the person's.
+fn narrowed(body: &str) -> bool {
+    let asked: serde_json::Value = serde_json::from_str(body).unwrap();
+    let filter = &asked["variables"]["filter"];
+    !(filter.is_null()
+        || *filter
+            == serde_json::json!({ "state": { "type": { "nin": ["completed", "canceled"] } } }))
+}
+
+/// `fixture` (the issues of the workspace) as the answer of the query `name`: its issues where that
+/// query has them.
+fn reshaped(name: &str, fixture: &str) -> String {
+    let all: serde_json::Value = serde_json::from_str(fixture).unwrap();
+    let connection = all["data"]["issues"].clone();
+    let viewer = all["data"]["viewer"].clone();
+    let owner = match name {
+        "TeamIssues" => "team",
+        "CycleIssues" => "cycle",
+        "ViewIssues" => "customView",
+        "ProjectIssues" => "project",
+        _ => "issueLabel",
+    };
+    let data = match name {
+        "MyIssues" => {
+            let mut viewer = viewer;
+            viewer["assignedIssues"] = connection;
+            serde_json::json!({ "viewer": viewer })
+        }
+        "AllIssues" => serde_json::json!({ "viewer": viewer, "issues": connection }),
+        _ => serde_json::json!({ "viewer": viewer, owner: { "issues": connection } }),
+    };
+    serde_json::json!({ "data": data }).to_string()
+}
+
 impl Transport for Canned {
     fn post(&self, key: &Key, body: &str) -> Result<Reply, LinearError> {
         let name = [
@@ -591,12 +671,20 @@ impl Transport for Canned {
             "ListProjects",
             "NewIssueTeams",
             "NewIssueOptions",
+            "SearchIssues",
+            "FilterOptions",
             "Issue",
         ]
         .into_iter()
         .find(|name| body.contains(&format!(r#""operationName":"{name}""#)))
         .unwrap_or("Other");
         self.asked.lock().unwrap().push(name.to_owned());
+        if let Ok(asked) = serde_json::from_str::<serde_json::Value>(body) {
+            self.variables
+                .lock()
+                .unwrap()
+                .push((name.to_owned(), asked["variables"].clone()));
+        }
         *self.key.lock().unwrap() = Some(key.expose().to_owned());
         let reply = |status, body: &str| {
             Ok(Reply {
@@ -617,6 +705,20 @@ impl Transport for Canned {
             }
             _ => match name {
                 "Verify" => reply(200, VERIFY),
+                // A list asked with filters answers with the issues the filters were made for (the
+                // fixture does not evaluate them: the tests read what was sent).
+                "MyIssues" | "AllIssues" | "TeamIssues" | "CycleIssues" | "ViewIssues"
+                | "ProjectIssues" | "LabelIssues"
+                    if narrowed(body) =>
+                {
+                    reply(200, &reshaped(name, FILTERED_ISSUES))
+                }
+                "AllIssues" if *self.big_all.lock().unwrap() => {
+                    let page = (self.times("AllIssues") + 4) % 5;
+                    reply(200, &big_all_page(page))
+                }
+                "SearchIssues" => reply(200, SEARCH_ISSUES),
+                "FilterOptions" => reply(200, FILTER_OPTIONS),
                 "MyIssues" => reply(200, &self.listing(MY_ISSUES, true)),
                 "AllIssues" => reply(200, &self.listing(ALL_ISSUES, false)),
                 "TeamIssues" if *self.big_team.lock().unwrap() => {
@@ -988,7 +1090,7 @@ fn a_filter_that_lets_nothing_through_says_so() {
     let (_linear, _session, mut page) = open_lists(WIDE);
     page.press("/").expect("slash");
     page.type_text("zzzz").expect("the filter is typed");
-    page.wait_for(WITHIN, |page| page.says("No issue matches"))
+    page.wait_for(WITHIN, |page| page.says("Nothing in My issues matches"))
         .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
 }
 
@@ -1148,7 +1250,7 @@ fn letters_typed_in_the_filter_are_its_own_and_the_buttons_answer_the_keyboard()
     page.press("/").expect("slash");
     // `r`, `1` and `2` are commands of the list, and in the field they are letters.
     page.type_text("r12").expect("the filter is typed");
-    page.wait_for(WITHIN, |page| page.says("No issue matches"))
+    page.wait_for(WITHIN, |page| page.says("Nothing in My issues matches"))
         .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
     assert_eq!(linear.times("MyIssues"), 1, "nothing asked Linear again");
     assert!(
@@ -3205,7 +3307,7 @@ fn the_letters_of_the_keys_are_letters_in_the_filter_and_in_the_forms() {
     let (linear, _session, mut page) = open_lists(WIDE);
     page.press("/").expect("slash");
     page.type_text("spale").expect("the filter");
-    page.wait_for(WITHIN, |page| page.says("No issue matches"))
+    page.wait_for(WITHIN, |page| page.says("Nothing in My issues matches"))
         .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
     assert!(page.menu().is_none());
     page.press("escape").expect("escape");
@@ -5828,4 +5930,356 @@ fn the_keys_of_linear_do_what_linear_does() {
     page.press("e").expect("e");
     page.advance(0.3).expect("a moment");
     assert!(!has_field(&page, "panel-title/field"), "{}", said(&page));
+}
+
+// --- Filters and search ----------------------------------------------------------------------------
+
+/// What the lists were asked for with, the last time the query `name` was asked: its `filter`.
+fn last_filter(linear: &Canned, name: &str) -> serde_json::Value {
+    linear
+        .variables_of(name)
+        .last()
+        .map_or(serde_json::Value::Null, |variables| {
+            variables["filter"].clone()
+        })
+}
+
+/// Opens the row of filters with `f` and waits until the program has said what the menus offer.
+fn open_filters(linear: &Canned, page: &mut Page) {
+    page.press("f").expect("f");
+    page.wait_for(WITHIN, |page| pressable(page, "filters:status"))
+        .unwrap_or_else(|why| panic!("the row opens: {why:?}: {}", said(page)));
+    page.wait_for(WITHIN, |_| linear.times("FilterOptions") >= 1)
+        .expect("the choices of the filters are asked for");
+    page.advance(0.4).expect("a moment");
+}
+
+/// Presses the chip `kind` of the row and picks the entry titled `title` of its menu.
+fn pick_filter(page: &mut Page, kind: &str, title: &str) {
+    page.click(&format!("filters:{kind}"))
+        .unwrap_or_else(|why| panic!("{kind} is pressed: {why:?}"));
+    page.pick_titled(title)
+        .unwrap_or_else(|why| panic!("{title:?} is picked: {why:?}: {:?}", menu_titles(page)));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn f_opens_a_row_of_five_chips_the_keyboard_on_the_first_and_with_the_list_back_only_what_is_set_stays()
+ {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    page.wait_for(WITHIN, |page| page.says("ACM-412"))
+        .expect("the list");
+    // With nothing set there is no row.
+    for kind in ["status", "priority", "assignee", "labels", "project"] {
+        assert!(!pressable(&page, &format!("filters:{kind}")), "{kind}");
+    }
+    open_filters(&linear, &mut page);
+    for kind in ["status", "priority", "assignee", "labels", "project"] {
+        assert!(pressable(&page, &format!("filters:{kind}")), "{kind}");
+    }
+    // The keyboard is on the first chip: the line of keys says what it does there, and Enter opens
+    // its menu, which has the states by name.
+    assert!(page.says("back to the list"), "{}", said(&page));
+    page.press("enter").expect("enter");
+    page.wait_for(WITHIN, |page| page.menu().is_some())
+        .unwrap_or_else(|why| panic!("the menu of Status: {why:?}: {}", said(&page)));
+    assert_eq!(
+        menu_titles(&page),
+        // (The lists hold the open issues: Done, Canceled and Duplicate are offered in a search.)
+        ["Backlog", "Todo", "In Progress", "In Review"]
+    );
+    page.pick_titled("In Progress").expect("a status is picked");
+    // Linear is asked for the list with the state, "and"ed with the open issues, which My issues,
+    // which is counted, is asked for as it was.
+    page.wait_for(WITHIN, |page| page.says("ACM-431"))
+        .unwrap_or_else(|why| panic!("the narrowed list comes: {why:?}: {}", said(&page)));
+    assert_eq!(
+        last_filter(&linear, "MyIssues"),
+        serde_json::json!({ "and": [
+            { "state": { "type": { "nin": ["completed", "canceled"] } } },
+            { "state": { "name": { "in": ["In Progress"] } } },
+        ] })
+    );
+    // Esc gives the keyboard back to the list: the chip that is set stays, with Clear filters.
+    page.press("escape").expect("escape");
+    page.advance(0.3).expect("a moment");
+    assert!(pressable(&page, "filters:status"));
+    assert!(pressable(&page, "filters-clear"), "{}", said(&page));
+    assert!(page.says("In Progress"), "{}", said(&page));
+    for kind in ["priority", "assignee", "labels", "project"] {
+        assert!(!pressable(&page, &format!("filters:{kind}")), "{kind}");
+    }
+    // Shift F lets go of them all: no row, and the list is the person's own again.
+    page.press("shift+f").expect("shift f");
+    page.wait_for(WITHIN, |page| page.says("ACM-412"))
+        .unwrap_or_else(|why| panic!("the list is whole again: {why:?}: {}", said(&page)));
+    assert!(!pressable(&page, "filters:status"));
+    assert!(!pressable(&page, "filters-clear"));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_chip_takes_more_than_one_value_and_the_filters_are_and_ed_in_every_list() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    page.press("2").expect("2");
+    page.wait_for(WITHIN, |page| page.says("ACM-417"))
+        .expect("all issues");
+    open_filters(&linear, &mut page);
+    pick_filter(&mut page, "assignee", "Deniz");
+    page.wait_for(WITHIN, |page| page.says("ACM-431"))
+        .unwrap_or_else(|why| panic!("the list comes: {why:?}: {}", said(&page)));
+    pick_filter(&mut page, "labels", "bug");
+    page.wait_for(WITHIN, |_| {
+        last_filter(&linear, "AllIssues")["and"]
+            .as_array()
+            .is_some()
+    })
+    .unwrap_or_else(|why| {
+        panic!(
+            "asked again: {why:?}: {:?}",
+            linear.variables_of("AllIssues")
+        )
+    });
+    assert_eq!(
+        last_filter(&linear, "AllIssues"),
+        serde_json::json!({ "and": [
+            { "state": { "type": { "nin": ["completed", "canceled"] } } },
+            { "assignee": { "id": { "in": ["u-deniz"] } } },
+            { "labels": { "some": { "name": { "in": ["bug"] } } } },
+        ] })
+    );
+    // The menu marks what is set, and a pick of what is set takes it away.
+    page.click("filters:assignee").expect("assignee");
+    let titles = menu_titles(&page);
+    assert!(titles.contains(&"\u{2713} Deniz".to_owned()), "{titles:?}");
+    assert_eq!(titles[0], "Me", "{titles:?}");
+    assert_eq!(titles.last().map(String::as_str), Some("No assignee"));
+    page.pick_titled("\u{2713} Deniz")
+        .expect("Deniz is taken away");
+    page.wait_for(WITHIN, |_| {
+        last_filter(&linear, "AllIssues")["and"]
+            .as_array()
+            .is_some_and(|parts| parts.len() == 2)
+    })
+    .unwrap_or_else(|why| {
+        panic!(
+            "asked again: {why:?}: {:?}",
+            linear.variables_of("AllIssues")
+        )
+    });
+    assert_eq!(
+        last_filter(&linear, "AllIssues"),
+        serde_json::json!({ "and": [
+            { "state": { "type": { "nin": ["completed", "canceled"] } } },
+            { "labels": { "some": { "name": { "in": ["bug"] } } } },
+        ] })
+    );
+    // A second label is another value of the same chip: any of them.
+    pick_filter(&mut page, "labels", "api");
+    page.wait_for(WITHIN, |_| {
+        last_filter(&linear, "AllIssues")["and"][1]["labels"]["some"]["name"]["in"]
+            == serde_json::json!(["bug", "api"])
+    })
+    .unwrap_or_else(|why| {
+        panic!(
+            "asked again: {why:?}: {:?}",
+            linear.variables_of("AllIssues")
+        )
+    });
+    // Another list is narrowed by the same filters.
+    page.press("escape").expect("escape");
+    page.press("1").expect("1");
+    page.wait_for(WITHIN, |_| {
+        last_filter(&linear, "MyIssues")["and"][1]["labels"]["some"]["name"]["in"]
+            == serde_json::json!(["bug", "api"])
+    })
+    .unwrap_or_else(|why| {
+        panic!(
+            "My issues is narrowed too: {why:?}: {:?}",
+            linear.variables_of("MyIssues")
+        )
+    });
+}
+
+/// Types `words` in the filter field of the head, which `/` opens.
+fn type_in_filter(page: &mut Page, words: &str) {
+    page.press("/").expect("/");
+    page.type_text(words).expect("the words");
+    page.wait_for(WITHIN, |page| page.field("filter/field") == Some(words))
+        .unwrap_or_else(|why| panic!("the words are in the field: {why:?}: {}", said(page)));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn words_that_nothing_held_matches_offer_a_search_of_all_of_linear_and_command_enter_makes_it() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    page.wait_for(WITHIN, |page| page.says("ACM-412"))
+        .expect("the list");
+    // While words are typed, the line of keys says what Command Enter does, and Esc.
+    type_in_filter(&mut page, "bug");
+    assert!(page.says("search all of Linear"), "{}", said(&page));
+    assert!(page.says("clear"), "{}", said(&page));
+    page.press("escape").expect("escape clears the words");
+    page.wait_for(WITHIN, |page| page.field("filter/field") == Some(""))
+        .expect("the words are gone");
+    page.press("escape").expect("escape leaves the field");
+    type_in_filter(&mut page, "outage");
+    page.wait_for(WITHIN, |page| page.says("Nothing in My issues matches"))
+        .unwrap_or_else(|why| panic!("the card: {why:?}: {}", said(&page)));
+    // The key is on the button of the card, once: the line of keys has it no more.
+    assert!(pressable(&page, "search-all"));
+    assert!(!page.says("search all of Linear"), "{}", said(&page));
+    assert_eq!(
+        linear.times("SearchIssues"),
+        0,
+        "nothing is searched for by typing"
+    );
+    page.press("mod+enter").expect("command enter");
+    page.wait_for(WITHIN, |page| page.says("ACM-421"))
+        .unwrap_or_else(|why| panic!("the search comes: {why:?}: {}", said(&page)));
+    // The whole workspace, with no filter for the open issues; the words stay in the field and the
+    // list is named Search, with its count; the closed group is folded.
+    assert_eq!(linear.variables_of("SearchIssues")[0]["term"], "outage");
+    assert!(linear.variables_of("SearchIssues")[0]["filter"].is_null());
+    assert_eq!(page.field("filter/field"), Some("outage"));
+    assert!(
+        page.says("Search") && page.says("WEB-190") && page.says("Done"),
+        "{}",
+        said(&page)
+    );
+    assert!(
+        !page.says("ACM-366"),
+        "a closed issue is in a folded group: {}",
+        said(&page)
+    );
+    // Escape goes back to the list that was before it, with the field emptied.
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| page.says("ACM-412"))
+        .unwrap_or_else(|why| panic!("My issues is back: {why:?}: {}", said(&page)));
+    page.wait_for(WITHIN, |page| page.field("filter/field") == Some(""))
+        .unwrap_or_else(|why| {
+            panic!(
+                "the field is emptied: {why:?}: {:?}",
+                page.field("filter/field")
+            )
+        });
+    assert!(!page.says("WEB-190"), "{}", said(&page));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn command_enter_searches_only_where_the_words_are_typed_or_nothing_held_matches_them() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    page.wait_for(WITHIN, |page| page.says("ACM-412"))
+        .expect("the list");
+    // The words match issues of the list, and Enter has opened one: the keyboard is not in the field
+    // and the card is not there, so Command Enter is not the search (the key is no one's else).
+    type_in_filter(&mut page, "bug");
+    page.press("enter").expect("enter opens the issue");
+    page.wait_for(WITHIN, |page| {
+        page.focus() == pencere_drive::headless::Focus::Page
+    })
+    .unwrap_or_else(|why| panic!("the keyboard left the field: {why:?}: {}", said(&page)));
+    page.press("mod+enter").expect("command enter");
+    page.advance(0.5).expect("a moment");
+    assert_eq!(
+        linear.times("SearchIssues"),
+        0,
+        "nothing is searched for: {}",
+        said(&page)
+    );
+    assert!(!page.says("WEB-190"), "{}", said(&page));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_button_of_the_card_searches_and_a_search_of_another_list_goes_back_to_that_list() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    page.press("2").expect("2");
+    page.wait_for(WITHIN, |page| page.says("ACM-417"))
+        .expect("all issues");
+    type_in_filter(&mut page, "outage report");
+    page.wait_for(WITHIN, |page| page.says("Nothing in All issues matches"))
+        .unwrap_or_else(|why| panic!("the card: {why:?}: {}", said(&page)));
+    page.click("search-all").expect("the button");
+    page.wait_for(WITHIN, |page| page.says("ACM-421"))
+        .unwrap_or_else(|why| panic!("the search comes: {why:?}: {}", said(&page)));
+    assert_eq!(linear.times("SearchIssues"), 1);
+    // The filters apply to a search too.
+    page.press("f").expect("f");
+    page.wait_for(WITHIN, |page| pressable(page, "filters:labels"))
+        .expect("the row");
+    page.advance(0.4).expect("a moment");
+    pick_filter(&mut page, "labels", "docs");
+    page.wait_for(WITHIN, |_| linear.times("SearchIssues") == 2)
+        .unwrap_or_else(|why| panic!("searched again: {why:?}"));
+    assert_eq!(
+        linear.variables_of("SearchIssues")[1]["filter"],
+        serde_json::json!({ "labels": { "some": { "name": { "in": ["docs"] } } } })
+    );
+    // Going to another list from the search lets the words go with it.
+    page.press("escape").expect("escape closes the row");
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| {
+        page.says("All issues") && !page.says("WEB-190")
+    })
+    .unwrap_or_else(|why| panic!("All issues is back: {why:?}: {}", said(&page)));
+    page.wait_for(WITHIN, |page| page.field("filter/field") == Some(""))
+        .unwrap_or_else(|why| {
+            panic!(
+                "the field is emptied: {why:?}: {:?}",
+                page.field("filter/field")
+            )
+        });
+    // (The filters are the person's and stay: the list is narrowed by them as it was.)
+    assert!(pressable(&page, "filters-clear"), "{}", said(&page));
+    page.press("shift+f").expect("shift f");
+    page.wait_for(WITHIN, |page| page.says("ACM-417"))
+        .unwrap_or_else(|why| panic!("All issues is whole: {why:?}: {}", said(&page)));
+    page.press("1").expect("1");
+    page.wait_for(WITHIN, |page| page.says("ACM-412"))
+        .expect("My issues");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_row_of_filters_opens_from_the_line_of_keys_and_a_press_elsewhere_puts_it_away() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    page.wait_for(WITHIN, |page| page.says("ACM-412"))
+        .expect("the list");
+    // The key has no button: it is on the line of keys, which is pressed like the rest of it.
+    page.click("status/item/filters")
+        .expect("the filter on the line of keys is pressed");
+    page.wait_for(WITHIN, |page| pressable(page, "filters:project"))
+        .unwrap_or_else(|why| panic!("the row opens: {why:?}: {}", said(&page)));
+    page.wait_for(WITHIN, |_| linear.times("FilterOptions") >= 1)
+        .expect("the choices are asked for");
+    // A chip is pressed with the pointer: its menu opens, and the row stays while it is used.
+    page.click("filters:priority").expect("the chip");
+    assert_eq!(
+        menu_titles(&page),
+        ["Urgent", "High", "Medium", "Low", "No priority"]
+    );
+    page.pick_titled("High").expect("a priority");
+    page.wait_for(WITHIN, |_| {
+        last_filter(&linear, "MyIssues")["and"][1]
+            == serde_json::json!({ "priority": { "in": [2] } })
+    })
+    .unwrap_or_else(|why| {
+        panic!(
+            "asked with the priority: {why:?}: {:?}",
+            linear.variables_of("MyIssues")
+        )
+    });
+    assert!(pressable(&page, "filters:project"), "{}", said(&page));
+    // A press anywhere else puts the row away: what is set stays.
+    page.click("filter-box").expect("the field");
+    page.advance(0.3).expect("a moment");
+    assert!(!pressable(&page, "filters:project"), "{}", said(&page));
+    assert!(pressable(&page, "filters:priority"), "{}", said(&page));
+    assert!(pressable(&page, "filters-clear"), "{}", said(&page));
+    // Clear filters is pressed with the pointer too.
+    page.click("filters-clear").expect("Clear filters");
+    page.wait_for(WITHIN, |page| !pressable(page, "filters:priority"))
+        .unwrap_or_else(|why| panic!("they are let go of: {why:?}: {}", said(&page)));
 }

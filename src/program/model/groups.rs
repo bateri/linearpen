@@ -22,10 +22,14 @@ pub struct Group<'a> {
 }
 
 impl Group<'_> {
-    /// Whether the group begins folded.
+    /// Whether the group begins folded: what waits, and what is closed (a list holds the closed
+    /// issues only where it is a search).
     #[must_use]
     pub fn folded_at_first(&self) -> bool {
-        matches!(self.kind, StateKind::Backlog | StateKind::Triage)
+        matches!(
+            self.kind,
+            StateKind::Backlog | StateKind::Triage | StateKind::Completed | StateKind::Canceled
+        )
     }
 }
 
@@ -193,6 +197,23 @@ pub mod tests {
                 ("Backlog", true),
                 ("Triage", true)
             ]
+        );
+    }
+
+    #[test]
+    fn the_closed_groups_of_a_search_begin_folded() {
+        let issues = [
+            issue("A-1", "a", "Done", "completed", 0.0, "2026-11-01"),
+            issue("A-2", "b", "Canceled", "canceled", 0.0, "2026-11-01"),
+            issue("A-3", "c", "Todo", "unstarted", 0.0, "2026-11-01"),
+        ];
+        let folded: Vec<(&str, bool)> = group(&issues, &Filter::default())
+            .iter()
+            .map(|g| (g.name, g.folded_at_first()))
+            .collect();
+        assert_eq!(
+            folded,
+            [("Todo", false), ("Done", true), ("Canceled", true)]
         );
     }
 

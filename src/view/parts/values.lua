@@ -195,7 +195,9 @@ end
 -- --- Drawing -----------------------------------------------------------------------------------------
 
 -- A value that opens a menu: what it is now and the mark that it opens. `o.disabled`: it cannot be
--- pressed now (the choices are not there yet, or a change is on its way).
+-- pressed now (the choices are not there yet, or a change is on its way). `o.ring`: the ring of the
+-- keyboard is drawn on it (for a control the page gave the keyboard to with a reply, which the library
+-- does not take for a key's own).
 function values.chip(name, kids, label, o)
 	o = o or {}
 	local t = u.theme
@@ -212,7 +214,7 @@ function values.chip(name, kids, label, o)
 		:no_shrink()
 		:rounded(t.radius.control)
 		:bg(held and t.control_press or over and t.control_hover or t.control)
-		:border(1, u:focus_visible(name) and t.ring or t.clear)
+		:border(1, (u:focus_visible(name) or o.ring == true) and t.ring or t.clear)
 		:color(t.ink)
 		:role("button")
 		:label(label)

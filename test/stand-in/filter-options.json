@@ -1,0 +1,108 @@
+{
+  "data": {
+    "workflowStates": {
+      "nodes": [
+        {
+          "name": "Backlog",
+          "type": "backlog",
+          "position": 0.0
+        },
+        {
+          "name": "Todo",
+          "type": "unstarted",
+          "position": 1.0
+        },
+        {
+          "name": "In Progress",
+          "type": "started",
+          "position": 2.0
+        },
+        {
+          "name": "In Review",
+          "type": "started",
+          "position": 3.0
+        },
+        {
+          "name": "Done",
+          "type": "completed",
+          "position": 4.0
+        },
+        {
+          "name": "Canceled",
+          "type": "canceled",
+          "position": 5.0
+        },
+        {
+          "name": "Todo",
+          "type": "unstarted",
+          "position": 1.0
+        },
+        {
+          "name": "In Progress",
+          "type": "started",
+          "position": 2.0
+        },
+        {
+          "name": "Duplicate",
+          "type": "canceled",
+          "position": 6.0
+        }
+      ]
+    },
+    "users": {
+      "nodes": [
+        {
+          "id": "u-deniz",
+          "displayName": "Deniz",
+          "isMe": false
+        },
+        {
+          "id": "u-mert",
+          "displayName": "Mert",
+          "isMe": false
+        },
+        {
+          "id": "u-ada",
+          "displayName": "Ada",
+          "isMe": true
+        }
+      ]
+    },
+    "issueLabels": {
+      "nodes": [
+        {
+          "name": "bug",
+          "color": "#e5484d"
+        },
+        {
+          "name": "api",
+          "color": "#4c8dd9"
+        },
+        {
+          "name": "web",
+          "color": "#a78bda"
+        },
+        {
+          "name": "infra",
+          "color": "#05a2c2"
+        },
+        {
+          "name": "docs",
+          "color": "#4cb7a5"
+        },
+        {
+          "name": "security",
+          "color": "#4cb782"
+        },
+        {
+          "name": "perf",
+          "color": "#f2c94c"
+        },
+        {
+          "name": "bug",
+          "color": "#e5484d"
+        }
+      ]
+    }
+  }
+}

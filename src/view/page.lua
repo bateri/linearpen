@@ -10,6 +10,7 @@ local comment = require("./parts/comment")
 local commands = require("./parts/commands")
 local context = require("./parts/context")
 local data = require("./parts/data")
+local filters = require("./parts/filters")
 local head = require("./parts/head")
 local help = require("./parts/help")
 local list = require("./parts/list")
@@ -125,6 +126,19 @@ commands.when.postable = function()
 		and comment.typing()
 		and comment.sendable(detail.id)
 end
+-- The filters can be let go of where some are set. (Shift and F is a letter of the words of a field.)
+commands.when.narrowed = function()
+	return commands.when.idle() and filters.any()
+end
+-- The words of the field can be searched for in all of Linear where the person is typing them, or
+-- where nothing held matches them (the card says so, with the key): not in a form or a comment, and
+-- not where the words are a filter of a list with issues in it (the key is a comment's, then).
+commands.when.searchable = function()
+	return commands.when.list()
+		and not comment.typing()
+		and head.words() ~= ""
+		and (head.typing() or head.unmatched())
+end
 -- The key 3 to 9 goes to the first to the seventh favorite, where the person has that many.
 for number = 3, 9 do
 	commands.when["favorite_" .. number] = function()
@@ -197,10 +211,14 @@ local function body()
 		return screens.failed(snapshot.error or { message = "The list could not be asked for" })
 	end
 	if list.count() == 0 then
-		if S.scope == "mine" and head.field.value == "" and snapshot.counts.mine == 0 then
+		if S.scope == "mine" and head.field.value == "" and not filters.any() and snapshot.counts.mine == 0 then
 			return screens.empty()
 		end
-		return screens.nothing(head.field.value)
+		return screens.nothing({
+			words = head.field.value,
+			search = S.scope == "search",
+			narrowed = filters.any(),
+		})
 	end
 	return list.view(S.room, S.panel_open)
 end
@@ -367,6 +385,12 @@ local function command(id)
 		end
 	elseif id == "filter" then
 		return head.focus()
+	elseif id == "filters" then
+		return filters.show()
+	elseif id == "clear_filters" then
+		return filters.clear()
+	elseif id == "search" then
+		return head.search()
 	elseif id == "refresh" then
 		act.refresh()
 	elseif id == "work" then
@@ -399,6 +423,8 @@ local function press(id)
 		return { link = screens.KEYS_URL }
 	elseif id == "lists" then
 		lists.show()
+	elseif id == "search-all" then
+		return head.search()
 	elseif id == "work" then
 		return work.show()
 	elseif id == "new" then
@@ -422,7 +448,10 @@ local function press(id)
 	elseif id == "help-close" then
 		help.hide()
 	else
-		local reply = status.press(id)
+		local reply = filters.press(id)
+		if reply == nil then
+			reply = status.press(id)
+		end
 		if reply == nil then
 			reply = work.press(id)
 		end
@@ -447,6 +476,9 @@ local function on_action(action)
 	end
 	if reply == nil then
 		reply = lists.action(action)
+	end
+	if reply == nil then
+		reply = filters.action(action)
 	end
 	if reply == nil then
 		reply = help.action(action)
@@ -492,17 +524,21 @@ local function on_action(action)
 	return true
 end
 
--- Esc closes what is on top: a form (its draft is kept) or the issue, then the selection, then the
--- filter.
+-- Esc closes what is on top: a form (its draft is kept), the row of the filters or the issue, then the
+-- selection, then a search (back to the list that was before it), then the words of the filter.
 local function back()
 	if new.is_open() then
 		new.close()
 	elseif work.is_open() then
 		work.close()
+	elseif filters.is_open() then
+		filters.close()
 	elseif panel.is_open() then
 		panel.close()
 	elseif list.marked() > 0 then
 		list.clear_marks()
+	elseif S.scope == "search" then
+		return head.leave_search()
 	elseif head.field.value ~= "" then
 		head.set("")
 	else
@@ -662,6 +698,8 @@ local function keyboard_from_control(event)
 	end
 	local mods = event.mods or {}
 	local plain = not (mods.command or mods.control or mods.alt or mods.shift)
+	-- The keyboard is the list's again: the row of the filters, if it was open for the keyboard, closes.
+	filters.close()
 	return u:focus(nil), kind == "key" and event.key == "escape" and plain
 end
 
@@ -699,9 +737,13 @@ local function handle(event)
 		reply = b.merge(reply, shape(event))
 	elseif kind == "leave" then
 		S.cursor = nil
+	elseif kind == "focus" and event.field ~= nil then
+		-- The person clicked into a field (the filter's): the row of the filters is put away.
+		filters.close()
 	elseif kind == "press" then
 		if (event.button or "left") == "left" then
 			S.armed = b.layout.hit({ x = event.x, y = event.y })
+			filters.outside(S.armed)
 		end
 		if not taken and S.screen == "list" and not modal() then
 			if (event.button or "left") == "right" then

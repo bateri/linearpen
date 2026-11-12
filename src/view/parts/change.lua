@@ -414,7 +414,12 @@ local function folded(state)
 			return group.closed == true and key or nil
 		end
 	end
-	return (state.kind == "backlog" or state.kind == "triage") and key or nil
+	-- (Where the list begins with the group folded: what waits, and what is closed, which a search holds.)
+	local begins_folded = state.kind == "backlog"
+		or state.kind == "triage"
+		or state.kind == "completed"
+		or state.kind == "canceled"
+	return begins_folded and key or nil
 end
 
 -- The words of a refusal where the change is of the issues the strip is about.

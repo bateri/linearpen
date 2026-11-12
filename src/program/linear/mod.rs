@@ -8,6 +8,8 @@
 mod change;
 mod comment;
 mod error;
+mod filter_options;
+mod filters;
 mod key;
 mod names;
 mod new_issue;
@@ -18,6 +20,8 @@ pub mod types;
 pub use change::Change;
 pub use comment::{NOT_POSTED, post as comment};
 pub use error::{Error, plain, tidy};
+pub use filter_options::{FilterOptions, filter_options};
+pub use filters::Filters;
 pub use key::{Key, KeyError};
 pub use names::{Entry, names};
 pub use new_issue::{Created, NewIssue, Options, StateChoice, Team};
@@ -27,11 +31,12 @@ pub use types::{Issue, Priority, Viewer};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
-use query::{Filter, Lookup, Operation, Page};
+use query::{Lookup, Operation, Page};
 use types::Connection;
 
-/// Which issues a list shows: the ones assigned to the person, all of the workspace's, or the open
-/// issues of one thing Linear has (by its id): a team, a cycle, a saved view, a project, a label.
+/// Which issues a list shows: the ones assigned to the person, all of the workspace's, the open
+/// issues of one thing Linear has (by its id): a team, a cycle, a saved view, a project, a label, or
+/// what a search for some words finds (the whole workspace, the closed issues too).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Scope {
     Mine,
@@ -41,10 +46,13 @@ pub enum Scope {
     View(String),
     Project(String),
     Label(String),
+    /// The words searched for.
+    Search(String),
 }
 
 impl Scope {
-    /// The word the page is told: `mine`, `all`, `team`, `cycle`, `view`, `project` or `label`.
+    /// The word the page is told: `mine`, `all`, `team`, `cycle`, `view`, `project`, `label` or
+    /// `search`.
     #[must_use]
     pub fn kind(&self) -> &'static str {
         match self {
@@ -55,10 +63,11 @@ impl Scope {
             Self::View(_) => "view",
             Self::Project(_) => "project",
             Self::Label(_) => "label",
+            Self::Search(_) => "search",
         }
     }
 
-    /// Linear's id of what the list is of, where it is of one.
+    /// Linear's id of what the list is of, where it is of one; the words, for a search.
     #[must_use]
     pub fn id(&self) -> Option<&str> {
         match self {
@@ -67,7 +76,8 @@ impl Scope {
             | Self::Cycle(id)
             | Self::View(id)
             | Self::Project(id)
-            | Self::Label(id) => Some(id),
+            | Self::Label(id)
+            | Self::Search(id) => Some(id),
         }
     }
 
@@ -84,6 +94,7 @@ impl Scope {
             ("view", Some(id)) if !id.is_empty() => Some(Self::View(id)),
             ("project", Some(id)) if !id.is_empty() => Some(Self::Project(id)),
             ("label", Some(id)) if !id.is_empty() => Some(Self::Label(id)),
+            ("search", Some(words)) if !words.is_empty() => Some(Self::Search(words)),
             _ => None,
         }
     }
@@ -264,15 +275,29 @@ struct OwnedData {
     owner: OwnerIssues,
 }
 
-/// The open issues of `scope`, a hundred a page, up to [`LIMIT`].
-pub fn fetch(transport: &dyn Transport, key: &Key, scope: &Scope) -> Result<Fetched, Error> {
+#[derive(Deserialize)]
+struct SearchData {
+    viewer: Viewer,
+    #[serde(rename = "searchIssues")]
+    search: Connection,
+}
+
+/// The open issues of `scope` that `filters` let through (all of them where there are none), a
+/// hundred a page, up to [`LIMIT`]; a search's are the closed issues too.
+pub fn fetch(
+    transport: &dyn Transport,
+    key: &Key,
+    scope: &Scope,
+    filters: &Filters,
+) -> Result<Fetched, Error> {
     let mut issues: Vec<Issue> = Vec::new();
     let mut after: Option<String> = None;
+    let filter = filters.to_value(!matches!(scope, Scope::Search(_)));
     loop {
         let page = Page {
             first: PAGE,
             after: after.as_deref(),
-            filter: Filter::open(),
+            filter: filter.clone(),
         };
         let (viewer, connection) = match scope {
             Scope::Mine => {
@@ -282,6 +307,15 @@ pub fn fetch(transport: &dyn Transport, key: &Key, scope: &Scope) -> Result<Fetc
             Scope::All => {
                 let data: AllData = run(transport, key, &query::ALL_ISSUES, Some(page))?;
                 (data.viewer, data.issues)
+            }
+            Scope::Search(term) => {
+                let data: SearchData = run(
+                    transport,
+                    key,
+                    &query::SEARCH_ISSUES,
+                    Some(query::Searched { term, page }),
+                )?;
+                (data.viewer, data.search)
             }
             Scope::Team(id)
             | Scope::Cycle(id)

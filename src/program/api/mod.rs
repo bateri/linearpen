@@ -8,6 +8,7 @@
 mod change;
 mod comment;
 mod create;
+mod filters;
 mod issue;
 mod issues;
 mod params;
@@ -88,5 +89,6 @@ pub fn serve(options: Options, session: &Arc<Session>) -> Options {
     let options = create::calls(options, session);
     let options = change::calls(options, session);
     let options = comment::calls(options, session);
+    let options = filters::calls(options, session);
     issues::topic(options, session)
 }

@@ -3,10 +3,12 @@
 -- lets through inside it), Refresh and New issue. Each is where it is and as wide as it is whatever
 -- the page is doing: what is selected, what is under the cursor and the issue that is open change
 -- nothing in it. Where the pane is narrow the filter has a row of its own and Refresh and New issue
--- leave for the line of keys.
+-- leave for the line of keys. Under them, where there is something to say, the row of the filters of
+-- the list (`filters.lua`).
 
 local kit = require("../lib/kit")
 local commands = require("./commands")
+local filters = require("./filters")
 local list = require("./list")
 local lists = require("./lists")
 
@@ -43,6 +45,49 @@ function head.typing()
 	return u.holder == FIELD
 end
 
+-- The words of the field, with no space around them.
+function head.words()
+	return (string.match(F.value, "^%s*(.-)%s*$"))
+end
+
+-- The list the person was at when they searched, to go back to: `{ kind, id }`.
+local before = nil
+
+-- Searches all of Linear for the words of the field: the result is a list of its own, named Search,
+-- and the words stay in the field. The keyboard goes back to the list. The reply.
+function head.search()
+	local words = head.words()
+	if words == "" then
+		return true
+	end
+	if S.scope ~= "search" then
+		before = { kind = S.scope, id = S.list_id }
+	end
+	act.view({ list = { kind = "search", id = words } })
+	return head.leave()
+end
+
+-- Leaves the search for the list that was before it, and empties the field. The reply.
+function head.leave_search()
+	local go = before or { kind = "mine" }
+	before = nil
+	F.value = ""
+	act.view({ list = go, filter = "" })
+	return head.leave()
+end
+
+-- Another list was gone to from a search: the words were the search's, and go with it.
+act.field_clear = function()
+	F.value = ""
+	before = nil
+end
+
+-- Whether the field has words that nothing held matches (and it is not a search, whose words Linear
+-- matched): the page says so, with the way to search all of Linear.
+function head.unmatched()
+	return S.scope ~= "search" and F.value ~= "" and S.issues ~= nil and S.issues.listing == "ready" and list.count() == 0
+end
+
 -- What the filter did. Whether it was the head's, and its reply.
 function head.action(action)
 	local from, kind = action.from, action.kind
@@ -50,6 +95,10 @@ function head.action(action)
 		if kind == "change" then
 			head.set(action.text)
 		elseif kind == "submit" then
+			-- With Command it is the search of all of Linear.
+			if action.mods ~= nil and action.mods.command then
+				return head.search()
+			end
 			-- Enter in the field is Enter on the list: the issue the cursor is on opens, and the
 			-- keyboard goes back to the page.
 			local item = list.current()
@@ -58,8 +107,11 @@ function head.action(action)
 			end
 			return head.leave()
 		elseif kind == "escape" then
-			-- The first escape clears the field, the next leaves it.
-			if F.value ~= "" then
+			-- In a search the words are the search's: Esc goes back to the list that was before it. Else
+			-- the first escape clears the field, the next leaves it.
+			if S.scope == "search" then
+				return head.leave_search()
+			elseif F.value ~= "" then
 				head.set("")
 			else
 				return head.leave()
@@ -67,6 +119,9 @@ function head.action(action)
 		end
 		return true
 	elseif from == "filter-clear" and kind == "press" then
+		if S.scope == "search" then
+			return head.leave_search()
+		end
 		head.set("")
 		return head.focus()
 	end
@@ -108,7 +163,8 @@ end
 -- "4 of 39" while the filter has words, what it lets through of what the list holds.
 local function matched_words()
 	local snapshot = S.issues
-	if F.value == "" or snapshot == nil or not snapshot.loaded then
+	-- (The words of a search were matched by Linear: it is not a count of what they let through.)
+	if F.value == "" or S.scope == "search" or snapshot == nil or not snapshot.loaded then
 		return nil
 	end
 	return string.format("%d of %d", snapshot.matched, snapshot.counts.shown)
@@ -180,11 +236,14 @@ function head.view()
 	if width >= SIZE.roomy then
 		bar:child(new_button())
 	end
-	if not narrow then
-		return bar
-	end
 	local box = b.div():col():no_shrink():child(bar)
-	box:child(b.div():px(SIZE.pad):pb(8):child(filter_box(nil)))
+	if narrow then
+		box:child(b.div():px(SIZE.pad):pb(8):child(filter_box(nil)))
+	end
+	local row = filters.view()
+	if row ~= nil then
+		box:child(row)
+	end
 	return box
 end
 

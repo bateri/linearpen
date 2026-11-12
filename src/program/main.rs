@@ -41,7 +41,7 @@ use pencere::{EndedBy, NoViewReason, Options, Outcome};
 
 use command_line::Asked;
 use linear::transport::{Curl, DEFAULT_URL};
-use linear::{Error, Scope, Transport};
+use linear::{Error, Filters, Scope, Transport};
 use session::{REFRESH_EVERY, Session};
 use state::Paths;
 use state::credentials;
@@ -89,8 +89,10 @@ fn summary(note: Option<&str>) -> Result<String, Failed> {
         },
         status: 1,
     };
-    let mine = linear::fetch(&transport, &found.key, &Scope::Mine).map_err(failed)?;
-    let all = linear::fetch(&transport, &found.key, &Scope::All).map_err(failed)?;
+    let mine =
+        linear::fetch(&transport, &found.key, &Scope::Mine, &Filters::default()).map_err(failed)?;
+    let all =
+        linear::fetch(&transport, &found.key, &Scope::All, &Filters::default()).map_err(failed)?;
     Ok(Summary {
         viewer: &mine.viewer,
         mine: &mine.listing,

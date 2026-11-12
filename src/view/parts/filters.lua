@@ -1,0 +1,418 @@
+-- The filters of a list: a row of five chips under the head (Status, Priority, Assignee, Labels,
+-- Project), each a menu whose picks add and take away values. They narrow the list in Linear (the
+-- program sends them with the list's own filter), whichever list it is, a search too. `f` opens the row
+-- with the keyboard on the first chip; Tab goes on, Enter opens the menu, Esc gives the keyboard back
+-- to the list. When it is back only what is set stays (a chip with its values, and Clear filters); with
+-- none set there is no row. The filters are forgotten when the pen closes (the program holds them, as
+-- the page set them). The words of the field are another thing: they narrow what is held, and are
+-- the head's.
+
+local icons = require("./icons")
+local values = require("./values")
+local commands = require("./commands")
+local kit = require("../lib/kit")
+
+local b, u, S, SIZE, act = kit.b, kit.u, kit.S, kit.SIZE, kit.act
+
+local filters = {}
+
+-- The kinds, in the order the row has them, with what each is called.
+local KINDS = {
+	{ "status", "Status" },
+	{ "priority", "Priority" },
+	{ "assignee", "Assignee" },
+	{ "labels", "Labels" },
+	{ "project", "Project" },
+}
+
+-- The priorities in the order the menu offers them (Linear's: the urgent first, none last).
+local PRIORITIES = { "urgent", "high", "medium", "low", "none" }
+
+local MENU = "filters-menu"
+local PREFIX = "filters:"
+local CLEAR = "filters-clear"
+
+-- `open`: the row is open with all five chips (`f`). `now`: the filters as the page set them (the
+-- program holds the same). `options`: what the menus offer, as the program said, and for which asking of
+-- Linear (`at`).
+local F = { open = false, now = nil, options = nil, at = nil, asking = false }
+filters.state = F
+
+local function empty()
+	return { status = {}, priority = {}, assignee = {}, labels = {}, project = {} }
+end
+
+-- The filters now: what the page set, else what the program holds.
+function filters.current()
+	if F.now == nil then
+		local held = S.issues ~= nil and S.issues.filters or nil
+		F.now = empty()
+		if held ~= nil then
+			for _, kind in KINDS do
+				F.now[kind[1]] = table.clone(held[kind[1]] or {})
+			end
+		end
+	end
+	return F.now
+end
+
+-- Whether any filter is set.
+function filters.any()
+	local now = filters.current()
+	for _, kind in KINDS do
+		if #now[kind[1]] > 0 then
+			return true
+		end
+	end
+	return false
+end
+
+function filters.is_open()
+	return F.open
+end
+
+-- Whether the row is on the page: open, or there is something set.
+function filters.visible()
+	return F.open or filters.any()
+end
+
+-- The name of the chip of `kind`.
+local function chip_name(kind)
+	return PREFIX .. kind
+end
+
+-- Whether the keyboard is on a chip of the row.
+function filters.on_chip()
+	local target = u:target()
+	return target ~= nil and string.sub(target, 1, #PREFIX) == PREFIX
+end
+
+-- --- What the menus offer -----------------------------------------------------------------------------
+
+-- Asks the program for what the menus offer, where it was not asked for the lists as they are now
+-- (it lets go of them each time it asks Linear again). A failed asking is made again when the person
+-- presses a chip.
+local function ask()
+	local at = S.issues ~= nil and S.issues.updated or nil
+	if F.asking or (F.options ~= nil and F.at == at) then
+		return
+	end
+	F.asking = true
+	kit.call("filter_options", {}, function(result, err)
+		F.asking = false
+		if err then
+			F.options = nil
+			kit.lib.toast(S.toasts, "The choices of the filters could not be asked for", "warn")
+			return true
+		end
+		F.options, F.at = result, at
+		return true
+	end)
+end
+
+-- The projects of the lists a person can go to, as `{ id, name }`.
+local function projects()
+	local out = {}
+	for _, item in S.catalog ~= nil and S.catalog.items or {} do
+		if item.kind == "project" and item.id ~= nil then
+			out[#out + 1] = { id = item.id, name = item.title }
+		end
+	end
+	return out
+end
+
+-- The person's own entry among the people.
+local function me()
+	for _, person in F.options ~= nil and F.options.people or {} do
+		if person.me then
+			return person
+		end
+	end
+	return nil
+end
+
+-- What `value` of `kind` is called.
+local function name_of(kind, value)
+	if kind == "priority" then
+		return values.priority_name(value)
+	elseif kind == "assignee" then
+		if value == "me" then
+			return "Me"
+		elseif value == "none" then
+			return "No assignee"
+		end
+		for _, person in F.options ~= nil and F.options.people or {} do
+			if person.id == value then
+				return person.me and "Me" or person.name
+			end
+		end
+		return "Someone"
+	elseif kind == "project" then
+		if value == "none" then
+			return "No project"
+		end
+		for _, project in projects() do
+			if project.id == value then
+				return project.name
+			end
+		end
+		return "A project"
+	end
+	return value
+end
+
+-- Whether `value` is among those set of `kind`.
+local function has(kind, value)
+	for _, held in filters.current()[kind] do
+		if held == value then
+			return true
+		end
+	end
+	return false
+end
+
+-- The choices of the menu of `kind`, each `{ value, words }`, or nil where they have not come.
+local function choices(kind)
+	local out = {}
+	if kind == "priority" then
+		for _, name in PRIORITIES do
+			out[#out + 1] = { name, name == "none" and "No priority" or values.priority_name(name) }
+		end
+	elseif kind == "project" then
+		for _, project in projects() do
+			out[#out + 1] = { project.id, project.name }
+		end
+		out[#out + 1] = { "none", "No project" }
+	elseif F.options == nil then
+		return nil
+	elseif kind == "status" then
+		-- The lists hold the open issues: a closed state is offered where it finds something, in a search
+		-- (and where it is set, so that it can be taken away).
+		for _, state in F.options.states do
+			local closed = state.kind == "completed" or state.kind == "canceled"
+			if not closed or S.scope == "search" or has("status", state.name) then
+				out[#out + 1] = { state.name, state.name }
+			end
+		end
+	elseif kind == "assignee" then
+		-- The person is "Me" whoever they are called, and the others are by name.
+		if me() ~= nil then
+			out[#out + 1] = { "me", "Me" }
+		end
+		for _, person in F.options.people do
+			if not person.me then
+				out[#out + 1] = { person.id, person.name }
+			end
+		end
+		out[#out + 1] = { "none", "No assignee" }
+	elseif kind == "labels" then
+		for _, label in F.options.labels do
+			out[#out + 1] = { label.name, label.name }
+		end
+	end
+	return out
+end
+
+-- --- Setting ------------------------------------------------------------------------------------------
+
+-- Sends the filters to the program: only the kinds that have a value (a kind with none is not sent).
+local function send(now)
+	local out = {}
+	for _, kind in KINDS do
+		if #now[kind[1]] > 0 then
+			out[kind[1]] = now[kind[1]]
+		end
+	end
+	act.view({ filters = out })
+end
+
+-- Adds `value` to the filter of `kind`, or takes it away where it is set. The reply.
+local function toggle(kind, value)
+	local now = filters.current()
+	local kept, found = {}, false
+	for _, held in now[kind] do
+		if held == value then
+			found = true
+		else
+			kept[#kept + 1] = held
+		end
+	end
+	if not found then
+		kept[#kept + 1] = value
+	end
+	now[kind] = kept
+	send(now)
+	-- (A chip that was set by a press of the pointer and has no value left is gone with its row.)
+	if not filters.visible() then
+		return u:focus(nil)
+	end
+	return true
+end
+
+-- Forgets the filters here: the program is told in the same call that goes to another list.
+function filters.forget()
+	F.now = empty()
+	F.open = false
+end
+
+-- Lets go of every filter, and gives the keyboard back to the list.
+function filters.clear()
+	F.now = empty()
+	F.open = false
+	send(F.now)
+	return u:focus(nil)
+end
+
+-- --- The row --------------------------------------------------------------------------------------------
+
+-- The most of a name a chip shows; a longer one is cut with the kit's mark.
+local NAME_MOST = 20
+
+local function short(text)
+	if utf8.len(text) > NAME_MOST then
+		return string.sub(text, 1, utf8.offset(text, NAME_MOST) - 1) .. "\u{2026}"
+	end
+	return text
+end
+
+-- What a chip says of its values: the first, and how many more there are.
+local function words_of(kind, held)
+	local first = short(name_of(kind, held[1]))
+	if #held > 1 then
+		return first .. " +" .. (#held - 1)
+	end
+	return first
+end
+
+local function words(text, unset)
+	return b.text(text):text_size(SIZE.small):color(unset and "dim" or "foreground"):no_shrink()
+end
+
+-- What stands before the words of a chip: the picture of what it filters by.
+local function picture(kind, held)
+	if kind == "status" then
+		local shown = "other"
+		for _, state in F.options ~= nil and F.options.states or {} do
+			if held[1] ~= nil and state.name == held[1] then
+				shown = state.kind
+			end
+		end
+		return icons.state(shown)
+	elseif kind == "priority" then
+		return icons.priority(held[1] or "none")
+	elseif kind == "assignee" then
+		return icons.person()
+	elseif kind == "labels" then
+		if held[1] ~= nil then
+			for _, label in F.options ~= nil and F.options.labels or {} do
+				if label.name == held[1] then
+					return icons.dot(label.color)
+				end
+			end
+		end
+		return icons.tag()
+	end
+	return icons.cube()
+end
+
+local function chip(kind, title)
+	local held = filters.current()[kind]
+	local kids = { picture(kind, held) }
+	if #held > 0 then
+		kids[#kids + 1] = words(words_of(kind, held), false)
+	else
+		kids[#kids + 1] = words(title, true)
+	end
+	-- (The ring is drawn where the keyboard is: a press of the pointer does not leave it on a chip.)
+	return values.chip(chip_name(kind), kids, title, { ring = u:target() == chip_name(kind) })
+end
+
+-- The row under the head, or nil where there is none (nothing is set, and it is not open). A row of
+-- its own: the room it takes is the head's, whatever the pane is doing.
+function filters.view()
+	if not filters.visible() then
+		return nil
+	end
+	local now = filters.current()
+	local row = b.div():id("filters-row"):row():wrap():items_center():gap_x(8):gap_y(8):px(SIZE.pad):pb(8):no_shrink()
+	for _, kind in KINDS do
+		if F.open or #now[kind[1]] > 0 then
+			row:child(chip(kind[1], kind[2]))
+		end
+	end
+	if filters.any() then
+		row:child(kit.button(CLEAR, "Clear filters", {
+			suffix = commands.label("clear_filters"),
+			tip = "Let go of every filter",
+		}))
+	end
+	return row
+end
+
+-- --- What the person does -------------------------------------------------------------------------------
+
+-- Opens the row, the keyboard on its first chip, and asks for what the menus offer. The reply.
+function filters.show()
+	F.open = true
+	ask()
+	return u:focus(chip_name(KINDS[1][1]))
+end
+
+-- Puts the row away: what is set stays, as chips.
+function filters.close()
+	F.open = false
+end
+
+-- A press that is not on the row puts it away (a menu is not drawn by the page: its entries are not
+-- pressed with the page's pointer).
+function filters.outside(hit)
+	if not F.open then
+		return
+	end
+	if hit ~= nil and (string.sub(hit, 1, #PREFIX) == PREFIX or hit == CLEAR) then
+		return
+	end
+	F.open = false
+end
+
+-- Opens the menu of `kind`, under its chip. The reply.
+local function open_menu(kind)
+	ask()
+	local offered = choices(kind)
+	if offered == nil or #offered == 0 then
+		-- (The choices are asked for before a key is pressed; one pressed too soon does nothing but ask.)
+		return true
+	end
+	local entries = {}
+	for _, choice in offered do
+		entries[#entries + 1] = {
+			key = kind .. ":" .. choice[1],
+			title = values.mark(has(kind, choice[1]), choice[2]),
+		}
+	end
+	return u:menu(MENU, entries, { near = chip_name(kind) }) or true
+end
+
+-- A chip or Clear filters pressed. The reply, or nil where it was not the row's.
+function filters.press(id)
+	if id == CLEAR then
+		return filters.clear()
+	elseif string.sub(id, 1, #PREFIX) == PREFIX then
+		return open_menu(string.sub(id, #PREFIX + 1))
+	end
+	return nil
+end
+
+-- What a menu of the row did. The reply, or nil where it was not the row's.
+function filters.action(action)
+	if action.from ~= MENU or action.kind ~= "menu" then
+		return nil
+	end
+	local at = string.find(action.entry, ":", 1, true)
+	if at == nil then
+		return true
+	end
+	return toggle(string.sub(action.entry, 1, at - 1), string.sub(action.entry, at + 1))
+end
+
+return filters

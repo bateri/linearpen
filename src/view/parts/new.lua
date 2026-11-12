@@ -11,6 +11,7 @@
 
 local kit = require("../lib/kit")
 local commands = require("./commands")
+local filters = require("./filters")
 local head = require("./head")
 local list = require("./list")
 local panel = require("./panel")
@@ -301,13 +302,14 @@ function new.create()
 		-- (Where All issues is shown the issue is in it, whoever it is for.)
 		local kind = (S.scope == "mine" and mine) and "mine" or "all"
 		N.pending = { id = result.id, kind = kind, expires = S.now + WAIT }
-		-- The list is looked at as it is where the issue will be: no filter, the list it is in, its
-		-- group open.
+		-- The list is looked at as it is where the issue will be: no filter (the words, and what Linear is
+		-- asked to narrow by), the list it is in, its group open.
 		head.field.value = ""
 		if group ~= nil then
 			S.closed[group] = false
 		end
-		act.view({ list = { kind = kind }, filter = "", closed = S.closed })
+		filters.forget()
+		act.view({ list = { kind = kind }, filters = {}, filter = "", closed = S.closed })
 		return u:focus(nil)
 	end)
 	return true

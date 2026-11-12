@@ -1,6 +1,7 @@
 //! What the program holds for the page: the key, the lists as Linear last said them (My issues, and
-//! the one list the page looks at where it is another), the names of the lists a person can go to,
-//! what the page is looking at (the scope, the filter, the groups the person folded), and the worker
+//! the one list the page looks at where it is another or is narrowed by filters, or is a search), the
+//! names of the lists a person can go to, what the page is looking at (the scope, the filters Linear
+//! narrows it by, the words of the filter, the groups the person folded), and the worker
 //! that asks Linear again, at the page's word and every few minutes.
 //!
 //! The worker is one thread. It asks for My issues and for the list the page looks at, one after the
@@ -22,8 +23,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::linear::types::{Comment, StateKind};
 use crate::linear::{
-    self, Change, Created, Entry, Error, Issue, Key, Listing, NewIssue, Options, Scope, Team,
-    Transport, Viewer,
+    self, Change, Created, Entry, Error, FilterOptions, Filters, Issue, Key, Listing, NewIssue,
+    Options, Scope, Team, Transport, Viewer,
 };
 use crate::state::Paths;
 use crate::state::credentials::{self, Problem, Source};
@@ -62,28 +63,42 @@ const POLL: Duration = Duration::from_secs(3);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct View {
     pub scope: Scope,
+    /// What the list is narrowed by in Linear (status, priority, assignee, labels, project). Not the
+    /// words of `filter`, which narrow what is held.
+    pub filters: Filters,
     pub filter: String,
     /// The groups the person folded (`true`) or opened (`false`), by key; one not here is as it
     /// begins (backlog and triage folded).
     pub closed: HashMap<String, bool>,
 }
 
-/// The lists, and whose they are: the person's own, always, and the one the page looks at where it
-/// is another (with the scope it was asked for).
+/// The lists, and whose they are: the person's own, always (all of them: it is what is counted), and
+/// the one the page looks at where it is another or is narrowed by filters (with the scope and the
+/// filters it was asked for).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Lists {
     pub viewer: Viewer,
     pub mine: Listing,
     pub shown: Option<(Scope, Listing)>,
+    /// The filters `shown` was asked for with.
+    pub filters: Filters,
+}
+
+/// Whether a list is asked for apart from My issues: it is another list, or it is narrowed.
+#[must_use]
+pub fn is_apart(scope: &Scope, filters: &Filters) -> bool {
+    *scope != Scope::Mine || !filters.is_empty()
 }
 
 impl Lists {
-    /// The list of `scope`, where it is held.
+    /// The list of `scope` narrowed by `filters`, where it is held.
     #[must_use]
-    pub fn of(&self, scope: &Scope) -> Option<&Listing> {
-        match (scope, &self.shown) {
-            (Scope::Mine, _) => Some(&self.mine),
-            (wanted, Some((held, listing))) if wanted == held => Some(listing),
+    pub fn of(&self, scope: &Scope, filters: &Filters) -> Option<&Listing> {
+        if !is_apart(scope, filters) {
+            return Some(&self.mine);
+        }
+        match &self.shown {
+            Some((held, listing)) if held == scope && self.filters == *filters => Some(listing),
             _ => None,
         }
     }
@@ -107,9 +122,9 @@ pub struct State {
     /// When the lists were told, seconds since the epoch.
     pub updated: Option<u64>,
     pub view: View,
-    /// The number of the last `view` call that set each member of `view` (scope, filter, closed),
+    /// The number of the last `view` call that set each member of `view` (scope, filters, filter, closed),
     /// which are made at the same time and may be told out of their order.
-    view_seen: [u64; 3],
+    view_seen: [u64; 4],
     /// The issues an agent was started on whose pane has not ended, by Linear's id.
     pub working: HashMap<String, Working>,
     /// The panes that are watched and the file of issues each one's agent reads from, which is not
@@ -123,6 +138,8 @@ pub struct State {
     /// whenever the lists are asked for again.
     teams: Option<Vec<Team>>,
     choices: HashMap<String, Options>,
+    /// What the filters offer, as Linear last said: let go whenever the lists are asked for again.
+    filter_options: Option<FilterOptions>,
     generation: u64,
     refresh_wanted: bool,
     /// What is wanted is the asking of everything (`r`, the five minutes, a key that was just
@@ -158,8 +175,11 @@ impl State {
             Ok(_) if self.stale => {}
             Ok(mut lists) => {
                 let wanted = self.view.scope.clone();
-                lists.shown = lists.shown.filter(|(held, _)| *held == wanted);
-                if wanted != Scope::Mine && lists.shown.is_none() {
+                // (A list asked for with other filters than the page has now is not the one it wants.)
+                lists.shown = lists
+                    .shown
+                    .filter(|(held, _)| *held == wanted && lists.filters == self.view.filters);
+                if is_apart(&wanted, &self.view.filters) && lists.shown.is_none() {
                     self.refresh_wanted = true;
                 }
                 self.lists = Some(lists);
@@ -192,6 +212,7 @@ impl State {
     pub fn forget_choices(&mut self) {
         self.teams = None;
         self.choices.clear();
+        self.filter_options = None;
     }
 
     /// Writes an issue as Linear says it is now into what is held: the person's list has it where it
@@ -210,12 +231,20 @@ impl State {
                 ..issue.clone()
             };
             place(&mut lists.mine, &row, mine);
+            let narrowed = !lists.filters.is_empty();
             if let Some((scope, listing)) = &mut lists.shown {
                 let held = listing.issues.iter().any(|held| held.id == row.id);
-                place(listing, &row, open && (*scope == Scope::All || held));
+                // A search holds the closed issues too; the person's own list holds what is theirs.
+                let wanted = match scope {
+                    Scope::Search(_) => held,
+                    Scope::Mine => open && mine && held,
+                    Scope::All => open && (held || !narrowed),
+                    _ => open && held,
+                };
+                place(listing, &row, wanted);
             }
             listed = lists
-                .of(&self.view.scope)
+                .of(&self.view.scope, &self.view.filters)
                 .is_some_and(|listing| listing.issues.iter().any(|held| held.id == row.id));
         }
         // What is kept is by the id it was asked for by, which may be the identifier.
@@ -234,6 +263,9 @@ impl State {
             }
         }
         match self.view.scope {
+            // (A list narrowed by filters cannot say whether Linear's filter takes what changed: it
+            // holds what it held.)
+            _ if !self.view.filters.is_empty() => listed,
             Scope::Mine => mine,
             Scope::All => open,
             _ => listed,
@@ -333,17 +365,28 @@ fn look_at_panes(shared: &Shared, runner: &dyn Runner, every: Duration) {
     }
 }
 
-/// Asks Linear for My issues, and for the list the page looks at where it is another.
-fn fetch_lists(transport: &dyn Transport, key: &Key, shown: &Scope) -> Result<Lists, Error> {
-    let mine = linear::fetch(transport, key, &Scope::Mine)?;
-    let shown = match shown {
-        Scope::Mine => None,
-        other => Some((other.clone(), linear::fetch(transport, key, other)?.listing)),
+/// Asks Linear for My issues, and for the list the page looks at where it is another or is narrowed
+/// by `filters`.
+fn fetch_lists(
+    transport: &dyn Transport,
+    key: &Key,
+    shown: &Scope,
+    filters: &Filters,
+) -> Result<Lists, Error> {
+    let mine = linear::fetch(transport, key, &Scope::Mine, &Filters::default())?;
+    let held = if is_apart(shown, filters) {
+        Some((
+            shown.clone(),
+            linear::fetch(transport, key, shown, filters)?.listing,
+        ))
+    } else {
+        None
     };
     Ok(Lists {
         viewer: mine.viewer,
         mine: mine.listing,
-        shown,
+        shown: held,
+        filters: filters.clone(),
     })
 }
 
@@ -351,7 +394,7 @@ fn fetch_lists(transport: &dyn Transport, key: &Key, shown: &Scope) -> Result<Li
 fn work(shared: &Shared) {
     let mut next = Instant::now() + shared.every;
     loop {
-        let (key, scope, everything) = {
+        let (key, scope, filters, everything) = {
             let mut state = shared.lock();
             loop {
                 if state.closed {
@@ -383,10 +426,15 @@ fn work(shared: &Shared) {
                 state.forget_choices();
             }
             shared.changed(&mut state);
-            (state.key.clone(), state.view.scope.clone(), everything)
+            (
+                state.key.clone(),
+                state.view.scope.clone(),
+                state.view.filters.clone(),
+                everything,
+            )
         };
         let Some(key) = key else { continue };
-        let got = fetch_lists(shared.transport.as_ref(), &key, &scope);
+        let got = fetch_lists(shared.transport.as_ref(), &key, &scope, &filters);
         {
             let mut state = shared.lock();
             state.landed(got);
@@ -430,6 +478,7 @@ impl Session {
                 updated: None,
                 view: View {
                     scope: Scope::Mine,
+                    filters: Filters::default(),
                     filter: String::new(),
                     closed: HashMap::new(),
                 },
@@ -438,7 +487,8 @@ impl Session {
                 details: HashMap::new(),
                 teams: None,
                 choices: HashMap::new(),
-                view_seen: [0; 3],
+                filter_options: None,
+                view_seen: [0; 4],
                 generation: 0,
                 refresh_wanted: false,
                 everything: false,
@@ -673,6 +723,17 @@ impl Session {
         Ok(options)
     }
 
+    /// What the filters offer to choose from (the states, the people, the labels): as it was kept,
+    /// else asked.
+    pub fn filter_options(&self) -> Result<FilterOptions, Error> {
+        if let Some(kept) = self.shared.lock().filter_options.clone() {
+            return Ok(kept);
+        }
+        let options = linear::filter_options(self.transport(), &self.key()?)?;
+        self.shared.lock().filter_options = Some(options.clone());
+        Ok(options)
+    }
+
     /// Makes the issue of the draft in Linear: the program's one write. It is sent once. Where it
     /// did not come back whole (no answer, or an error), the issue is asked for by the id of the
     /// draft, which Linear took as the issue's own: if it is there it was made, and that is the
@@ -826,7 +887,7 @@ impl Session {
     /// A page that begins again numbers its `view` calls from the start: what was held of the last
     /// one's numbers is let go.
     pub fn forget_view_order(&self) {
-        self.shared.lock().view_seen = [0; 3];
+        self.shared.lock().view_seen = [0; 4];
     }
 
     /// Changes what the page is looking at, and wakes whoever shows it. The page numbers its calls
@@ -836,6 +897,7 @@ impl Session {
         &self,
         seq: Option<u64>,
         scope: Option<Scope>,
+        filters: Option<Filters>,
         filter: Option<String>,
         closed: Option<HashMap<String, bool>>,
     ) {
@@ -850,21 +912,29 @@ impl Session {
             }
             None => true,
         };
-        let (scope_ok, filter_ok, closed_ok) = (
+        let (scope_ok, filters_ok, filter_ok, closed_ok) = (
             allowed(0, scope.is_some()),
-            allowed(1, filter.is_some()),
-            allowed(2, closed.is_some()),
+            allowed(1, filters.is_some()),
+            allowed(2, filter.is_some()),
+            allowed(3, closed.is_some()),
         );
-        if let Some(scope) = scope.filter(|scope| scope_ok && state.view.scope != *scope) {
-            // A list the page left is let go of; the one it goes to is asked for, with My issues
-            // (a list is shown as Linear says it now).
+        let scope = scope.filter(|scope| scope_ok && state.view.scope != *scope);
+        let filters = filters.filter(|filters| filters_ok && state.view.filters != *filters);
+        if scope.is_some() || filters.is_some() {
+            // A list the page left (or that other filters narrowed) is let go of; the one it goes to
+            // is asked for, with My issues (a list is shown as Linear says it now).
             if let Some(lists) = &mut state.lists {
                 lists.shown = None;
             }
-            if scope != Scope::Mine {
+            if let Some(scope) = scope {
+                state.view.scope = scope;
+            }
+            if let Some(filters) = filters {
+                state.view.filters = filters;
+            }
+            if is_apart(&state.view.scope, &state.view.filters) {
                 state.refresh_wanted = true;
             }
-            state.view.scope = scope;
         }
         if let Some(filter) = filter.filter(|_| filter_ok) {
             state.view.filter = filter;
@@ -1173,6 +1243,7 @@ mod tests {
             },
             mine: listing.clone(),
             shown: Some((Scope::All, listing)),
+            filters: Filters::default(),
         });
         (session, sent)
     }
@@ -1606,10 +1677,10 @@ mod tests {
     #[test]
     fn a_view_call_told_late_does_not_undo_a_later_one_of_the_same_member() {
         let session = session();
-        session.set_view(Some(2), None, Some("rate".to_owned()), None);
-        session.set_view(Some(1), None, Some("rat".to_owned()), None);
+        session.set_view(Some(2), None, None, Some("rate".to_owned()), None);
+        session.set_view(Some(1), None, None, Some("rat".to_owned()), None);
         assert_eq!(session.state().view.filter, "rate");
-        session.set_view(Some(3), None, Some("rates".to_owned()), None);
+        session.set_view(Some(3), None, None, Some("rates".to_owned()), None);
         assert_eq!(session.state().view.filter, "rates");
     }
 
@@ -1617,10 +1688,10 @@ mod tests {
     fn a_call_is_held_to_the_order_only_of_the_members_it_sets() {
         let session = session();
         // The filter call has the higher number and comes first: the scope call is not its.
-        session.set_view(Some(5), None, Some("bug".to_owned()), None);
-        session.set_view(Some(4), Some(Scope::All), None, None);
+        session.set_view(Some(5), None, None, Some("bug".to_owned()), None);
+        session.set_view(Some(4), Some(Scope::All), None, None, None);
         let folded = HashMap::from([("todo".to_owned(), true)]);
-        session.set_view(Some(3), None, None, Some(folded.clone()));
+        session.set_view(Some(3), None, None, None, Some(folded.clone()));
         let state = session.state();
         assert_eq!(state.view.scope, Scope::All);
         assert_eq!(state.view.filter, "bug");
@@ -1630,12 +1701,12 @@ mod tests {
     #[test]
     fn a_page_that_begins_again_is_heard_from_its_first_call() {
         let session = session();
-        session.set_view(Some(9), None, Some("old".to_owned()), None);
+        session.set_view(Some(9), None, None, Some("old".to_owned()), None);
         session.forget_view_order();
-        session.set_view(Some(1), None, Some("new".to_owned()), None);
+        session.set_view(Some(1), None, None, Some("new".to_owned()), None);
         assert_eq!(session.state().view.filter, "new");
         // A call with no number is the latest.
-        session.set_view(None, None, Some("last".to_owned()), None);
+        session.set_view(None, None, None, Some("last".to_owned()), None);
         assert_eq!(session.state().view.filter, "last");
     }
 
@@ -1647,7 +1718,7 @@ mod tests {
     fn a_page_that_goes_to_another_list_has_it_asked_for_and_lets_go_of_the_one_it_left() {
         let (session, _) = holding(vec![]);
         session.shared.lock().refresh_wanted = false;
-        session.set_view(None, Some(team("t-acm")), None, None);
+        session.set_view(None, Some(team("t-acm")), None, None, None);
         {
             let state = session.state();
             assert_eq!(state.view.scope, team("t-acm"));
@@ -1657,14 +1728,17 @@ mod tests {
                 lists.shown.is_none(),
                 "All issues, which it left, is let go of"
             );
-            assert!(lists.of(&team("t-acm")).is_none());
-            assert_eq!(ids_of(lists.of(&Scope::Mine).unwrap()), ["a", "b"]);
+            assert!(lists.of(&team("t-acm"), &Filters::default()).is_none());
+            assert_eq!(
+                ids_of(lists.of(&Scope::Mine, &Filters::default()).unwrap()),
+                ["a", "b"]
+            );
         }
         // The same list again asks for nothing more; My issues needs nothing asked for.
         session.shared.lock().refresh_wanted = false;
-        session.set_view(None, Some(team("t-acm")), None, None);
+        session.set_view(None, Some(team("t-acm")), None, None, None);
         assert!(!session.state().refresh_wanted_now());
-        session.set_view(None, Some(Scope::Mine), None, None);
+        session.set_view(None, Some(Scope::Mine), None, None, None);
         assert!(!session.state().refresh_wanted_now());
     }
 
@@ -1688,6 +1762,99 @@ mod tests {
             state.landed(Ok(lists));
             assert!(!state.refresh_wanted_now());
             assert!(state.lists.as_ref().unwrap().shown.is_some());
+        }
+    }
+
+    fn labelled(name: &str) -> Filters {
+        Filters::new(
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            vec![name.to_owned()],
+            Vec::new(),
+        )
+        .expect("a filter")
+    }
+
+    #[test]
+    fn filters_narrow_the_list_even_where_it_is_my_issues_and_have_it_asked_for_with_them() {
+        let (session, _) = holding(vec![]);
+        session.shared.lock().refresh_wanted = false;
+        // Nothing narrows My issues: it is what is held, and nothing is asked for.
+        session.set_view(None, None, Some(Filters::default()), None, None);
+        assert!(!session.state().refresh_wanted_now());
+        session.set_view(None, None, Some(labelled("bug")), None, None);
+        {
+            let state = session.state();
+            assert_eq!(state.view.filters, labelled("bug"));
+            assert!(state.refresh_wanted_now(), "the narrowed list is asked for");
+            let lists = state.lists.as_ref().unwrap();
+            // What is held is My issues whole: it is not the list narrowed, and is not shown as it.
+            assert!(lists.of(&Scope::Mine, &labelled("bug")).is_none());
+            assert!(lists.of(&Scope::Mine, &Filters::default()).is_some());
+        }
+        // The same filters again ask for nothing more; letting go of them asks for nothing either
+        // (My issues is held), and what was held narrowed is let go of.
+        session.shared.lock().refresh_wanted = false;
+        session.set_view(None, None, Some(labelled("bug")), None, None);
+        assert!(!session.state().refresh_wanted_now());
+        session.set_view(None, None, Some(Filters::default()), None, None);
+        let state = session.state();
+        assert!(!state.refresh_wanted_now());
+        assert!(state.lists.as_ref().unwrap().shown.is_none());
+    }
+
+    #[test]
+    fn a_list_that_comes_narrowed_by_other_filters_than_the_page_has_now_is_not_shown() {
+        let (session, _) = holding(vec![]);
+        let mut lists = session.state().lists.clone().unwrap();
+        lists.shown = Some((Scope::Mine, lists.mine.clone()));
+        lists.filters = labelled("api");
+        {
+            let mut state = session.state();
+            state.view.filters = labelled("bug");
+            state.refresh_wanted = false;
+            state.landed(Ok(lists.clone()));
+            let held = state.lists.as_ref().unwrap();
+            // It was asked for with other filters: it is let go of, and the page's are asked for.
+            assert!(held.of(&Scope::Mine, &labelled("bug")).is_none());
+            assert!(held.shown.is_none());
+            assert!(state.refresh_wanted_now());
+        }
+    }
+
+    #[test]
+    fn a_search_keeps_the_issues_it_holds_that_are_done_and_a_narrowed_my_issues_those_that_are_still_mine()
+     {
+        let (session, _) = holding(vec![]);
+        let held = issue_of(&wire("a", "Add it", "completed", true));
+        {
+            let mut state = session.state();
+            let lists = state.lists.as_mut().unwrap();
+            lists.shown = Some((
+                Scope::Search("add".to_owned()),
+                Listing {
+                    issues: vec![held],
+                    truncated: false,
+                },
+            ));
+            state.view.scope = Scope::Search("add".to_owned());
+            // (A search holds the closed issues: one that was done is not let go of.)
+            assert!(state.put(&issue_of(&wire("a", "Renamed", "completed", true))));
+            let lists = state.lists.as_ref().unwrap();
+            assert_eq!(ids_of(shown(lists)), ["a"]);
+        }
+        {
+            let mut state = session.state();
+            let lists = state.lists.as_mut().unwrap();
+            lists.filters = labelled("bug");
+            lists.shown = Some((Scope::Mine, lists.mine.clone()));
+            state.view.scope = Scope::Mine;
+            state.view.filters = labelled("bug");
+            // Given to another it is not the person's, and goes from their list, narrowed or not.
+            assert!(!state.put(&issue_of(&wire("a", "Given", "started", false))));
+            let lists = state.lists.as_ref().unwrap();
+            assert_eq!(ids_of(shown(lists)), ["b"]);
         }
     }
 

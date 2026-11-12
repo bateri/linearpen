@@ -84,7 +84,7 @@ fn mine_page(count: usize) -> Reply {
 #[test]
 fn my_issues_are_one_page_when_that_is_all_there_is() {
     let transport = Scripted::new(vec![Ok(mine_page(3))]);
-    let fetched = fetch(&transport, &key(), &Scope::Mine).unwrap();
+    let fetched = fetch(&transport, &key(), &Scope::Mine, &Filters::default()).unwrap();
     assert_eq!(fetched.listing.issues.len(), 3);
     assert!(!fetched.listing.truncated);
     assert_eq!(fetched.viewer.organization.url_key, "acme");
@@ -97,7 +97,7 @@ fn pages_follow_the_cursor_until_there_is_no_next() {
         Ok(all_page(0, 100, true)),
         Ok(all_page(100, 40, false)),
     ]);
-    let fetched = fetch(&transport, &key(), &Scope::All).unwrap();
+    let fetched = fetch(&transport, &key(), &Scope::All, &Filters::default()).unwrap();
     assert_eq!(fetched.listing.issues.len(), 140);
     assert!(!fetched.listing.truncated);
     let sent = transport.sent();
@@ -111,7 +111,7 @@ fn pages_follow_the_cursor_until_there_is_no_next() {
 fn a_list_stops_at_five_hundred_and_says_there_was_more() {
     // A workspace that never runs out: the sixth page is not asked for.
     let transport = Scripted::new((0..8).map(|n| Ok(all_page(n * 100, 100, true))).collect());
-    let fetched = fetch(&transport, &key(), &Scope::All).unwrap();
+    let fetched = fetch(&transport, &key(), &Scope::All, &Filters::default()).unwrap();
     assert_eq!(fetched.listing.issues.len(), LIMIT);
     assert!(fetched.listing.truncated);
     assert_eq!(transport.sent().len(), 5);
@@ -120,7 +120,7 @@ fn a_list_stops_at_five_hundred_and_says_there_was_more() {
 #[test]
 fn exactly_five_hundred_is_not_a_truncation() {
     let transport = Scripted::new((0..5).map(|n| Ok(all_page(n * 100, 100, n < 4))).collect());
-    let fetched = fetch(&transport, &key(), &Scope::All).unwrap();
+    let fetched = fetch(&transport, &key(), &Scope::All, &Filters::default()).unwrap();
     assert_eq!(fetched.listing.issues.len(), 500);
     assert!(!fetched.listing.truncated);
 }
@@ -134,7 +134,7 @@ fn no_cursor_ends_the_pages_even_if_linear_says_there_is_more() {
         ),
     };
     let transport = Scripted::always(reply, 3);
-    let fetched = fetch(&transport, &key(), &Scope::All).unwrap();
+    let fetched = fetch(&transport, &key(), &Scope::All, &Filters::default()).unwrap();
     assert!(fetched.listing.issues.is_empty());
     assert_eq!(transport.sent().len(), 1);
 }
@@ -142,7 +142,7 @@ fn no_cursor_ends_the_pages_even_if_linear_says_there_is_more() {
 #[test]
 fn the_request_is_a_plain_query_with_its_variables() {
     let transport = Scripted::new(vec![Ok(mine_page(0))]);
-    fetch(&transport, &key(), &Scope::Mine).unwrap();
+    fetch(&transport, &key(), &Scope::Mine, &Filters::default()).unwrap();
     let sent = transport.sent();
     assert!(
         sent[0].contains(r#""operationName":"MyIssues""#),
@@ -216,7 +216,7 @@ fn another_status_or_a_body_that_is_not_json_is_failed() {
 fn an_unreachable_transport_is_unreachable() {
     let transport = Scripted::new(vec![Err(Error::Unreachable("down".to_owned()))]);
     assert_eq!(
-        fetch(&transport, &key(), &Scope::Mine),
+        fetch(&transport, &key(), &Scope::Mine, &Filters::default()),
         Err(Error::Unreachable("down".to_owned()))
     );
 }
@@ -1023,7 +1023,7 @@ fn sources() -> [(Scope, &'static str, &'static str); 5] {
 fn each_source_asks_its_own_question_with_its_id_a_variable_and_the_open_filter() {
     for (scope, name, root) in sources() {
         let transport = Scripted::new(vec![Ok(owned_page(root, 0, 3, false))]);
-        let fetched = fetch(&transport, &key(), &scope).unwrap();
+        let fetched = fetch(&transport, &key(), &scope, &Filters::default()).unwrap();
         assert_eq!(fetched.listing.issues.len(), 3, "{name}");
         assert!(!fetched.listing.truncated, "{name}");
         assert_eq!(fetched.viewer.organization.url_key, "acme", "{name}");
@@ -1053,7 +1053,7 @@ fn a_source_follows_the_cursor_and_stops_at_five_hundred_like_the_other_lists() 
                 .map(|n| Ok(owned_page(root, n * 100, 100, true)))
                 .collect(),
         );
-        let fetched = fetch(&transport, &key(), &scope).unwrap();
+        let fetched = fetch(&transport, &key(), &scope, &Filters::default()).unwrap();
         assert_eq!(fetched.listing.issues.len(), LIMIT, "{name}");
         assert!(fetched.listing.truncated, "{name}");
         assert_eq!(transport.sent().len(), 5, "{name}");
@@ -1063,7 +1063,7 @@ fn a_source_follows_the_cursor_and_stops_at_five_hundred_like_the_other_lists() 
                 .map(|n| Ok(owned_page(root, n * 100, 100, n < 4)))
                 .collect(),
         );
-        let fetched = fetch(&transport, &key(), &scope).unwrap();
+        let fetched = fetch(&transport, &key(), &scope, &Filters::default()).unwrap();
         assert_eq!(fetched.listing.issues.len(), 500, "{name}");
         assert!(!fetched.listing.truncated, "{name}");
     }

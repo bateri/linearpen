@@ -25,9 +25,16 @@ local function apply(snapshot)
 	end
 end
 
--- Tells the program what the page looks at (`list`: `{ kind, id }`, `filter`, `closed`). `after`, where there is one, is
+-- Tells the program what the page looks at (`list`: `{ kind, id }`, `filters`, `filter`, `closed`). `after`, where there is one, is
 -- called when the program has answered (or has not).
 function act.view(params, after)
+	-- Another list than a search is gone to: the words of the search were the search's, and go with it.
+	if params.list ~= nil and params.list.kind ~= "search" and S.scope == "search" and params.filter == nil then
+		params.filter = ""
+		if act.field_clear ~= nil then
+			act.field_clear()
+		end
+	end
 	-- The calls run at the same time in the program: each is numbered, so that one told late does not
 	-- undo a later one.
 	S.view_seq = (S.view_seq or 0) + 1

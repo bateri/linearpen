@@ -8,6 +8,7 @@
 local kit = require("../lib/kit")
 local commands = require("./commands")
 local change = require("./change")
+local filters = require("./filters")
 local head = require("./head")
 local list = require("./list")
 local new = require("./new")
@@ -92,6 +93,32 @@ local function writing_hints()
 	return {
 		{ key = "leave", words = b.div():row():items_center():gap(5):no_shrink():child(u:kbd("escape")):child(b.text("leave")), priority = 8 },
 	}
+end
+
+-- What the keyboard does on the chips of the filters: it goes on, it opens the menu, it goes back to the
+-- list.
+local function filter_hints()
+	return {
+		{ key = "next_chip", words = hint({ "next_field" }, "next"), priority = 8 },
+		{ key = "choose_chip", words = hint({ "open" }, "choose"), priority = 7 },
+		{ key = "leave_chips", words = hint({ "back" }, "back to the list"), priority = 6 },
+	}
+end
+
+-- What the keyboard does while words are typed in the field and some are there: all of Linear can be
+-- searched for them (where the page says so in a button of its own, the key is on the button), and Esc
+-- clears them, or leaves the search.
+local function typing_hints()
+	local start = {}
+	if not head.unmatched() then
+		start[#start + 1] = { key = "search", words = hint({ "search" }, "search all of Linear"), priority = 8, press = true }
+	end
+	start[#start + 1] = {
+		key = "clear",
+		words = hint({ "back" }, S.scope == "search" and "back" or "clear"),
+		priority = 7,
+	}
+	return start
 end
 
 -- The values the bar changes, in the order the keys are in the card: the kind of choice (`change`'s),
@@ -183,6 +210,12 @@ function status.view()
 	if status.selecting() then
 		return status.bar()
 	end
+	if filters.on_chip() then
+		return u:status("status", { start = filter_hints(), finish = status.finish() })
+	end
+	if head.typing() and head.words() ~= "" then
+		return u:status("status", { start = typing_hints(), finish = status.finish() })
+	end
 	-- A list with no line has nothing to move on, select or open: its keys are not said. Nor is a
 	-- key said where it does something else: in the filter `x` is a letter, and where the issue has
 	-- the whole pane there is no line to select or to open.
@@ -221,7 +254,12 @@ function status.view()
 	if not typing and not alone and commands.enabled(commands.get("lists")) then
 		start[#start + 1] = { key = "lists", words = hint({ "lists" }, "go to"), priority = 5 }
 	end
-	if head.field.value ~= "" then
+	if not typing and not alone and commands.enabled(commands.get("filters")) then
+		start[#start + 1] = { key = "filters", words = hint({ "filters" }, "filter"), priority = 3, press = true }
+	end
+	if S.scope == "search" then
+		start[#start + 1] = { key = "clear", words = hint({ "back" }, "back"), priority = 5 }
+	elseif head.field.value ~= "" then
 		start[#start + 1] = { key = "clear", words = hint({ "back" }, "clear the filter"), priority = 5 }
 	end
 	-- A key that has a button is on the button; where the head has none (the page has too little room)
@@ -241,7 +279,7 @@ function status.action(action)
 	if action.from ~= "status" or action.kind ~= "press" then
 		return false
 	end
-	if action.key == "palette" or action.key == "help" then
+	if action.key == "palette" or action.key == "help" or action.key == "filters" or action.key == "search" then
 		act.run(action.key)
 	end
 	return true

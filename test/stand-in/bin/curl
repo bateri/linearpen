@@ -12,6 +12,7 @@
 #   STANDIN_MODE=down      curl could not resolve the host: exit 6, no output
 #   STANDIN_MY=empty       the person has no issues assigned
 #   STANDIN_LIST=big       a team has more issues than the pen takes (500): every page of it has a next
+#   (A search, and the choices of the filters: search-issues.json, filter-options.json.)
 #   (The lists a person can go to: the issues of a team, a cycle, a view, a project and a label are
 #   each a file of their own, and the names are list-*.json: three favorites, three teams, five views
 #   of issues and a view of projects, two projects.)
@@ -438,6 +439,11 @@ if is CycleIssues; then cat "$here/cycle-issues.json"; printf '\n200'; exit 0; f
 if is ViewIssues; then cat "$here/view-issues.json"; printf '\n200'; exit 0; fi
 if is ProjectIssues; then cat "$here/project-issues.json"; printf '\n200'; exit 0; fi
 if is LabelIssues; then cat "$here/label-issues.json"; printf '\n200'; exit 0; fi
+# A search finds the same six issues whatever the words are (the closed ones too), and what the filters
+# offer is one file; a list asked with filters answers as it does without (the tests read what was
+# sent in the log).
+if is SearchIssues; then cat "$here/search-issues.json"; printf '\n200'; exit 0; fi
+if is FilterOptions; then cat "$here/filter-options.json"; printf '\n200'; exit 0; fi
 if is ListFavorites; then cat "$here/list-favorites.json"; printf '\n200'; exit 0; fi
 if is ListTeams; then cat "$here/list-teams.json"; printf '\n200'; exit 0; fi
 if is ListViews; then cat "$here/list-views.json"; printf '\n200'; exit 0; fi

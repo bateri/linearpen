@@ -56,8 +56,26 @@ says `500+` and a line at the end of the list says so.
 
 <img src="docs/lists.png" width="720" alt="linearpen: the card of lists, over My issues">
 
+`f` opens a row of five filters under the head: Status, Priority, Assignee, Labels and Project. The
+keyboard is on the first (`Tab` goes on, `Enter` opens its menu, `Esc` gives the keyboard back to the
+list), and each menu adds a value or takes it away, so a chip can hold several (any of them) and the
+chips together narrow the list (all of them). Linear does the narrowing, whichever list you are in:
+the filters go with the list's own filter, and are asked for again when they change. With the keyboard
+on the list only what you set stays, a chip with its values and `Clear filters` (`⇧F`); with none set
+there is no row. They are forgotten when the pen closes.
+
+<img src="docs/filtered.png" width="720" alt="linearpen: All issues narrowed to what Deniz has with the bug label">
+
 `/` filters the list by title, identifier or
-label, and the field says how many it lets through (`4 of 14`) inside itself. Enter or `o` opens an
+label, and the field says how many it lets through (`4 of 14`) inside itself. While you type, `⌘Enter`
+searches all of Linear for the words (the whole workspace, closed issues too, up to 500; the closed groups
+begin folded): the result is a list of its own, **Search**, the words stay in the field, the filters
+apply to it, and `Esc` goes back to the list you were in. Where nothing in the list matches, the page
+says so and offers the same search.
+
+<img src="docs/search.png" width="720" alt="linearpen: the result of a search, with its closed issues folded">
+
+Enter or `o` opens an
 issue beside the list (from the filter too), with its description, its comments, its cycle, its
 project and who has it, and the issues round it: its parent, its sub-issues and what it is tied to
 (blocks, blocked by, related, duplicate of), each a line that a press opens; Space scrolls it, and
@@ -223,10 +241,11 @@ or `Space` then presses.
 | `⇧M`                  | write a comment on the issue open (`⌘Enter` posts it, `Esc` leaves)  |
 | `⌘Enter`              | start the agent, or create the issue, in the form that is open       |
 | `g`                   | go to a list (`1` `2`: My issues, All issues; `3`-`9`: favorites)    |
-| `/`                   | filter                                                               |
+| `/`                   | filter by words (`⌘Enter`: search all of Linear)                     |
+| `f`, `⇧F`             | filter by status, priority, assignee, labels or project; clear them  |
 | `⌘R`                  | ask Linear again                                                     |
 | `⌘K`, `?`             | find a command, the card of keys                                     |
-| `Esc`                 | close what is on top: the form, the issue, the selection, the filter |
+| `Esc`                 | close what is on top: the form, the issue, the selection, the search |
 
 ## It writes three things
 

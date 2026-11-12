@@ -77,22 +77,56 @@ optional (`{}` asks for the list as it is). Params:
   to the person, the default), `"all"` (the open issues of the workspace; asked for when it is shown),
   or one of `"team"` (the open issues of a team), `"cycle"` (the issues of a team's cycle that runs),
   `"view"` (a saved view of issues), `"project"` (a project's open issues) and `"label"` (the open
-  issues with a label), which take the `id` of what they are of (the ids the topic's `catalog` tells).
-  `mine` and `all` take no `id`. Only the list shown and My issues are asked for: going to another
+  issues with a label), which take the `id` of what they are of (the ids the topic's `catalog` tells);
+  or `"search"`, which takes the words in `id` (at most 200 characters, no control character, trimmed)
+  and is what Linear finds for them in the whole workspace, closed issues too, up to 500, whose closed
+  groups begin folded. `mine` and `all` take no `id`. Only the list shown and My issues are asked for: going to another
   list lets go of the one left and asks Linear for the new one, and the topic tells it as `listing`
   `"loading"` until it comes. An `id` Linear does not know is not an error of the call: `listing` is `failed`
   and `error` has Linear's words. The old member `scope` is not taken.
+- `filters`: what Linear is asked to narrow the list by, as the person set it (all of it, or the call
+  does not set it; `[]` or `{}` is none). Each kind is a list of values, any of which lets an issue
+  through; the kinds are all required of it, and the list's own filter too (the open issues, so a
+  closed state finds something only in a search, which has no such filter). At most 50 values of a kind, each
+  at most 100 characters with no control character; anything else is `bad-params`.
+  - `status`: names of workflow states (`"In Progress"`), as `filter_options` tells them;
+  - `priority`: `"urgent"`, `"high"`, `"medium"`, `"low"` or `"none"`;
+  - `assignee`: `"me"`, `"none"` (no assignee) or Linear's id of a person;
+  - `labels`: names of labels;
+  - `project`: `"none"` (no project) or Linear's id of a project (the ids the `catalog` tells).
+
+  They are sent to Linear (`state.name in`, `priority in`, `assignee.isMe`, `assignee.id in`,
+  `assignee null`, `labels.some.name in`, `project.id in`, `project null`, "and"ed): a change of them
+  lets go of the list shown and asks for it again, for My issues too, which is held whole and counted.
+  They are not kept when the pen closes.
 - `filter`: the words typed, at most 200 characters. An issue is let through where they are in its
   title, its identifier or the name of a label, whatever the case. While it is not empty no group is
-  folded.
+  folded. A search does not take them: its words are the search's, which Linear matched.
 - `closed`: `{ "<group key>": true | false }`, the groups the person folded (`true`) or opened
   (`false`), at most 64; one not named is as it begins (`backlog` and `triage` folded). It replaces
   what the program held.
 - `seq`: the number of this call among the page's `view` calls, which grows with each. Calls run at
-  the same time and may be told out of their order: a member (`list`, `filter` or `closed`) that a
+  the same time and may be told out of their order: a member (`list`, `filters`, `filter` or `closed`) that a
   call with a higher `seq` has set is left as it is. A call with no `seq` is taken as the latest.
 
 Answer: the **list** (below).
+
+### `filter_options`
+
+What the filters of a list offer to choose from, asked of Linear once and kept until the lists are asked
+for again (`r`, the five minutes). The projects are not here: they are the `project` items of the
+topic's `catalog`. Params: none. Errors: `no-key`, `refused`, `unreachable`, `failed`.
+
+```json
+{ "states": [{ "name": "In Progress", "kind": "started" }],
+  "people": [{ "id": "u-ada", "name": "Ada", "me": true }],
+  "labels": [{ "name": "bug", "color": "#e5484d" }] }
+```
+
+`states` are the workflow states of every team by name (states of one name in several teams are one),
+in the order of Linear's own list (triage, backlog, unstarted, started, completed, canceled, then by
+position); `people` has the person first and the others by name; `labels` are by name, once each.
+At most 250 of each are asked for.
 
 ### `issue`
 
@@ -439,6 +473,7 @@ the lists came, asking failed). The same value `view` answers with.
 {
   "loaded": true, "refreshing": false, "error": null,
   "scope": "mine", "listId": null, "listing": "ready", "filter": "", "matched": 12,
+  "filters": { "status": [], "priority": [], "assignee": [], "labels": [], "project": [] },
   "counts": { "mine": 14, "mineCut": false, "shown": 14, "shownCut": false },
   "catalog": {
     "loaded": true, "error": null,
@@ -471,13 +506,14 @@ the lists came, asking failed). The same value `view` answers with.
   (`{ "kind", "message" }`, the kinds of the errors above). With `loaded` the lists are the last that
   came, and an `error` says that the last asking failed.
 - `refreshing`: Linear is being asked now.
-- `scope` is the kind of the list shown (`mine`, `all`, `team`, `cycle`, `view`, `project` or `label`)
-  and `listId` its id (null for `mine` and `all`).
+- `scope` is the kind of the list shown (`mine`, `all`, `team`, `cycle`, `view`, `project`, `label` or
+  `search`) and `listId` its id (null for `mine` and `all`; the words, for a `search`).
+- `filters`: what the lists are narrowed by in Linear, as `view` set it.
 - `listing`: whether the list shown has come: `ready`; `loading` (it is being asked for: `groups` is
   empty, and `counts.shown` is 0); or `failed` (Linear could not tell it: `error` says why, and
   `loaded` is still true because My issues came).
-- `counts`: how many open issues My issues holds (`mine`) and the list shown holds (`shown`),
-  unfiltered; `mineCut` and `shownCut` say there are more than the 500 the program takes of a list,
+- `counts`: how many open issues My issues holds (`mine`, whole) and the list shown holds (`shown`, as
+  `filters` narrow it, a search's closed issues too; not by the words of `filter`); `mineCut` and `shownCut` say there are more than the 500 the program takes of a list,
   the 500 that changed last.
 - `catalog`: the lists the page can go to besides My issues and All issues, as Linear last said them.
   `loaded` is false until the first answer, and `error` says why one could not come (the lists of

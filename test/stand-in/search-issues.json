@@ -1,0 +1,236 @@
+{
+  "data": {
+    "viewer": {
+      "id": "user-1",
+      "name": "Ada",
+      "organization": {
+        "name": "Acme",
+        "urlKey": "acme"
+      }
+    },
+    "searchIssues": {
+      "nodes": [
+        {
+          "id": "issue-405",
+          "identifier": "ACM-405",
+          "title": "Webhook retries ignore the backoff setting",
+          "priority": 2.0,
+          "updatedAt": "2026-11-06T09:00:00.000Z",
+          "url": "https://linear.app/acme/issue/ACM-405/webhook-retries-ignore-the-backoff-setting",
+          "branchName": "ada/acm-405-webhook-retries-ignore-the-backoff-setting",
+          "state": {
+            "id": "s-prog",
+            "name": "In Progress",
+            "type": "started",
+            "position": 2.0
+          },
+          "labels": {
+            "nodes": [
+              {
+                "id": "l-bug",
+                "name": "bug",
+                "color": "#e5484d"
+              },
+              {
+                "id": "l-api",
+                "name": "api",
+                "color": "#4c8dd9"
+              }
+            ]
+          },
+          "team": {
+            "id": "team-acm",
+            "key": "ACM"
+          },
+          "cycle": null,
+          "project": null,
+          "assignee": {
+            "id": "u-ada",
+            "displayName": "Ada",
+            "isMe": true
+          }
+        },
+        {
+          "id": "issue-421",
+          "identifier": "ACM-421",
+          "title": "Document the webhook signature",
+          "priority": 3.0,
+          "updatedAt": "2026-11-08T09:00:00.000Z",
+          "url": "https://linear.app/acme/issue/ACM-421/document-the-webhook-signature",
+          "branchName": "ada/acm-421-document-the-webhook-signature",
+          "state": {
+            "id": "s-todo",
+            "name": "Todo",
+            "type": "unstarted",
+            "position": 1.0
+          },
+          "labels": {
+            "nodes": [
+              {
+                "id": "l-docs",
+                "name": "docs",
+                "color": "#4cb7a5"
+              }
+            ]
+          },
+          "team": {
+            "id": "team-acm",
+            "key": "ACM"
+          },
+          "cycle": null,
+          "project": null,
+          "assignee": {
+            "id": "u-deniz",
+            "displayName": "Deniz",
+            "isMe": false
+          }
+        },
+        {
+          "id": "issue-190-web",
+          "identifier": "WEB-190",
+          "title": "Show the webhook signature secret once, then hide it",
+          "priority": 3.0,
+          "updatedAt": "2026-11-03T09:00:00.000Z",
+          "url": "https://linear.app/acme/issue/WEB-190/show-the-webhook-signature-secret-once-then-hide-it",
+          "branchName": "ada/web-190-show-the-webhook-signature-secret-once-then-hide-it",
+          "state": {
+            "id": "s-todo",
+            "name": "Todo",
+            "type": "unstarted",
+            "position": 1.0
+          },
+          "labels": {
+            "nodes": [
+              {
+                "id": "l-web",
+                "name": "web",
+                "color": "#a78bda"
+              },
+              {
+                "id": "l-sec",
+                "name": "security",
+                "color": "#4cb782"
+              }
+            ]
+          },
+          "team": {
+            "id": "team-web",
+            "key": "WEB"
+          },
+          "cycle": null,
+          "project": null,
+          "assignee": {
+            "id": "u-ada",
+            "displayName": "Ada",
+            "isMe": true
+          }
+        },
+        {
+          "id": "issue-64-ops",
+          "identifier": "OPS-64",
+          "title": "Rotate the webhook signature keys every 90 days",
+          "priority": 4.0,
+          "updatedAt": "2026-10-30T09:00:00.000Z",
+          "url": "https://linear.app/acme/issue/OPS-64/rotate-the-webhook-signature-keys-every-90-days",
+          "branchName": "ada/ops-64-rotate-the-webhook-signature-keys-every-90-days",
+          "state": {
+            "id": "s-todo",
+            "name": "Todo",
+            "type": "unstarted",
+            "position": 1.0
+          },
+          "labels": {
+            "nodes": [
+              {
+                "id": "l-sec",
+                "name": "security",
+                "color": "#4cb782"
+              }
+            ]
+          },
+          "team": {
+            "id": "team-ops",
+            "key": "OPS"
+          },
+          "cycle": null,
+          "project": null,
+          "assignee": null
+        },
+        {
+          "id": "issue-366",
+          "identifier": "ACM-366",
+          "title": "Verify webhook signatures in the sandbox",
+          "priority": 3.0,
+          "updatedAt": "2026-10-21T09:00:00.000Z",
+          "url": "https://linear.app/acme/issue/ACM-366/verify-webhook-signatures-in-the-sandbox",
+          "branchName": "ada/acm-366-verify-webhook-signatures-in-the-sandbox",
+          "state": {
+            "id": "s-done",
+            "name": "Done",
+            "type": "completed",
+            "position": 4.0
+          },
+          "labels": {
+            "nodes": [
+              {
+                "id": "l-api",
+                "name": "api",
+                "color": "#4c8dd9"
+              }
+            ]
+          },
+          "team": {
+            "id": "team-acm",
+            "key": "ACM"
+          },
+          "cycle": null,
+          "project": null,
+          "assignee": {
+            "id": "u-ada",
+            "displayName": "Ada",
+            "isMe": true
+          }
+        },
+        {
+          "id": "issue-359",
+          "identifier": "ACM-359",
+          "title": "Document the webhook retry policy",
+          "priority": 4.0,
+          "updatedAt": "2026-10-12T09:00:00.000Z",
+          "url": "https://linear.app/acme/issue/ACM-359/document-the-webhook-retry-policy",
+          "branchName": "ada/acm-359-document-the-webhook-retry-policy",
+          "state": {
+            "id": "s-done",
+            "name": "Done",
+            "type": "completed",
+            "position": 4.0
+          },
+          "labels": {
+            "nodes": [
+              {
+                "id": "l-docs",
+                "name": "docs",
+                "color": "#4cb7a5"
+              }
+            ]
+          },
+          "team": {
+            "id": "team-acm",
+            "key": "ACM"
+          },
+          "cycle": null,
+          "project": null,
+          "assignee": {
+            "id": "u-deniz",
+            "displayName": "Deniz",
+            "isMe": false
+          }
+        }
+      ],
+      "pageInfo": {
+        "hasNextPage": false,
+        "endCursor": null
+      }
+    }
+  }
+}

@@ -21,7 +21,7 @@ local OWN = {
 }
 
 -- What a list of the program's says of what it is.
-local KINDS = { view = "View", project = "Project", team = "Team", label = "Label", cycle = "Cycle" }
+local KINDS = { view = "View", project = "Project", team = "Team", label = "Label", cycle = "Cycle", search = "Search" }
 
 local function hint_of(item)
 	if item.kind == "cycle" and item.cycle ~= nil then

@@ -121,12 +121,25 @@ function screens.empty()
 	return centered(card)
 end
 
--- The list has no line: the filter let nothing through, or there is nothing open.
-function screens.nothing(filter)
+-- The list has no line: what Linear found, the words of the field or the filters let nothing through, or
+-- there is nothing open. `o`: `words` (the field's), `search` (the list is a search), `narrowed` (filters
+-- are set).
+function screens.nothing(o)
 	local card = b.div():col():items_center():gap(6)
-	card:child(b.text(filter ~= "" and "No issue matches" or "No open issues"):text_size(15):weight(700))
-	if filter ~= "" then
-		card:child(b.text(filter):color("dim"):truncate():max_w(420))
+	if o.search then
+		card:child(b.text("Nothing found"):text_size(15):weight(700))
+		card:child(b.text(o.words):color("dim"):truncate():max_w(420))
+	elseif o.words ~= "" then
+		-- The words match nothing held: all of Linear is the next place to look.
+		card:child(b.text("Nothing in " .. lists.name() .. " matches"):text_size(15):weight(700):truncate():max_w(520))
+		card:child(b.div():mt(6):child(kit.button("search-all", "Search all of Linear", {
+			suffix = commands.label("search"),
+			tip = "Search the whole workspace for these words, closed issues too",
+		})))
+	elseif o.narrowed then
+		card:child(b.text("Nothing in " .. lists.name() .. " matches the filters"):text_size(15):weight(700):truncate():max_w(520))
+	else
+		card:child(b.text("No open issues"):text_size(15):weight(700))
 	end
 	return centered(card)
 end

@@ -10,11 +10,12 @@ use super::issue::check_id;
 use super::issues::{Snapshot, snapshot};
 use super::work::{Remembered, remembered};
 use super::{Failure, call};
-use crate::linear::{self, Key, Scope};
+use crate::linear::{self, Filters, Key, Scope};
 use crate::session::Session;
 use crate::state::credentials::{self, Source};
 
-/// The longest filter taken, in characters, and the most groups folded one way or the other.
+/// The longest filter (or the longest words of a search) taken, in characters, and the most groups
+/// folded one way or the other.
 const FILTER_MOST: usize = 200;
 const CLOSED_MOST: usize = 64;
 
@@ -98,14 +99,32 @@ fn connect(session: &Session, params: Connect) -> Result<Connected, Failure> {
 #[serde(deny_unknown_fields)]
 struct ViewParams {
     list: Option<ListParams>,
+    /// What Linear narrows the list by; all of it, or the call does not set it.
+    filters: Option<FiltersParams>,
     filter: Option<String>,
     closed: Option<HashMap<String, bool>>,
     /// The number of this call among the page's `view` calls.
     seq: Option<u64>,
 }
 
-/// A list, by what it is (`mine`, `all`, `team`, `cycle`, `view`, `project`, `label`) and, for the
-/// ones that are of something, Linear's id of it.
+/// What the lists are narrowed by: each kind is a list of values (none: it does not narrow).
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FiltersParams {
+    #[serde(default)]
+    status: Vec<String>,
+    #[serde(default)]
+    priority: Vec<String>,
+    #[serde(default)]
+    assignee: Vec<String>,
+    #[serde(default)]
+    labels: Vec<String>,
+    #[serde(default)]
+    project: Vec<String>,
+}
+
+/// A list, by what it is (`mine`, `all`, `team`, `cycle`, `view`, `project`, `label`, `search`) and,
+/// for the ones that are of something, Linear's id of it (for a search, the words).
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ListParams {
@@ -117,15 +136,40 @@ fn view(session: &Session, params: ViewParams) -> Result<Snapshot, Failure> {
     let scope = match params.list {
         None => None,
         Some(list) => {
-            if let Some(id) = &list.id {
+            if list.kind == "search" {
+                // The words are not an id: any words, but not too long, and not a control character.
+                if let Some(words) = &list.id
+                    && (words.trim().is_empty()
+                        || words.chars().count() > FILTER_MOST
+                        || words.chars().any(char::is_control))
+                {
+                    return Err(Failure::BadParams(format!(
+                        "a search is for up to {FILTER_MOST} characters of words"
+                    )));
+                }
+            } else if let Some(id) = &list.id {
                 check_id(id)?;
             }
-            Some(Scope::of(&list.kind, list.id.as_deref()).ok_or_else(|| {
+            let id = list.id.as_deref().map(str::trim);
+            Some(Scope::of(&list.kind, id).ok_or_else(|| {
                 Failure::BadParams(
-                    "list is { kind, id }: \"mine\" or \"all\" with no id, or \"team\", \"cycle\", \"view\", \"project\" or \"label\" with the id of one".to_owned(),
+                    "list is { kind, id }: \"mine\" or \"all\" with no id, or \"team\", \"cycle\", \"view\", \"project\" or \"label\" with the id of one, or \"search\" with the words".to_owned(),
                 )
             })?)
         }
+    };
+    let filters = match params.filters {
+        None => None,
+        Some(given) => Some(
+            Filters::new(
+                given.status,
+                given.priority,
+                given.assignee,
+                given.labels,
+                given.project,
+            )
+            .map_err(|why| Failure::BadParams(why.0))?,
+        ),
     };
     if params
         .filter
@@ -145,7 +189,7 @@ fn view(session: &Session, params: ViewParams) -> Result<Snapshot, Failure> {
             "closed names at most {CLOSED_MOST} groups"
         )));
     }
-    session.set_view(params.seq, scope, params.filter, params.closed);
+    session.set_view(params.seq, scope, filters, params.filter, params.closed);
     Ok(snapshot(&session.state()))
 }
 

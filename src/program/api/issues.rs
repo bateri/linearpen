@@ -10,7 +10,7 @@ use std::time::Duration;
 use pencere::{Options, ViewError};
 use serde::Serialize;
 
-use crate::linear::{Entry, Issue, Scope, plain};
+use crate::linear::{Entry, Filters, Issue, Scope, plain};
 use crate::model::filter::Filter;
 use crate::model::groups::{Group, group};
 use crate::model::time::short_date;
@@ -177,6 +177,30 @@ fn item(entry: &Entry) -> ItemMessage {
     }
 }
 
+/// What the lists are narrowed by in Linear, as the page set it: the status names, the priorities
+/// (`urgent` to `none`), the assignees (`me`, `none`, or Linear's id of a person), the label names
+/// and the projects (`none`, or Linear's id).
+#[derive(Debug, Serialize)]
+pub struct FiltersMessage {
+    pub status: Vec<String>,
+    pub priority: Vec<String>,
+    pub assignee: Vec<String>,
+    pub labels: Vec<String>,
+    pub project: Vec<String>,
+}
+
+impl From<&Filters> for FiltersMessage {
+    fn from(filters: &Filters) -> Self {
+        Self {
+            status: filters.status.clone(),
+            priority: filters.priority.clone(),
+            assignee: filters.assignee.clone(),
+            labels: filters.labels.clone(),
+            project: filters.project.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 pub struct WorkingMessage {
     /// The name of the agent the issue was handed to.
@@ -192,13 +216,17 @@ pub struct Snapshot {
     /// Linear is being asked now.
     pub refreshing: bool,
     pub error: Option<ErrorMessage>,
-    /// Which list the page looks at: `mine`, `all`, `team`, `cycle`, `view`, `project` or `label`;
-    /// and Linear's id of it, for the ones that have one.
+    /// Which list the page looks at: `mine`, `all`, `team`, `cycle`, `view`, `project`, `label` or
+    /// `search`; and Linear's id of it, for the ones that have one (the words, for a search).
     pub scope: &'static str,
     #[serde(rename = "listId")]
     pub list_id: Option<String>,
     /// Whether that list has come: `ready`, `loading` (it is being asked for) or `failed`.
     pub listing: &'static str,
+    /// What Linear narrows the list by.
+    pub filters: FiltersMessage,
+    /// The words the person typed in the field. Of a search they are the words of the search, and
+    /// do not narrow what it found.
     pub filter: String,
     pub counts: Counts,
     /// How many issues of the scope the filter lets through.
@@ -250,10 +278,18 @@ fn key_of(group: &Group<'_>) -> String {
 /// What the page is to draw, from `state`.
 pub fn snapshot(state: &State) -> Snapshot {
     let scope = &state.view.scope;
-    let filter = Filter::new(&state.view.filter);
+    // The words of a search were sent to Linear, whose ranking is not a text match: nothing found is
+    // let go of for not having them.
+    let filter = match scope {
+        Scope::Search(_) => Filter::new(""),
+        _ => Filter::new(&state.view.filter),
+    };
     let mut groups = Vec::new();
     let mut matched = 0;
-    let held = state.lists.as_ref().and_then(|lists| lists.of(scope));
+    let held = state
+        .lists
+        .as_ref()
+        .and_then(|lists| lists.of(scope, &state.view.filters));
     if let Some(listing) = held {
         for found in group(&listing.issues, &filter) {
             let key = key_of(&found);
@@ -325,6 +361,7 @@ pub fn snapshot(state: &State) -> Snapshot {
         scope: scope.kind(),
         list_id: scope.id().map(str::to_owned),
         listing,
+        filters: FiltersMessage::from(&state.view.filters),
         filter: state.view.filter.clone(),
         counts,
         matched,

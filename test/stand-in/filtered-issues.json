@@ -1,0 +1,205 @@
+{
+  "data": {
+    "viewer": {
+      "id": "user-1",
+      "name": "Ada",
+      "organization": {
+        "name": "Acme",
+        "urlKey": "acme"
+      }
+    },
+    "issues": {
+      "nodes": [
+        {
+          "id": "issue-431",
+          "identifier": "ACM-431",
+          "title": "Retry storm after a 502 from the card processor",
+          "priority": 1.0,
+          "updatedAt": "2026-11-10T14:20:00.000Z",
+          "url": "https://linear.app/acme/issue/ACM-431/retry-storm-after-a-502-from-the-card-processor",
+          "branchName": "ada/acm-431-retry-storm-after-a-502-from-the-card-processor",
+          "state": {
+            "id": "s-prog",
+            "name": "In Progress",
+            "type": "started",
+            "position": 2.0
+          },
+          "labels": {
+            "nodes": [
+              {
+                "id": "l-bug",
+                "name": "bug",
+                "color": "#e5484d"
+              }
+            ]
+          },
+          "team": {
+            "id": "team-acm",
+            "key": "ACM"
+          },
+          "cycle": null,
+          "project": null,
+          "assignee": {
+            "id": "u-deniz",
+            "displayName": "Deniz",
+            "isMe": false
+          }
+        },
+        {
+          "id": "issue-208-web",
+          "identifier": "WEB-208",
+          "title": "Checkout button stays disabled after a failed card",
+          "priority": 2.0,
+          "updatedAt": "2026-11-09T11:00:00.000Z",
+          "url": "https://linear.app/acme/issue/WEB-208/checkout-button-stays-disabled-after-a-failed-card",
+          "branchName": "ada/web-208-checkout-button-stays-disabled-after-a-failed-card",
+          "state": {
+            "id": "s-prog",
+            "name": "In Progress",
+            "type": "started",
+            "position": 2.0
+          },
+          "labels": {
+            "nodes": [
+              {
+                "id": "l-bug",
+                "name": "bug",
+                "color": "#e5484d"
+              },
+              {
+                "id": "l-web",
+                "name": "web",
+                "color": "#a78bda"
+              }
+            ]
+          },
+          "team": {
+            "id": "team-web",
+            "key": "WEB"
+          },
+          "cycle": null,
+          "project": null,
+          "assignee": {
+            "id": "u-deniz",
+            "displayName": "Deniz",
+            "isMe": false
+          }
+        },
+        {
+          "id": "issue-423",
+          "identifier": "ACM-423",
+          "title": "Rate limit headers are missing on 304",
+          "priority": 2.0,
+          "updatedAt": "2026-11-10T09:10:00.000Z",
+          "url": "https://linear.app/acme/issue/ACM-423/rate-limit-headers-are-missing-on-304",
+          "branchName": "ada/acm-423-rate-limit-headers-are-missing-on-304",
+          "state": {
+            "id": "s-todo",
+            "name": "Todo",
+            "type": "unstarted",
+            "position": 1.0
+          },
+          "labels": {
+            "nodes": [
+              {
+                "id": "l-bug",
+                "name": "bug",
+                "color": "#e5484d"
+              },
+              {
+                "id": "l-api",
+                "name": "api",
+                "color": "#4c8dd9"
+              }
+            ]
+          },
+          "team": {
+            "id": "team-acm",
+            "key": "ACM"
+          },
+          "cycle": null,
+          "project": null,
+          "assignee": {
+            "id": "u-deniz",
+            "displayName": "Deniz",
+            "isMe": false
+          }
+        },
+        {
+          "id": "issue-77-mob",
+          "identifier": "MOB-77",
+          "title": "Crash on resume when the session expired",
+          "priority": 2.0,
+          "updatedAt": "2026-11-08T16:40:00.000Z",
+          "url": "https://linear.app/acme/issue/MOB-77/crash-on-resume-when-the-session-expired",
+          "branchName": "ada/mob-77-crash-on-resume-when-the-session-expired",
+          "state": {
+            "id": "s-todo",
+            "name": "Todo",
+            "type": "unstarted",
+            "position": 1.0
+          },
+          "labels": {
+            "nodes": [
+              {
+                "id": "l-bug",
+                "name": "bug",
+                "color": "#e5484d"
+              }
+            ]
+          },
+          "team": {
+            "id": "team-mob",
+            "key": "MOB"
+          },
+          "cycle": null,
+          "project": null,
+          "assignee": {
+            "id": "u-deniz",
+            "displayName": "Deniz",
+            "isMe": false
+          }
+        },
+        {
+          "id": "issue-419",
+          "identifier": "ACM-419",
+          "title": "Pagination skips a row when two issues share a timestamp",
+          "priority": 3.0,
+          "updatedAt": "2026-11-07T10:00:00.000Z",
+          "url": "https://linear.app/acme/issue/ACM-419/pagination-skips-a-row-when-two-issues-share-a-timestamp",
+          "branchName": "ada/acm-419-pagination-skips-a-row-when-two-issues-share-a-timestamp",
+          "state": {
+            "id": "s-todo",
+            "name": "Todo",
+            "type": "unstarted",
+            "position": 1.0
+          },
+          "labels": {
+            "nodes": [
+              {
+                "id": "l-bug",
+                "name": "bug",
+                "color": "#e5484d"
+              }
+            ]
+          },
+          "team": {
+            "id": "team-acm",
+            "key": "ACM"
+          },
+          "cycle": null,
+          "project": null,
+          "assignee": {
+            "id": "u-deniz",
+            "displayName": "Deniz",
+            "isMe": false
+          }
+        }
+      ],
+      "pageInfo": {
+        "hasNextPage": false,
+        "endCursor": null
+      }
+    }
+  }
+}

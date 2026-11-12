@@ -4,6 +4,20 @@
 
 ### Added
 
+- **Filters and search.** `f` opens a row of five filters under the head (Status, Priority, Assignee,
+  Labels, Project): the keyboard is on the first chip, `Tab` goes on, `Enter` opens its menu (the states
+  by name, the people with you first, `No assignee`, the labels, the projects, `No project`), each pick
+  adds a value or takes it away, so a chip holds several (any of them) and the chips together are all
+  required. With the keyboard back on the list only the chips that are set stay, with `Clear filters`
+  (`Shift F`); with none set there is no row. Linear does the narrowing (`state.name in`, `priority in`,
+  `assignee.isMe`, `assignee.id in`, `assignee null`, `labels.some.name in`, `project.id in`,
+  `project null`), put with the list's own filter, in every list; they are forgotten when the pen
+  closes. While you type in the filter field, `Cmd Enter` searches all of Linear (`searchIssues`:
+  the whole workspace, closed issues too, up to 500, closed groups folded): the result is the list
+  **Search**, the words stay in the field, the filters apply, and `Esc` goes back to the list you were
+  in. Where nothing in the list matches, the page says `Nothing in <list> matches` and has a button for
+  the same search. `view` takes `filters` and `list: { kind: "search", id: <words> }`, `filter_options`
+  tells what the menus offer, and the topic tells `filters` (`docs/calls.md`). Both read only.
 - **Lists.** The card of lists (`g`, or the list button) goes to more than My issues and All issues:
   what you starred in Linear (the keys `3` to `9` for the first seven), the open issues and the running
   cycle of the teams you are in (in the order of your own list of teams), saved views of issues and projects, each line saying which it is. Typing finds

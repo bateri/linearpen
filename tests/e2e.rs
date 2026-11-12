@@ -316,6 +316,212 @@ fn a_list_stops_at_five_hundred_and_says_it_was_cut() {
     assert_eq!(cut["counts"]["mineCut"], false);
 }
 
+/// What a request of the stand-in `curl` asked, with the quotes of the configuration undone: the
+/// JSON of the body, as it was sent.
+fn sent(call: &common::Call) -> String {
+    call.stdin.replace("\\\"", "\"")
+}
+
+#[test]
+fn the_filters_go_to_linear_in_the_shapes_it_takes_and_with_the_lists_own_filter() {
+    let home = Home::new();
+    let log = home.record(
+        &keyed()
+            .call(
+                "view",
+                json!({ "list": { "kind": "all" }, "filters": {
+                    "priority": ["urgent", "high"],
+                    "assignee": ["me", "u-deniz", "none"],
+                    "labels": ["bug"],
+                    "project": ["proj-billing", "none"],
+                } }),
+            )
+            .host_args(&["--subscribe", "issues"])
+            .then(&["--then", "wait"])
+            .limit(6),
+    );
+    let told = pushes(&log);
+    let ready = told
+        .iter()
+        .find(|list| list["listing"] == "ready" && list["scope"] == "all")
+        .unwrap_or_else(|| panic!("the list came: {told:?}\n{log}"));
+    // What the lists are narrowed by is told back, as it was set.
+    assert_eq!(ready["filters"]["labels"], json!(["bug"]));
+    assert_eq!(ready["filters"]["status"], json!([]));
+    let asked = asked_of(&home, "AllIssues");
+    assert_eq!(asked.len(), 1, "{:?}", home.calls());
+    let body = sent(&asked[0]);
+    // The open issues, and each kind of filter, "and"ed; the values of a kind are any of them.
+    for shape in [
+        r#""filter":{"and":[{"state":{"type":{"nin":["completed","canceled"]}}},{"priority":{"in":[1,2]}},"#,
+        r#"{"or":[{"assignee":{"isMe":{"eq":true}}},{"assignee":{"id":{"in":["u-deniz"]}}},{"assignee":{"null":true}}]}"#,
+        r#"{"labels":{"some":{"name":{"in":["bug"]}}}}"#,
+        r#"{"or":[{"project":{"id":{"in":["proj-billing"]}}},{"project":{"null":true}}]}]}"#,
+    ] {
+        assert!(body.contains(shape), "{shape}\n{body}");
+    }
+    // My issues, which is counted, is asked for with no filter of the person's.
+    let mine = sent(&asked_of(&home, "MyIssues")[0]);
+    assert!(
+        mine.contains(r#""filter":{"state":{"type":{"nin":["completed","canceled"]}}}"#),
+        "{mine}"
+    );
+    // A status asked for is "and"ed with the open filter, as the others are.
+    let home = Home::new();
+    let log = home.record(
+        &keyed()
+            .call(
+                "view",
+                json!({ "list": { "kind": "team", "id": "team-acm" }, "filters": { "status": ["Done", "Todo"] } }),
+            )
+            .host_args(&["--subscribe", "issues"])
+            .then(&["--then", "wait"])
+            .limit(6),
+    );
+    assert!(
+        pushes(&log).iter().any(|list| list["listing"] == "ready"),
+        "{log}"
+    );
+    let body = sent(&asked_of(&home, "TeamIssues")[0]);
+    assert!(
+        body.contains(
+            r#""filter":{"and":[{"state":{"type":{"nin":["completed","canceled"]}}},{"state":{"name":{"in":["Done","Todo"]}}}]}"#
+        ),
+        "{body}"
+    );
+    for call in home.calls() {
+        assert!(!call.stdin.to_lowercase().contains("mutation"));
+    }
+}
+
+#[test]
+fn a_search_asks_for_the_words_in_the_whole_workspace_closed_issues_too_and_the_closed_groups_are_folded()
+ {
+    let home = Home::new();
+    let log = home.record(
+        &keyed()
+            .call(
+                "view",
+                json!({ "list": { "kind": "search", "id": "webhook signature" }, "filters": { "labels": ["bug"] } }),
+            )
+            .host_args(&["--subscribe", "issues"])
+            .then(&["--then", "wait"])
+            .limit(6),
+    );
+    let answer = answers(&log);
+    assert_eq!(answer[0].result()["scope"], "search");
+    assert_eq!(answer[0].result()["listId"], "webhook signature");
+    let told = pushes(&log);
+    let ready = told
+        .iter()
+        .find(|list| list["listing"] == "ready" && list["scope"] == "search")
+        .unwrap_or_else(|| panic!("the search came: {told:?}\n{log}"));
+    assert_eq!(ready["counts"]["shown"], 6);
+    let groups = ready["groups"].as_array().unwrap();
+    let done = groups.iter().find(|group| group["name"] == "Done").unwrap();
+    assert_eq!(done["count"], 2);
+    assert_eq!(done["closed"], true);
+    assert!(done["rows"].as_array().unwrap().is_empty());
+    // Only the search is asked for, with the person's filters and no filter for the open issues; each
+    // question is a read.
+    let asked = asked_of(&home, "SearchIssues");
+    assert_eq!(asked.len(), 1, "{:?}", home.calls());
+    let body = sent(&asked[0]);
+    assert!(body.contains(r#""term":"webhook signature""#), "{body}");
+    assert!(
+        body.contains(r#""filter":{"labels":{"some":{"name":{"in":["bug"]}}}}"#),
+        "{body}"
+    );
+    assert!(!body.contains("completed"), "{body}");
+    assert!(asked_of(&home, "AllIssues").is_empty());
+    for call in home.calls() {
+        assert!(!call.stdin.to_lowercase().contains("mutation"));
+    }
+}
+
+#[test]
+fn the_view_call_refuses_filters_and_words_that_are_not_what_it_takes() {
+    let home = Home::new();
+    let many: Vec<String> = (0..51).map(|n| format!("label {n}")).collect();
+    let heard = home.ask(
+        &keyed()
+            .call("view", json!({ "filters": { "priority": ["soon"] } }))
+            .call("view", json!({ "filters": { "assignee": ["a b"] } }))
+            .call("view", json!({ "filters": { "labels": many } }))
+            .call("view", json!({ "filters": { "speed": ["fast"] } }))
+            .call("view", json!({ "filters": { "status": ["In\nProgress"] } }))
+            .call("view", json!({ "list": { "kind": "search" } }))
+            .call("view", json!({ "list": { "kind": "search", "id": "   " } }))
+            .call(
+                "view",
+                json!({ "list": { "kind": "search", "id": "a\u{7}b" } }),
+            )
+            .call(
+                "view",
+                json!({ "list": { "kind": "search", "id": "x".repeat(201) } }),
+            )
+            // No filter at all is an empty list of them, which is what a page that has none sends.
+            .call("view", json!({ "filters": [] }))
+            .call(
+                "view",
+                json!({ "list": { "kind": "search", "id": "  two words " } }),
+            ),
+    );
+    for refused in &heard[..9] {
+        assert!(refused.failed("bad-params"), "{refused:?}");
+    }
+    assert_eq!(heard[9].result()["filters"]["labels"], json!([]));
+    // The words are taken as they are without the space around them.
+    assert_eq!(heard[10].result()["listId"], "two words");
+}
+
+#[test]
+fn the_filter_options_call_tells_the_states_by_name_the_people_with_the_person_first_and_the_labels()
+ {
+    let home = Home::new();
+    let heard = home.ask(
+        &keyed()
+            .call("filter_options", json!({}))
+            .call("filter_options", json!({ "team": "team-acm" })),
+    );
+    let options = heard[0].result();
+    let names = |kind: &str, key: &str| -> Vec<String> {
+        options[kind]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|entry| entry[key].as_str().unwrap().to_owned())
+            .collect()
+    };
+    // The states of two teams by the same names are one each, in the order of Linear's own list.
+    assert_eq!(
+        names("states", "name"),
+        [
+            "Backlog",
+            "Todo",
+            "In Progress",
+            "In Review",
+            "Done",
+            "Canceled",
+            "Duplicate"
+        ]
+    );
+    assert_eq!(options["states"][2]["kind"], "started");
+    assert_eq!(names("people", "name"), ["Ada", "Deniz", "Mert"]);
+    assert_eq!(options["people"][0]["me"], true);
+    assert_eq!(
+        names("labels", "name"),
+        ["api", "bug", "docs", "infra", "perf", "security", "web"]
+    );
+    // It takes no params.
+    assert!(heard[1].failed("bad-params"), "{:?}", heard[1]);
+    assert_eq!(
+        asked_of(&home, "FilterOptions").len(),
+        1,
+        "the options are asked for once and kept"
+    );
+}
+
 #[test]
 fn the_issue_call_brings_the_description_and_the_comments_oldest_first() {
     let home = Home::new();

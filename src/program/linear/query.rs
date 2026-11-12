@@ -106,6 +106,19 @@ pub const ALL_ISSUES: Operation = Operation {
     ),
 };
 
+/// What a search for some words finds: issues of the whole workspace, the closed ones too, as
+/// Linear ranks them. The words are a variable, like everything the person typed.
+pub const SEARCH_ISSUES: Operation = Operation {
+    name: "SearchIssues",
+    text: concat!(
+        "query SearchIssues($term: String!, $first: Int!, $after: String, $filter: IssueFilter) { viewer { ",
+        viewer_fields!(),
+        " } searchIssues(term: $term, first: $first, after: $after, filter: $filter) { nodes { ",
+        issue_fields!(),
+        " } pageInfo { hasNextPage endCursor } } }"
+    ),
+};
+
 /// The open issues of one thing that has some (a team, a cycle, a view, a project, a label), asked
 /// for by its id: the id is a variable, and what the issues are of is the one thing that differs.
 macro_rules! issues_of {
@@ -174,6 +187,15 @@ pub const LIST_PROJECTS: Operation = Operation {
     text: "query ListProjects($first: Int!, $after: String, $filter: ProjectFilter) { \
            projects(first: $first, after: $after, filter: $filter) { nodes { id name } \
            pageInfo { hasNextPage endCursor } } }",
+};
+
+/// What the filters of a list offer to choose from: the states (by name), the people and the labels.
+/// The projects are the ones of the lists a person can go to.
+pub const FILTER_OPTIONS: Operation = Operation {
+    name: "FilterOptions",
+    text: "query FilterOptions { workflowStates(first: 250) { nodes { name type position } } \
+           users(first: 250) { nodes { id displayName isMe } } \
+           issueLabels(first: 250) { nodes { name color } } }",
 };
 
 /// An issue another issue is tied to, as much as names it and opens it.
@@ -257,10 +279,11 @@ pub const COMMENT_CREATE: Operation = Operation {
 
 /// Every operation there is, for the test that scans for a `mutation`.
 #[cfg(test)]
-pub const ALL: [Operation; 18] = [
+pub const ALL: [Operation; 20] = [
     VERIFY,
     MY_ISSUES,
     ALL_ISSUES,
+    SEARCH_ISSUES,
     TEAM_ISSUES,
     CYCLE_ISSUES,
     VIEW_ISSUES,
@@ -270,6 +293,7 @@ pub const ALL: [Operation; 18] = [
     LIST_TEAMS,
     LIST_VIEWS,
     LIST_PROJECTS,
+    FILTER_OPTIONS,
     ISSUE,
     NEW_ISSUE_TEAMS,
     NEW_ISSUE_OPTIONS,
@@ -309,12 +333,21 @@ pub struct Batch<'a> {
     pub input: super::change::Input<'a>,
 }
 
-/// The variables of a page of issues.
+/// The variables of a page of issues: the filter is Linear's `IssueFilter` (`Filters::to_value`),
+/// `null` where there is none.
 #[derive(Debug, Serialize)]
 pub struct Page<'a> {
     pub first: u32,
     pub after: Option<&'a str>,
-    pub filter: Filter,
+    pub filter: serde_json::Value,
+}
+
+/// The variables of a page of the issues a search finds: the words, and the page.
+#[derive(Debug, Serialize)]
+pub struct Searched<'a> {
+    pub term: &'a str,
+    #[serde(flatten)]
+    pub page: Page<'a>,
 }
 
 /// The variables of a page of the issues of one thing that has some: its id, and the page.
@@ -333,36 +366,6 @@ pub struct Named<'a> {
     pub after: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub filter: Option<serde_json::Value>,
-}
-
-/// The issues that are still open: not completed and not canceled.
-#[derive(Debug, Serialize)]
-pub struct Filter {
-    pub state: StateFilter,
-}
-
-#[derive(Debug, Serialize)]
-pub struct StateFilter {
-    #[serde(rename = "type")]
-    pub kind: TypeFilter,
-}
-
-#[derive(Debug, Serialize)]
-pub struct TypeFilter {
-    pub nin: [&'static str; 2],
-}
-
-impl Filter {
-    #[must_use]
-    pub fn open() -> Self {
-        Self {
-            state: StateFilter {
-                kind: TypeFilter {
-                    nin: ["completed", "canceled"],
-                },
-            },
-        }
-    }
 }
 
 #[cfg(test)]
@@ -487,7 +490,7 @@ mod tests {
         let page = Page {
             first: 100,
             after: None,
-            filter: Filter::open(),
+            filter: crate::linear::Filters::default().to_value(true),
         };
         assert_eq!(
             serde_json::to_string(&page).unwrap(),
