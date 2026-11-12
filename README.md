@@ -310,9 +310,11 @@ reach `git` before `git check-ref-format` has passed it, and no text of Linear g
 ## Work on it
 
 You need Rust and git. linearpen is built and tested with [pencere](https://github.com/bateri/pencere)
-at the commit its `Cargo.lock` names, which `make` fetches into `.cache/pencere` and builds there:
-`make fake-host` the stand-in terminal the tests play linearpen in, and `make dev` the `pencere`
-command that runs the page in a pane.
+at the commit its `Cargo.lock` names, which `make` fetches into `~/.cache/pencere-build/<commit>`
+(`make pencere-dir` says where; `PENCERE_HOME` moves it) and builds there: `make fake-host` the
+stand-in terminal the tests play linearpen in, and `make dev` the `pencere` command that runs the
+page in a pane. Every pen and every worktree built on the same commit shares that one checkout and
+its build.
 
 ```sh
 make fake-host      # the stand-in terminal, built once (and again when Cargo.lock moves pencere)
