@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-12
+
 ### Added
 
 - **Filters and search.** `f` opens a row of five filters under the head (Status, Priority, Assignee,
@@ -167,10 +169,3 @@
 - **It asks Linear with `curl`, and writes three things: a new issue, a change to an issue and a comment.** The key is read from `LINEAR_API_KEY`, or from
   the file `key` of `~/.config/linearpen`, and is given to `curl` on its stdin, never as an argument
   or in its environment. A key file that other users can read is read, and `linearpen --text` warns about it.
-
-### Fixed
-
-- The identifier of an issue with a four-digit number (`ACM-1099`) was cut in the list; its column is
-  wider.
-- An issue given to a second agent while the first was still on lost its mark when the second pane
-  ended first; the mark now stays with the pane that is still on until both have ended.
