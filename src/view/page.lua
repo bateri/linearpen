@@ -738,6 +738,11 @@ local function handle(event)
 		reply = b.merge(reply, shape(event))
 	elseif kind == "leave" then
 		S.cursor = nil
+	elseif kind == "carried" then
+		-- The system's drag of a line out of the page is over, and the page did not hear the pointer
+		-- while it went: what it was told of the pointer (the shape, the button down) is no longer so.
+		S.cursor, S.armed = nil, nil
+		reply = b.merge(reply, true)
 	elseif kind == "focus" and event.field ~= nil then
 		-- The person clicked into a field (the filter's): the row of the filters is put away.
 		filters.close()

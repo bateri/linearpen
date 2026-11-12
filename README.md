@@ -171,6 +171,14 @@ change a value stay with the selection.
 The change is sent once. Where no answer comes it is not sent again by the program: it tells you, and
 asks Linear what the issue holds now. The description and the team are never written.
 
+A line can be dragged out of the page: into a terminal's pane it brings the issue as one line
+(`ACM-412 Add rate limiting to the public API https://linear.app/...`), put at the cursor and not run
+(read it before `Enter`, as any text you paste into a shell, for a title is anyone's); into another
+application it is that line as text, and the link for those that take one. A line break, a tab or a
+mark that is no letter in a title is a space in it; a title with a control of the direction of text
+(an embedding, an override, an isolate) is not carried. The line that is dragged is the one that is
+carried, not the selection. It needs a terminal that carries what a page offers, as bateri does.
+
 ### Comment on an issue
 
 Under the comments of the issue that is open there is a field to write one (`⇧M` gives it the keyboard

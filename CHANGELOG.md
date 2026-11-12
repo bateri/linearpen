@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Added
+
+- **An issue is dragged out of the page.** A line, dragged out of the page into a terminal's pane or
+  another application, brings the issue as one line of words (its identifier, its title and its
+  link) and the link for the applications that take one; a line break in the title is a space, and a
+  title with a control of the direction of text in it is not carried.
+
 ## [0.1.0] - 2026-11-12
 
 ### Added
