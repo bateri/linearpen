@@ -142,8 +142,8 @@ the selection off and gives the line of keys back.
 A right press on a line opens the menu of that issue (or, on a line that is selected, of all that are
 selected): the values above, `Assign to me`, and for one issue `Rename`, the copies and `Open in
 Linear`. A value picked there opens the menu of that value for those issues. The copies are keys too:
-`⌘⇧I` puts the identifier of the issue on the pasteboard (`ACM-412`), `⌘⇧.` its branch name (where
-Linear has one) and `⌘⇧,` its link, and the page says so for a moment. Where an issue is open, `r`, the
+`⌘⇧I` puts the identifier of the issue on the pasteboard (`ACM-412`), `⌘⇧B` its branch name (where
+Linear has one) and `⌘⇧L` its link, and the page says so for a moment. Where an issue is open, `r`, the
 copies and `⇧O` are that issue's, whatever is selected, as the buttons of its panel are; the keys that
 change a value stay with the selection.
 
@@ -237,7 +237,7 @@ or `Space` then presses.
 | `⇧C` `⇧E` `⇧D`        | change the cycle, the estimate, the due date                         |
 | `i`                   | assign it to you                                                     |
 | `r`                   | change the title                                                     |
-| `⌘⇧I` `⌘⇧.` `⌘⇧,`     | copy the identifier, the branch name, the link                       |
+| `⌘⇧I` `⌘⇧B` `⌘⇧L`     | copy the identifier, the branch name, the link                       |
 | `w`                   | work on the issue that is open                                       |
 | `c`                   | write a new issue                                                    |
 | `⇧M`                  | write a comment on the issue open (`⌘Enter` posts it, `Esc` leaves)  |

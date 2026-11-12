@@ -6,6 +6,7 @@
 
 local kit = require("../lib/kit")
 local change = require("./change")
+local commands = require("./commands")
 local list = require("./list")
 local panel = require("./panel")
 
@@ -82,39 +83,40 @@ end
 
 -- --- The menu ----------------------------------------------------------------------------------------
 
-local function entry(key, title, keys, enabled)
-	return { key = X.serial .. "|" .. key, title = title, keys = keys, enabled = enabled }
+-- (The keys of an entry are the command's, from the one table: the menu says what the card says.)
+local function entry(key, title, command, enabled)
+	return { key = X.serial .. "|" .. key, title = title, keys = commands.first(command), enabled = enabled }
 end
 
 -- The entries of the menu of `ids`: the values to change, and, of one issue, the rest.
 local function entries(ids)
 	local list_ = {
-		entry("state", "Status", "s"),
-		entry("priority", "Priority", "p"),
-		entry("assignee", "Assignee", "a"),
-		entry("assign_me", "Assign to me", "i"),
-		entry("labels", "Labels", "l"),
-		entry("project", "Project", "shift+p"),
+		entry("state", "Status", "status"),
+		entry("priority", "Priority", "priority"),
+		entry("assignee", "Assignee", "assignee"),
+		entry("assign_me", "Assign to me", "assign_me"),
+		entry("labels", "Labels", "labels"),
+		entry("project", "Project", "project"),
 	}
 	-- A team that has no cycles, or does not estimate, has none of them to change.
 	if change.offers("cycle", ids) then
-		list_[#list_ + 1] = entry("cycle", "Cycle", "shift+c")
+		list_[#list_ + 1] = entry("cycle", "Cycle", "cycle")
 	end
 	if change.offers("estimate", ids) then
-		list_[#list_ + 1] = entry("estimate", "Estimate", "shift+e")
+		list_[#list_ + 1] = entry("estimate", "Estimate", "estimate")
 	end
-	list_[#list_ + 1] = entry("due", "Due date", "shift+d")
+	list_[#list_ + 1] = entry("due", "Due date", "due")
 	if #ids ~= 1 then
 		return list_
 	end
 	local row = change.row(ids[1])
-	list_[#list_ + 1] = entry("title", "Rename", "r")
+	list_[#list_ + 1] = entry("title", "Rename", "title")
 	list_[#list_ + 1] = "-"
-	list_[#list_ + 1] = entry("copy_id", "Copy ID", "mod+shift+i")
-	list_[#list_ + 1] = entry("copy_branch", "Copy branch name", "mod+shift+.", row ~= nil and row.branchName ~= nil)
-	list_[#list_ + 1] = entry("copy_link", "Copy link", "mod+shift+,")
+	list_[#list_ + 1] = entry("copy_id", "Copy ID", "copy_id")
+	list_[#list_ + 1] = entry("copy_branch", "Copy branch name", "copy_branch", row ~= nil and row.branchName ~= nil)
+	list_[#list_ + 1] = entry("copy_link", "Copy link", "copy_link")
 	list_[#list_ + 1] = "-"
-	list_[#list_ + 1] = entry("link", "Open in Linear", "shift+o")
+	list_[#list_ + 1] = entry("link", "Open in Linear", "link")
 	return list_
 end
 

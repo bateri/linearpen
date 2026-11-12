@@ -4063,6 +4063,45 @@ fn in_a_narrow_pane_a_change_is_of_the_issue_read_and_not_of_the_ones_selected()
     );
 }
 
+/// The keys of every command of the table, as written (`mod+shift+i`).
+fn keys_of_the_commands() -> Vec<String> {
+    let table = include_str!("../view/parts/commands.lua");
+    let mut found = Vec::new();
+    let mut rest = table;
+    while let Some(at) = rest.find("keys = {") {
+        rest = &rest[at + "keys = {".len()..];
+        let end = rest.find('}').expect("the keys are closed");
+        for (n, part) in rest[..end].split('"').enumerate() {
+            if n % 2 == 1 {
+                found.push(part.to_owned());
+            }
+        }
+        rest = &rest[end..];
+    }
+    found
+}
+
+#[test]
+fn no_command_has_a_key_that_is_shift_and_a_character_that_is_not_a_letter() {
+    // The host gives the page the character the keys make: Command Shift . is ">" on a US keyboard and
+    // ":" on a Turkish one, and the page's key "." does not match either, so such a key cannot be
+    // pressed on any keyboard (the page's tests, which press "." themselves, passed). Letters are
+    // the same under Shift (the host says "B" or "b", and both match); named keys (up, space) are
+    // not characters.
+    let keys = keys_of_the_commands();
+    assert!(keys.len() > 40, "the table was read: {keys:?}");
+    for key in &keys {
+        let parts: Vec<&str> = key.split('+').collect();
+        let (last, held) = parts.split_last().expect("a key");
+        if held.contains(&"shift") && last.chars().count() == 1 {
+            assert!(
+                last.chars().all(|c| c.is_ascii_lowercase()),
+                "{key}: Shift with a character that is not a letter is never what the host sends"
+            );
+        }
+    }
+}
+
 const LINK_405: &str =
     "https://linear.app/acme/issue/ACM-405/webhook-retries-ignore-the-backoff-setting";
 const LINK_412: &str = "https://linear.app/acme/issue/ACM-412/add-rate-limiting-to-the-public-api";
@@ -4092,13 +4131,13 @@ fn with_an_issue_open_the_keys_of_one_issue_are_the_open_issues_whatever_is_sele
     page.press("mod+shift+i").expect("the copy");
     page.wait_for(WITHIN, |page| page.pasteboard() == Some("ACM-405"))
         .unwrap_or_else(|why| panic!("the identifier: {why:?}: {:?}", page.pasteboard()));
-    page.press("mod+shift+.").expect("the copy of the branch");
+    page.press("mod+shift+b").expect("the copy of the branch");
     page.wait_for(WITHIN, |page| {
         page.pasteboard()
             .is_some_and(|text| text.contains("acm-405"))
     })
     .unwrap_or_else(|why| panic!("the branch: {why:?}: {:?}", page.pasteboard()));
-    page.press("mod+shift+,").expect("the copy of the link");
+    page.press("mod+shift+l").expect("the copy of the link");
     page.wait_for(WITHIN, |page| page.pasteboard() == Some(LINK_405))
         .unwrap_or_else(|why| panic!("the link: {why:?}: {:?}", page.pasteboard()));
     // The palette runs the same commands on the same issue.
@@ -6073,7 +6112,7 @@ fn the_copy_keys_put_the_id_the_branch_and_the_link_on_the_pasteboard_and_say_so
         .unwrap_or_else(|why| panic!("the id: {why:?}: {:?}", page.pasteboard()));
     page.wait_for(WITHIN, |page| page.says("Copied ACM-412"))
         .unwrap_or_else(|why| panic!("it says so: {why:?}: {}", said(&page)));
-    page.press("mod+shift+.").expect("the key");
+    page.press("mod+shift+b").expect("the key");
     page.wait_for(WITHIN, |page| {
         page.pasteboard()
             .is_some_and(|text| text.contains("acm-412"))
@@ -6081,7 +6120,7 @@ fn the_copy_keys_put_the_id_the_branch_and_the_link_on_the_pasteboard_and_say_so
     .unwrap_or_else(|why| panic!("the branch: {why:?}: {:?}", page.pasteboard()));
     page.wait_for(WITHIN, |page| page.says("Copied the branch name"))
         .unwrap_or_else(|why| panic!("it says so: {why:?}: {}", said(&page)));
-    page.press("mod+shift+,").expect("the key");
+    page.press("mod+shift+l").expect("the key");
     page.wait_for(WITHIN, |page| {
         page.pasteboard()
             .is_some_and(|text| text.starts_with("https://linear.app/"))
@@ -6089,6 +6128,57 @@ fn the_copy_keys_put_the_id_the_branch_and_the_link_on_the_pasteboard_and_say_so
     .unwrap_or_else(|why| panic!("the link: {why:?}: {:?}", page.pasteboard()));
     page.wait_for(WITHIN, |page| page.says("Copied the link"))
         .unwrap_or_else(|why| panic!("it says so: {why:?}: {}", said(&page)));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_copy_keys_are_what_the_host_sends_for_them_and_a_shifted_mark_is_no_key() {
+    let (_linear, _session, mut page) = open_lists(WIDE);
+    let chord = pencere_view::Mods {
+        shift: true,
+        command: true,
+        ..pencere_view::Mods::default()
+    };
+    let copied_id = |page: &mut Page| {
+        page.press("mod+shift+i").expect("the key");
+        page.wait_for(WITHIN, |page| page.pasteboard() == Some("ACM-412"))
+            .unwrap_or_else(|why| panic!("the id: {why:?}: {:?}", page.pasteboard()));
+    };
+    // The host gives the character the keys make: a letter with Shift is "B" (and "b" where the case
+    // is not changed), and both are the key.
+    for typed in ['B', 'b'] {
+        copied_id(&mut page);
+        page.key(pencere_view::Key::Character(typed), chord)
+            .expect("the branch key");
+        page.wait_for(WITHIN, |page| {
+            page.pasteboard()
+                .is_some_and(|text| text.contains("acm-412"))
+        })
+        .unwrap_or_else(|why| panic!("{typed}: the branch: {why:?}: {:?}", page.pasteboard()));
+    }
+    for typed in ['L', 'l'] {
+        copied_id(&mut page);
+        page.key(pencere_view::Key::Character(typed), chord)
+            .expect("the link key");
+        page.wait_for(WITHIN, |page| {
+            page.pasteboard()
+                .is_some_and(|text| text.starts_with("https://linear.app/"))
+        })
+        .unwrap_or_else(|why| panic!("{typed}: the link: {why:?}: {:?}", page.pasteboard()));
+    }
+    // What Command Shift . and Command Shift , make is ">" and "<" on a US keyboard and ":" and ";" on a
+    // Turkish one (the keys that were the copies of the branch and the link): they copy nothing.
+    copied_id(&mut page);
+    for typed in ['>', '<', ':', ';', '.', ','] {
+        page.key(pencere_view::Key::Character(typed), chord)
+            .expect("a mark");
+        page.advance(0.3).expect("a moment");
+        assert_eq!(
+            page.pasteboard(),
+            Some("ACM-412"),
+            "{typed:?} copies nothing"
+        );
+    }
 }
 
 #[test]

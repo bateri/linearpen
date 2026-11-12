@@ -67,7 +67,7 @@
   `Copy link` and `Open in Linear`; on a line that is selected it is the menu of the whole
   selection, without what is of one issue, and the cursor goes to the line that was pressed.
 - **Copying.** `Cmd Shift I` puts the identifier of the issue (the open one, the one selected or the
-  one under the cursor) on the pasteboard, `Cmd Shift .` its branch name and `Cmd Shift ,` its link,
+  one under the cursor) on the pasteboard, `Cmd Shift B` its branch name and `Cmd Shift L` its link,
   and the page says what it copied for a moment. The page gets the branch name and the link of each
   issue with the rows (`branchName` and `url`).
 - **Linear's keys.** `r` renames, `o` opens the issue (Enter's twin), `Shift O` opens it in Linear,
