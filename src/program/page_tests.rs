@@ -3799,7 +3799,7 @@ fn beside_the_narrowest_list_the_three_buttons_over_the_issue_are_whole() {
 
 /// Where the controls of the head are: the list, the filter, Refresh and New issue.
 fn head_places(page: &Page) -> Vec<(&'static str, Option<pencere_view::Rect>)> {
-    ["lists", "filter-box", "refresh", "new"]
+    ["lists", "filter-box", "refresh", "new-slot"]
         .into_iter()
         .map(|name| (name, page.bounds(name)))
         .collect()
@@ -3841,6 +3841,19 @@ fn the_controls_of_the_head_stay_where_they_are_and_as_wide_whatever_the_page_is
             }
             assert!(at.is_some(), "{name} is on the page at {size:?}");
         }
+        // Refresh and New issue say their keys (the page's width decides whether they are there).
+        if size.0 >= 880.0 {
+            assert!(
+                page.words_in("refresh").iter().any(|word| word == "⌘R"),
+                "{:?}",
+                page.words_in("refresh")
+            );
+        }
+        assert!(
+            page.words_in("new-slot").iter().any(|word| word == "C"),
+            "{:?}",
+            page.words_in("new-slot")
+        );
         // The cursor goes on.
         page.press("down").expect("down");
         page.press("down").expect("down");
@@ -3871,6 +3884,27 @@ fn the_controls_of_the_head_stay_where_they_are_and_as_wide_whatever_the_page_is
         page.wait_for(WITHIN, |page| page.bounds("panel-close").is_none())
             .unwrap_or_else(|why| panic!("closed: {why:?}: {}", said(&page)));
         head_is_as_it_was(&page, &before, "with the issue closed");
+        // Words are typed in the filter: Refresh and New issue keep their keys, so the field stays.
+        page.press("/").expect("/");
+        page.type_text("bug").expect("the filter is typed");
+        page.wait_for(WITHIN, |page| page.says(" of "))
+            .unwrap_or_else(|why| panic!("the count comes: {why:?}: {}", said(&page)));
+        head_is_as_it_was(&page, &before, "with words typed in the filter");
+        page.press("escape").expect("escape clears");
+        page.press("escape").expect("escape leaves the field");
+        page.wait_for(WITHIN, |page| !page.says(" of "))
+            .unwrap_or_else(|why| panic!("the filter is gone: {why:?}: {}", said(&page)));
+        // The form of Work on is open: New issue is dim and cannot be pressed, and keeps its key.
+        open_form(&mut page);
+        head_is_as_it_was(&page, &before, "with the Work on form open");
+        assert!(
+            !pressable(&page, "new"),
+            "New issue cannot be pressed with a form open"
+        );
+        page.press("escape").expect("escape");
+        page.wait_for(WITHIN, |page| !page.says("Open in"))
+            .unwrap_or_else(|why| panic!("the form is put away: {why:?}: {}", said(&page)));
+        head_is_as_it_was(&page, &before, "with the form put away");
     }
 }
 
@@ -3883,7 +3917,6 @@ fn the_filter_says_how_many_match_inside_itself_and_the_list_button_does_not_mov
     page.type_text("bug").expect("typing");
     page.wait_for(WITHIN, |page| page.says(" of "))
         .unwrap_or_else(|why| panic!("the count comes: {why:?}: {}", said(&page)));
-    // (While words are written the keys leave Refresh and New issue, as the design has them.)
     assert_eq!(page.bounds("lists"), Some(before));
     let words = page.words_in("filter-box");
     assert!(

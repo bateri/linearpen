@@ -130,31 +130,28 @@ local function filter_box(width)
 	return box:grow(1):min_w(0)
 end
 
--- Whether the keys of the buttons are left out of them: where words are being written, and where a
--- form has the page.
-local function keyless()
-	return head.typing() or S.form_open
-end
-
 -- The button that asks Linear again: busy while it does.
 local function refresh_button()
 	local busy = S.refreshing
 	return kit.button("refresh", "Refresh", {
-		suffix = (not busy and not keyless()) and commands.label("refresh") or nil,
+		suffix = not busy and commands.label("refresh") or nil,
 		busy = busy,
 		disabled = busy,
 		tip = busy and "Linear is being asked" or "Ask Linear for the issues again",
 	})
 end
 
--- The button that opens the form of a new issue: in its place while a form is open, as dim as a
--- button that cannot be pressed now. Where the pane has less room the key is in the line of keys.
+-- The button that opens the form of a new issue: in its place, with its key, while a form is open or
+-- words are typed, as dim as a button that cannot be pressed now. Where the pane has less room the key
+-- is in the line of keys.
 local function new_button()
-	return kit.button("new", "New issue", {
-		suffix = not keyless() and commands.label("new") or nil,
+	-- (In a slot of its own: a button that cannot be pressed has no name of its own on the page, and its place
+	-- is what is looked at.)
+	return b.div():id("new-slot"):no_shrink():child(kit.button("new", "New issue", {
+		suffix = commands.label("new"),
 		disabled = S.form_open,
 		tip = S.form_open and "A form is open" or "Write an issue and add it to Linear",
-	})
+	}))
 end
 
 function head.view()
