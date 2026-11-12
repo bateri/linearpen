@@ -194,6 +194,27 @@ impl Canned {
         self.details.lock().unwrap().insert(id.to_owned(), extra);
     }
 
+    /// From now on the issue `id` is titled `title` in the lists, as if the person had renamed it (a
+    /// title is Linear's, and anyone's).
+    pub(crate) fn retitle(&self, id: &str, title: &str) {
+        self.edits
+            .lock()
+            .unwrap()
+            .entry(id.to_owned())
+            .or_default()
+            .push(serde_json::json!({ "title": title }));
+    }
+
+    /// From now on the issue `id` has the address `url` in the lists.
+    pub(crate) fn set_url(&self, id: &str, url: &str) {
+        self.edits
+            .lock()
+            .unwrap()
+            .entry(id.to_owned())
+            .or_default()
+            .push(serde_json::json!({ "url": url }));
+    }
+
     /// The ids `Issue` was asked for, in order.
     pub(crate) fn issues_asked(&self) -> Vec<String> {
         self.issues_asked.lock().unwrap().clone()
@@ -569,6 +590,9 @@ fn person_of(id: &str) -> serde_json::Value {
 fn edit_node(node: &mut serde_json::Value, input: &serde_json::Value) {
     if let Some(title) = input.get("title") {
         node["title"] = title.clone();
+    }
+    if let Some(url) = input.get("url") {
+        node["url"] = url.clone();
     }
     if let Some(priority) = input["priority"].as_f64() {
         node["priority"] = priority.into();
@@ -1473,6 +1497,103 @@ fn the_box_of_a_line_selects_it_and_the_selection_keeps_to_the_list_that_is_show
     page.wait_for(WITHIN, |page| page.says("1 of 14"))
         .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
     assert!(!page.says("selected"), "{}", said(&page));
+}
+
+/// A line of an issue is dragged out of the page to a terminal pane or another application as one line:
+/// its identifier, its title and its address, with the address for what takes one. A click on it is
+/// still a click, and a group's head is not carried.
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_line_of_an_issue_is_carried_out_of_the_page_as_a_line_of_words_and_its_address() {
+    let (_linear, _session, mut page) = open_lists(WIDE);
+    let outside = pencere_view::Point::new(WIDE.0 + 80.0, 200.0);
+    let address = "https://linear.app/acme/issue/ACM-412/add-rate-limiting-to-the-public-api";
+    page.drag_out("row:i:issue-412", outside)
+        .expect("the line is dragged out");
+    let [carry] = page.carries() else {
+        panic!("one issue carried: {:?}", page.carries());
+    };
+    assert_eq!(
+        carry.carry,
+        pencere_view::Carry::text(format!(
+            "ACM-412 Add rate limiting to the public API {address}"
+        ))
+        .url(address)
+    );
+    assert_eq!(Some(carry.rect), page.bounds("row:i:issue-412"));
+    page.finish_carry(true).expect("the drag is over");
+    // The page hears the pointer again: a click is a click.
+    page.click("row:g:backlog:Backlog")
+        .expect("the head is pressed");
+    page.wait_for(WITHIN, |page| page.says("ACM-352"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    // A head of a group is the page's alone.
+    page.drag_out("row:g:backlog:Backlog", outside)
+        .expect("the head is dragged out");
+    assert_eq!(page.carries().len(), 1, "{:?}", page.carries());
+}
+
+/// A title is anyone's: a line break, a tab or a mark that is no letter in it is a space in what is
+/// carried; one with a control of the direction of text in it is not handed to the system, and the page
+/// does not stop for it (the line is still a line of the list); an address the system may not be given
+/// is left out of what is carried.
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn what_a_title_has_in_it_is_made_one_line_or_the_line_is_left_in_the_page() {
+    let linear = Canned::new(Mode::Fine);
+    linear.retitle("issue-398", "Checkout \u{202e}gnp.exe fails");
+    linear.retitle("issue-405", "Two\nlines,\tand\u{feff}\u{2028} more");
+    linear.set_url("issue-412", "https://linear.app/acme/issue/ACM-412/ünïcode");
+    let session = session_over(&linear, Some("lin_api_test"), None);
+    let mut page = open(&session, WIDE, None, "ACM-412").expect("the page opens");
+    let outside = pencere_view::Point::new(WIDE.0 + 80.0, 200.0);
+    page.drag_out("row:i:issue-398", outside)
+        .expect("the line is dragged");
+    assert!(page.carries().is_empty(), "{:?}", page.carries());
+    assert!(page.says("ACM-398"), "{}", said(&page));
+    page.drag_out("row:i:issue-405", outside)
+        .expect("another line is dragged");
+    page.finish_carry(true).expect("the drag is over");
+    let address =
+        "https://linear.app/acme/issue/ACM-405/webhook-retries-ignore-the-backoff-setting";
+    assert_eq!(
+        page.carries().last().map(|carry| carry.carry.clone()),
+        Some(
+            pencere_view::Carry::text(format!("ACM-405 Two lines, and more {address}"))
+                .url(address)
+        )
+    );
+    page.drag_out("row:i:issue-412", outside)
+        .expect("a third line is dragged");
+    assert_eq!(
+        page.carries().last().map(|carry| carry.carry.clone()),
+        Some(pencere_view::Carry::text(
+            "ACM-412 Add rate limiting to the public API"
+        )),
+        "the address that is not one the system may have is not carried, nor said"
+    );
+}
+
+/// The line that is dragged is the one that is carried, whatever is selected.
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn only_the_line_that_is_dragged_is_carried_though_others_are_selected() {
+    let (_linear, _session, mut page) = open_lists(WIDE);
+    page.hover("row:i:issue-398")
+        .expect("the pointer is over the line");
+    page.click("check:i:issue-398").expect("the box is pressed");
+    page.wait_for(WITHIN, |page| page.says("1 selected"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    page.drag_out(
+        "row:i:issue-412",
+        pencere_view::Point::new(WIDE.0 + 80.0, 200.0),
+    )
+    .expect("the line is dragged");
+    let [carry] = page.carries() else {
+        panic!("one issue carried: {:?}", page.carries());
+    };
+    assert!(carry.carry.words().starts_with("ACM-412 "), "{carry:?}");
+    assert!(!carry.carry.words().contains("ACM-398"), "{carry:?}");
 }
 
 #[test]

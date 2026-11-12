@@ -95,12 +95,57 @@ local function check(key, look)
 	return slot:child(row.box(name, look.marked))
 end
 
+-- Whether `why`, the error of `carry`, is its refusal of what it was given (the kit's rule of what a
+-- drag out of the view may carry), and not a mistake in the call.
+local function refused(why)
+	return type(why) == "string"
+		and (string.find(why, "a carry is one line", 1, true) ~= nil or string.find(why, "the url of a carry", 1, true) ~= nil)
+end
+
+-- A title as one line: what ends a line, moves a terminal or is no letter (the controls, the line and
+-- paragraph separators, the byte order mark) is a space, as the pasteboard's copy of it is (`context.lua`).
+-- What sets the direction of text (the embeddings, overrides and isolates) is left, for the kit to refuse.
+local function one_line(title)
+	title = string.gsub(title, "%c", " ")
+	title = string.gsub(title, "\xC2[\x80-\x9F]", " ")
+	title = string.gsub(title, "\xE2\x80[\xA8\xA9]", " ")
+	title = string.gsub(title, "\xEF\xBB\xBF", " ")
+	return (string.gsub(title, " +", " "))
+end
+
+-- What the line brings when it is dragged out of the page to a terminal pane or another application:
+-- the issue as one line of words (its identifier, its title and its address) and the address for the
+-- applications that take one. The title is Linear's, written by anyone: one with a control of the
+-- direction of text in it, which the kit may not hand the system (`carry` refuses it by an error),
+-- leaves the line a line of the page alone, and an address it may not hand on leaves the words without
+-- it. A terminal whose kit has no `carry` leaves the line as it is; any other error is the page's own.
+local function carries(el, issue)
+	if el.carry == nil then
+		return
+	end
+	local words = issue.identifier .. " " .. one_line(issue.title)
+	local url = issue.url
+	if url ~= nil and url ~= "" then
+		local ok, why = pcall(el.carry, el, { text = words .. " " .. url, url = url })
+		if ok then
+			return
+		elseif not refused(why) then
+			error(why, 0)
+		end
+	end
+	local ok, why = pcall(el.carry, el, { text = words })
+	if not ok and not refused(why) then
+		error(why, 0)
+	end
+end
+
 -- An issue: the box of a selection, its priority, its identifier, its title that gives way, the
 -- agent that is on it, its labels, whose it is (in any list but the person's own, where the page is wide
 -- enough) and the day it changed. `o`: `labels` and `who` say whether there is room for them, `scope` the list shown.
 function row.issue(item, look, o)
 	local issue = item.row
 	local el = line(row.name(item.key), look):gap(10):label(issue.identifier .. ", " .. issue.title):selected(look.selected)
+	carries(el, issue)
 	el:child(check(item.key, look))
 	el:child(icons.priority(issue.priority))
 	el:child(
