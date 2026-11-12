@@ -190,4 +190,12 @@ return {
 		local y = b.layout.scroll_offset(id)
 		return y
 	end,
+	-- How many lines a card of the palette (the commands, the lists) has room for in a pane this high:
+	-- the card stands 18% of the height from the top (140 points at most) and has the field, the
+	-- rules and the foot of about 90 points besides its lines, which are 32 high. Ten where there is room.
+	card_rows = function()
+		local height = S.height or 600
+		local top = math.min(height * 0.18, 140)
+		return math.max(math.min(math.floor((height - top - 100) / 32), 10), 3)
+	end,
 }

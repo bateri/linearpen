@@ -11,6 +11,8 @@ local data = {}
 local function apply(snapshot)
 	S.issues = snapshot
 	S.scope = snapshot.scope
+	S.list_id = snapshot.listId
+	S.catalog = snapshot.catalog
 	S.refreshing = snapshot.refreshing == true
 	list.load(snapshot)
 	-- A new issue that is waited for is shown when it comes.
@@ -23,7 +25,7 @@ local function apply(snapshot)
 	end
 end
 
--- Tells the program what the page looks at (`scope`, `filter`, `closed`). `after`, where there is one, is
+-- Tells the program what the page looks at (`list`: `{ kind, id }`, `filter`, `closed`). `after`, where there is one, is
 -- called when the program has answered (or has not).
 function act.view(params, after)
 	-- The calls run at the same time in the program: each is numbered, so that one told late does not

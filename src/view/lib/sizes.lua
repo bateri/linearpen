@@ -31,7 +31,7 @@ local SIZE = {
 	bar_all = 1000,
 	bar_four = 640,
 	-- The width of the label column of an issue, and of the date and the name of whose it is.
-	identifier = 62,
+	identifier = 76,
 	date = 52,
 	who = 56,
 	-- A page this wide shows the labels of an issue, and this much the name of whose it is.

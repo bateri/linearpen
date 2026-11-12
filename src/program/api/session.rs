@@ -6,6 +6,7 @@ use std::sync::Arc;
 use pencere::Options;
 use serde::{Deserialize, Serialize};
 
+use super::issue::check_id;
 use super::issues::{Snapshot, snapshot};
 use super::work::{Remembered, remembered};
 use super::{Failure, call};
@@ -96,22 +97,34 @@ fn connect(session: &Session, params: Connect) -> Result<Connected, Failure> {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ViewParams {
-    scope: Option<String>,
+    list: Option<ListParams>,
     filter: Option<String>,
     closed: Option<HashMap<String, bool>>,
     /// The number of this call among the page's `view` calls.
     seq: Option<u64>,
 }
 
+/// A list, by what it is (`mine`, `all`, `team`, `cycle`, `view`, `project`, `label`) and, for the
+/// ones that are of something, Linear's id of it.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ListParams {
+    kind: String,
+    id: Option<String>,
+}
+
 fn view(session: &Session, params: ViewParams) -> Result<Snapshot, Failure> {
-    let scope = match params.scope.as_deref() {
+    let scope = match params.list {
         None => None,
-        Some("mine") => Some(Scope::Mine),
-        Some("all") => Some(Scope::All),
-        Some(other) => {
-            return Err(Failure::BadParams(format!(
-                "scope is \"mine\" or \"all\", not {other:?}"
-            )));
+        Some(list) => {
+            if let Some(id) = &list.id {
+                check_id(id)?;
+            }
+            Some(Scope::of(&list.kind, list.id.as_deref()).ok_or_else(|| {
+                Failure::BadParams(
+                    "list is { kind, id }: \"mine\" or \"all\" with no id, or \"team\", \"cycle\", \"view\", \"project\" or \"label\" with the id of one".to_owned(),
+                )
+            })?)
         }
     };
     if params

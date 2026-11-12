@@ -1,0 +1,89 @@
+{
+  "data": {
+    "viewer": {
+      "id": "user-1",
+      "name": "Ada",
+      "organization": {
+        "name": "Acme",
+        "urlKey": "acme"
+      }
+    },
+    "project": {
+      "issues": {
+        "nodes": [
+          {
+            "id": "issue-418",
+            "identifier": "ACM-418",
+            "title": "Let owners transfer a workspace",
+            "priority": 2.0,
+            "updatedAt": "2026-11-09T14:20:00.000Z",
+            "url": "https://linear.app/acme/issue/ACM-418/let-owners-transfer-a-workspace",
+            "branchName": "ada/acm-418-let-owners-transfer-a-workspace",
+            "state": {
+              "id": "s-todo",
+              "name": "Todo",
+              "type": "unstarted",
+              "position": 1.0
+            },
+            "labels": {
+              "nodes": []
+            },
+            "team": {
+              "id": "team-acm",
+              "key": "ACM"
+            },
+            "cycle": null,
+            "project": null,
+            "assignee": {
+              "id": "u-ada",
+              "displayName": "Ada",
+              "isMe": true
+            }
+          },
+          {
+            "id": "issue-389",
+            "identifier": "ACM-389",
+            "title": "Cache the pricing table at the edge",
+            "priority": 3.0,
+            "updatedAt": "2026-11-08T14:20:00.000Z",
+            "url": "https://linear.app/acme/issue/ACM-389/cache-the-pricing-table-at-the-edge",
+            "branchName": "ada/acm-389-cache-the-pricing-table-at-the-edge",
+            "state": {
+              "id": "s-review",
+              "name": "In Review",
+              "type": "started",
+              "position": 3.0
+            },
+            "labels": {
+              "nodes": [
+                {
+                  "id": "l-perf",
+                  "name": "perf",
+                  "color": "#ffc53d"
+                }
+              ]
+            },
+            "team": {
+              "id": "team-acm",
+              "key": "ACM"
+            },
+            "cycle": {
+              "id": "c-12",
+              "number": 12
+            },
+            "project": null,
+            "assignee": {
+              "id": "u-ada",
+              "displayName": "Ada",
+              "isMe": true
+            }
+          }
+        ],
+        "pageInfo": {
+          "hasNextPage": false,
+          "endCursor": null
+        }
+      }
+    }
+  }
+}

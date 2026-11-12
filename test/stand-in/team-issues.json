@@ -1,0 +1,169 @@
+{
+  "data": {
+    "viewer": {
+      "id": "user-1",
+      "name": "Ada",
+      "organization": {
+        "name": "Acme",
+        "urlKey": "acme"
+      }
+    },
+    "team": {
+      "issues": {
+        "nodes": [
+          {
+            "id": "issue-420",
+            "identifier": "ACM-420",
+            "title": "Invoice PDF cuts long company names",
+            "priority": 3.0,
+            "updatedAt": "2026-11-10T14:20:00.000Z",
+            "url": "https://linear.app/acme/issue/ACM-420/invoice-pdf-cuts-long-company-names",
+            "branchName": "ada/acm-420-invoice-pdf-cuts-long-company-names",
+            "state": {
+              "id": "s-todo",
+              "name": "Todo",
+              "type": "unstarted",
+              "position": 1.0
+            },
+            "labels": {
+              "nodes": [
+                {
+                  "id": "l-bug",
+                  "name": "bug",
+                  "color": "#e5484d"
+                }
+              ]
+            },
+            "team": {
+              "id": "team-acm",
+              "key": "ACM"
+            },
+            "cycle": null,
+            "project": null,
+            "assignee": {
+              "id": "u-ada",
+              "displayName": "Ada",
+              "isMe": true
+            }
+          },
+          {
+            "id": "issue-417",
+            "identifier": "ACM-417",
+            "title": "Split the billing worker from the API",
+            "priority": 3.0,
+            "updatedAt": "2026-11-10T14:20:00.000Z",
+            "url": "https://linear.app/acme/issue/ACM-417/split-the-billing-worker-from-the-api",
+            "branchName": "ada/acm-417-split-the-billing-worker-from-the-api",
+            "state": {
+              "id": "s-prog",
+              "name": "In Progress",
+              "type": "started",
+              "position": 2.0
+            },
+            "labels": {
+              "nodes": [
+                {
+                  "id": "l-infra",
+                  "name": "infra",
+                  "color": "#05a2c2"
+                }
+              ]
+            },
+            "team": {
+              "id": "team-acm",
+              "key": "ACM"
+            },
+            "cycle": {
+              "id": "c-12",
+              "number": 12
+            },
+            "project": null,
+            "assignee": {
+              "id": "u-deniz",
+              "displayName": "Deniz",
+              "isMe": false
+            }
+          },
+          {
+            "id": "issue-423",
+            "identifier": "ACM-423",
+            "title": "Rate limit headers are missing on 304",
+            "priority": 2.0,
+            "updatedAt": "2026-11-10T14:20:00.000Z",
+            "url": "https://linear.app/acme/issue/ACM-423/rate-limit-headers-are-missing-on-304",
+            "branchName": "ada/acm-423-rate-limit-headers-are-missing-on-304",
+            "state": {
+              "id": "s-todo",
+              "name": "Todo",
+              "type": "unstarted",
+              "position": 1.0
+            },
+            "labels": {
+              "nodes": [
+                {
+                  "id": "l-bug",
+                  "name": "bug",
+                  "color": "#e5484d"
+                },
+                {
+                  "id": "l-api",
+                  "name": "api",
+                  "color": "#3e63dd"
+                }
+              ]
+            },
+            "team": {
+              "id": "team-acm",
+              "key": "ACM"
+            },
+            "cycle": null,
+            "project": null,
+            "assignee": null
+          },
+          {
+            "id": "issue-412",
+            "identifier": "ACM-412",
+            "title": "Add rate limiting to the public API",
+            "priority": 2.0,
+            "updatedAt": "2026-11-09T14:20:00.000Z",
+            "url": "https://linear.app/acme/issue/ACM-412/add-rate-limiting-to-the-public-api",
+            "branchName": "ada/acm-412-add-rate-limiting-to-the-public-api",
+            "state": {
+              "id": "s-prog",
+              "name": "In Progress",
+              "type": "started",
+              "position": 2.0
+            },
+            "labels": {
+              "nodes": [
+                {
+                  "id": "l-api",
+                  "name": "api",
+                  "color": "#3e63dd"
+                }
+              ]
+            },
+            "team": {
+              "id": "team-acm",
+              "key": "ACM"
+            },
+            "cycle": {
+              "id": "c-12",
+              "number": 12
+            },
+            "project": null,
+            "assignee": {
+              "id": "u-ada",
+              "displayName": "Ada",
+              "isMe": true
+            }
+          }
+        ],
+        "pageInfo": {
+          "hasNextPage": false,
+          "endCursor": null
+        }
+      }
+    }
+  }
+}

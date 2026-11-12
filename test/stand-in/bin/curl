@@ -11,6 +11,10 @@
 #   STANDIN_MODE=broken    a body that is not JSON, HTTP 200
 #   STANDIN_MODE=down      curl could not resolve the host: exit 6, no output
 #   STANDIN_MY=empty       the person has no issues assigned
+#   STANDIN_LIST=big       a team has more issues than the pen takes (500): every page of it has a next
+#   (The lists a person can go to: the issues of a team, a cycle, a view, a project and a label are
+#   each a file of their own, and the names are list-*.json: three favorites, three teams, five views
+#   of issues and a view of projects, two projects.)
 #   STANDIN_CREATE=refused    Linear does not make the issue: a GraphQL error, HTTP 400
 #   STANDIN_CREATE=forbidden  the key may not create issues: HTTP 403
 #   STANDIN_CREATE=lost       Linear makes the issue and the answer never comes: curl times out
@@ -422,6 +426,22 @@ if is MyIssues; then
 	exit 0
 fi
 if is AllIssues; then listing all-issues.json; exit 0; fi
+# The issues of one team, cycle, view, project or label (each a fixture of its own: they differ) and the
+# names of the lists a person can go to. Nothing that was created or changed is told here.
+if is TeamIssues; then
+	# A team that has more than the pen takes: every page has a hundred issues and a next one.
+	if [ "${STANDIN_LIST-}" = big ]; then cat "$here/team-issues-big.json"; else cat "$here/team-issues.json"; fi
+	printf '\n200'
+	exit 0
+fi
+if is CycleIssues; then cat "$here/cycle-issues.json"; printf '\n200'; exit 0; fi
+if is ViewIssues; then cat "$here/view-issues.json"; printf '\n200'; exit 0; fi
+if is ProjectIssues; then cat "$here/project-issues.json"; printf '\n200'; exit 0; fi
+if is LabelIssues; then cat "$here/label-issues.json"; printf '\n200'; exit 0; fi
+if is ListFavorites; then cat "$here/list-favorites.json"; printf '\n200'; exit 0; fi
+if is ListTeams; then cat "$here/list-teams.json"; printf '\n200'; exit 0; fi
+if is ListViews; then cat "$here/list-views.json"; printf '\n200'; exit 0; fi
+if is ListProjects; then cat "$here/list-projects.json"; printf '\n200'; exit 0; fi
 if is Verify; then cat "$here/verify.json"; printf '\n200'; exit 0; fi
 if is NewIssueTeams; then cat "$here/teams.json"; printf '\n200'; exit 0; fi
 if is NewIssueOptions; then

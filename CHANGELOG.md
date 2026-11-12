@@ -4,6 +4,15 @@
 
 ### Added
 
+- **Lists.** The card of lists (`g`, or the list button) goes to more than My issues and All issues:
+  what you starred in Linear (the keys `3` to `9` for the first seven), each team's open issues and
+  its cycle that runs, saved views of issues and projects, each line saying which it is. Typing finds
+  a list by name. The list button says the list and how many issues it has (`500+` where Linear has
+  more than the 500 that changed last, which a line at the end of the list says too). Only the list shown
+  and My issues are asked for, so All issues waits until it is shown, and the names of the lists are
+  asked for with them (they are no more than names: a failure leaves My issues and All issues, and
+  says so on the card). The cards of lists and of commands keep inside a short pane. `view` takes `list: { kind, id }` instead of `scope`; the topic tells
+  `listId`, `listing`, `counts.shown` and the `catalog` (`docs/calls.md`).
 - **Comments.** Under the comments of the issue open there is a field to write one (`Shift M` gives
   it the keyboard; the keys are the field's while it has it, `Cmd Enter` posts, `Esc` leaves it).
   Comment posts the words as they were written, once, with one more mutation, `CommentCreate`; the
@@ -140,3 +149,8 @@
 - **It asks Linear with `curl`, and writes three things: a new issue, a change to an issue and a comment.** The key is read from `LINEAR_API_KEY`, or from
   the file `key` of `~/.config/linearpen`, and is given to `curl` on its stdin, never as an argument
   or in its environment. A key file that other users can read is read, and `linearpen --text` warns about it.
+
+### Fixed
+
+- The identifier of an issue with a four-digit number (`ACM-1099`) was cut in the list; its column is
+  wider.

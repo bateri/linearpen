@@ -22,6 +22,14 @@ local HEAD = SIZE.row + SIZE.group_gap
 local L = { items = {}, tops = { 0 }, at = {}, late = {}, cursor = nil, cursor_group = nil, marks = {}, moves = 0, seen = nil }
 list.state = L
 
+-- The height of the line at the end of a list that Linear has more of than the program takes.
+local NOTE = 44
+
+-- Whether the list shown has that line (it is whole: the lines have come and are the 500 that changed last).
+local function cut()
+	return S.issues ~= nil and S.issues.listing == "ready" and S.issues.counts.shownCut == true
+end
+
 local function index_of(key)
 	return key ~= nil and L.at[key] or nil
 end
@@ -73,7 +81,7 @@ function list.load(snapshot)
 	end
 	local old_items, old_at = L.items, L.at
 	L.items, L.tops, L.at, L.late = items, tops, at, late
-	local view = snapshot.scope .. "\n" .. snapshot.filter
+	local view = snapshot.scope .. ":" .. (snapshot.listId or "") .. "\n" .. snapshot.filter
 	local same_view = L.seen == view
 	L.seen = view
 	local was = L.cursor
@@ -201,6 +209,10 @@ local function put(key)
 	L.cursor = key
 	L.cursor_group = L.items[index].group.key
 	virtual.reveal(ID, index, #L.items, SIZE.row, 0, L.tops)
+	if index == #L.items and cut() then
+		-- The last line is the cursor's: the line that says the list was cut is under it, and is shown.
+		kit.scroll_to(ID, L.tops[#L.tops] + NOTE + 8)
+	end
 	return true
 end
 
@@ -385,6 +397,14 @@ function list.key(event, in_field)
 	return false
 end
 
+-- The line at the end of a list of `shown` issues that Linear has more of.
+function list.note(shown)
+	local words = string.format("The %d issues changed last. Filter them, or go to a list, for the others.", shown)
+	return b.div():id("list-cut"):h(NOTE):row():items_center():px(16):child(
+		b.text(words):text_size(SIZE.small):color("dim"):wrap():min_w(0):grow(1)
+	)
+end
+
 -- The lines in view, and the room under them.
 function list.view(room, panel_open)
 	local any = list.marked() > 0
@@ -393,7 +413,18 @@ function list.view(room, panel_open)
 		labels = not panel_open and room >= SIZE.labels,
 		who = not panel_open and room >= SIZE.assignee,
 	}
-	return virtual.virtual(ID, #L.items, SIZE.row, function(index)
+	-- A list Linear has more of than the program takes says so at its end, as a line that is not one
+	-- of the list's (the cursor does not stop on it): which ones it holds and what to do for the others.
+	local tops, count = L.tops, #L.items
+	if cut() then
+		tops = table.clone(L.tops)
+		tops[#tops + 1] = tops[#tops] + NOTE
+		count += 1
+	end
+	return virtual.virtual(ID, count, SIZE.row, function(index)
+		if index > #L.items then
+			return list.note(S.issues.counts.shown)
+		end
 		local item = L.items[index]
 		local name = row.name(item.key)
 		local selected = item.key == L.cursor
@@ -409,7 +440,7 @@ function list.view(room, panel_open)
 			return row.group(item, look, L.late[item.group.key] == true)
 		end
 		return row.issue(item, look, o)
-	end, { tops = L.tops, px = 0, trail = 6 })
+	end, { tops = tops, px = 0, trail = 6 })
 end
 
 -- The room the list has to scroll in, as laid out: what `reveal` needs.

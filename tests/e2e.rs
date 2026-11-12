@@ -66,8 +66,15 @@ fn the_issues_topic_tells_the_lists_that_curl_brought_and_the_key_never_leaves_i
         .find(|list| list["loaded"] == true)
         .unwrap_or_else(|| panic!("a list that was loaded: {told:?}\n{log}"));
     assert_eq!(loaded["counts"]["mine"], 14);
-    assert_eq!(loaded["counts"]["all"], 19);
+    // The list the page looks at is My issues: All issues is asked for when it is shown.
+    assert_eq!(loaded["counts"]["shown"], 14);
+    assert_eq!(loaded["counts"]["shownCut"], false);
     assert_eq!(loaded["scope"], "mine");
+    assert_eq!(loaded["listing"], "ready");
+    assert!(
+        asked_of(&home, "AllIssues").is_empty(),
+        "a list is asked for when it is shown"
+    );
     assert_eq!(loaded["groups"][0]["name"], "In Progress");
     assert_eq!(loaded["groups"][0]["rows"][0]["identifier"], "ACM-412");
     // The backlog begins folded: its count, no rows.
@@ -92,19 +99,68 @@ fn the_issues_topic_tells_the_lists_that_curl_brought_and_the_key_never_leaves_i
         assert!(!call.stdin.contains("mutation"), "{}", call.stdin);
     }
     assert!(!log.contains(KEY), "the key is not in what the page heard");
+    // The names of the lists come after the lists, in the order of the card.
+    let named = told
+        .iter()
+        .find(|list| list["catalog"]["loaded"] == true)
+        .unwrap_or_else(|| panic!("the names came: {told:?}\n{log}"));
+    let keys: Vec<&str> = named["catalog"]["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| item["key"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        keys,
+        [
+            "view:view-bugs",
+            "project:proj-billing",
+            "view:view-ready",
+            "cycle:c-24",
+            "team:team-acm",
+            "cycle:c-7",
+            "team:team-mob",
+            "team:team-ops",
+            "cycle:c-11",
+            "team:team-web",
+            "view:view-cust",
+            "view:view-mobile",
+            "view:view-stale",
+            "view:view-unlabelled",
+            "project:proj-bash",
+        ]
+    );
+    let items = named["catalog"]["items"].as_array().unwrap();
+    assert_eq!(items[0]["section"], "favorite");
+    assert_eq!(items[0]["title"], "Bugs to triage");
+    assert_eq!(items[2]["team"], "ACM");
+    assert_eq!(items[3]["title"], "ACM \u{b7} Current cycle");
+    assert_eq!(items[3]["cycle"]["number"], 24);
+    assert_eq!(items[3]["cycle"]["endsAt"], "2026-11-15T00:00:00.000Z");
+    assert_eq!(items[3]["section"], "team");
+    assert_eq!(items[4]["title"], "ACM \u{b7} Active issues");
 }
 
 #[test]
-fn the_view_call_takes_a_scope_a_filter_and_the_groups_folded_and_refuses_the_rest() {
+fn the_view_call_takes_a_list_a_filter_and_the_groups_folded_and_refuses_the_rest() {
     let home = Home::new();
     let long = "x".repeat(201);
     let heard = home.ask(
         &keyed()
             .call(
                 "view",
-                json!({ "scope": "all", "filter": "bug", "closed": { "started:In Progress": true } }),
+                json!({ "list": { "kind": "all" }, "filter": "bug", "closed": { "started:In Progress": true } }),
             )
-            .call("view", json!({ "scope": "everyone" }))
+            // What is not a list: a kind there is not, an id where a list has none, no id where it
+            // needs one, an id that is not an id, words the call does not take, the scope of before.
+            .call("view", json!({ "list": { "kind": "everyone" } }))
+            .call("view", json!({ "list": { "kind": "folder", "id": "f-1" } }))
+            .call("view", json!({ "list": { "kind": "mine", "id": "v-1" } }))
+            .call("view", json!({ "list": { "kind": "view" } }))
+            .call("view", json!({ "list": { "kind": "view", "id": "v 1; drop" } }))
+            .call("view", json!({ "list": { "kind": "view", "id": "v-1", "name": "x" } }))
+            .call("view", json!({ "list": "all" }))
+            .call("view", json!({ "scope": "all" }))
             .call("view", json!({ "filter": long }))
             .call("view", json!({ "speed": 1 }))
             .call("view", json!({})),
@@ -112,12 +168,150 @@ fn the_view_call_takes_a_scope_a_filter_and_the_groups_folded_and_refuses_the_re
     let view = heard[0].result();
     assert_eq!(view["scope"], "all");
     assert_eq!(view["filter"], "bug");
-    assert!(heard[1].failed("bad-params"), "{:?}", heard[1]);
-    assert!(heard[2].failed("bad-params"), "{:?}", heard[2]);
-    assert!(heard[3].failed("bad-params"), "{:?}", heard[3]);
+    for refused in &heard[1..11] {
+        assert!(refused.failed("bad-params"), "{refused:?}");
+    }
     // What was refused changed nothing.
-    assert_eq!(heard[4].result()["scope"], "all");
-    assert_eq!(heard[4].result()["filter"], "bug");
+    assert_eq!(heard[11].result()["scope"], "all");
+    assert_eq!(heard[11].result()["filter"], "bug");
+    assert!(heard[11].result()["listId"].is_null());
+    // A list of something is told by its kind and its id.
+    let heard = home.ask(&keyed().call(
+        "view",
+        json!({ "list": { "kind": "view", "id": "view-bugs" } }),
+    ));
+    assert_eq!(heard[0].result()["scope"], "view");
+    assert_eq!(heard[0].result()["listId"], "view-bugs");
+}
+
+/// The lists a person can go to, each with what Linear is asked for it, and what that lists.
+const LISTS: [(&str, &str, &str, &str); 5] = [
+    ("team", "team-acm", "TeamIssues", "ACM-423"),
+    ("cycle", "c-24", "CycleIssues", "ACM-417"),
+    ("view", "view-bugs", "ViewIssues", "ACM-398"),
+    ("project", "proj-billing", "ProjectIssues", "ACM-418"),
+    ("label", "l-perf", "LabelIssues", "ACM-389"),
+];
+
+#[test]
+fn each_list_asks_linear_for_its_own_issues_and_nothing_but_reads_and_all_issues_waits_until_it_is_shown()
+ {
+    let each = |kind: &str, id: &str, operation: &str, identifier: &str| {
+        let home = Home::new();
+        let log = home.record(
+            &keyed()
+                .call("view", json!({ "list": { "kind": kind, "id": id } }))
+                .host_args(&["--subscribe", "issues"])
+                .then(&["--then", "wait"])
+                .limit(6),
+        );
+        let told = pushes(&log);
+        let ready = told
+            .iter()
+            .find(|list| list["listing"] == "ready" && list["scope"] == kind)
+            .unwrap_or_else(|| panic!("{kind}: a list that came: {told:?}\n{log}"));
+        assert_eq!(ready["listId"], id, "{kind}");
+        assert!(ready.to_string().contains(identifier), "{kind}: {ready}");
+        // The list is asked for once, by its id; the person's own list is asked for with it (its
+        // count is on the card): when the page began, and when it went to another list; the list
+        // that is not shown is not asked for; each question is a read.
+        let asked = asked_of(&home, operation);
+        assert_eq!(asked.len(), 1, "{kind}: {:?}", home.calls());
+        assert!(asked[0].stdin.contains(id), "{kind}: {}", asked[0].stdin);
+        assert!(
+            (1..=2).contains(&asked_of(&home, "MyIssues").len()),
+            "{kind}"
+        );
+        assert!(asked_of(&home, "AllIssues").is_empty(), "{kind}");
+        for call in home.calls() {
+            assert_eq!(call.argv, ["--config", "-"], "{kind}");
+            assert!(!call.stdin.to_lowercase().contains("mutation"), "{kind}");
+        }
+        assert!(!log.contains(KEY), "{kind}");
+    };
+    std::thread::scope(|scope| {
+        for (kind, id, operation, identifier) in LISTS {
+            scope.spawn(move || each(kind, id, operation, identifier));
+        }
+        scope.spawn(|| {
+            let home = Home::new();
+            let log = home.record(
+                &keyed()
+                    .call("view", json!({ "list": { "kind": "all" } }))
+                    .host_args(&["--subscribe", "issues"])
+                    .then(&["--then", "wait"])
+                    .limit(6),
+            );
+            let told = pushes(&log);
+            let ready = told
+                .iter()
+                .find(|list| list["listing"] == "ready" && list["scope"] == "all")
+                .unwrap_or_else(|| panic!("All issues came: {told:?}\n{log}"));
+            assert_eq!(ready["counts"]["shown"], 19);
+            assert_eq!(asked_of(&home, "AllIssues").len(), 1);
+        });
+    });
+}
+
+#[test]
+fn a_page_that_goes_to_another_list_is_told_that_it_is_on_its_way_and_then_has_it() {
+    let home = Home::new();
+    let log = home.record(
+        &keyed()
+            .call(
+                "view",
+                json!({ "list": { "kind": "team", "id": "team-acm" } }),
+            )
+            .host_args(&["--subscribe", "issues"])
+            .then(&["--then", "wait"])
+            .limit(6),
+    );
+    let answer = answers(&log);
+    // The answer says what is looked at and that it has not come; the topic then says it has.
+    assert_eq!(answer[0].result()["scope"], "team");
+    assert_eq!(answer[0].result()["listing"], "loading");
+    assert_eq!(answer[0].result()["matched"], 0);
+    let told = pushes(&log);
+    assert!(
+        told.iter()
+            .any(|list| list["listing"] == "ready" && list["counts"]["shown"] == 4),
+        "{told:?}"
+    );
+    // My issues was told too, and is what the card counts.
+    assert!(
+        told.iter().any(|list| list["counts"]["mine"] == 14),
+        "{told:?}"
+    );
+}
+
+#[test]
+fn a_list_stops_at_five_hundred_and_says_it_was_cut() {
+    let home = Home::new();
+    let log = home.record(
+        &keyed()
+            .env("STANDIN_LIST", "big")
+            .call(
+                "view",
+                json!({ "list": { "kind": "team", "id": "team-acm" } }),
+            )
+            .host_args(&["--subscribe", "issues"])
+            .then(&["--then", "wait"])
+            .limit(8),
+    );
+    let told = pushes(&log);
+    let cut = told
+        .iter()
+        .find(|list| list["listing"] == "ready" && list["scope"] == "team")
+        .unwrap_or_else(|| panic!("the list came: {told:?}\n{log}"));
+    assert_eq!(cut["counts"]["shown"], 500);
+    assert_eq!(cut["counts"]["shownCut"], true);
+    assert_eq!(
+        asked_of(&home, "TeamIssues").len(),
+        5,
+        "five pages, not a sixth"
+    );
+    // The person's own list is not cut by it.
+    assert_eq!(cut["counts"]["mineCut"], false);
 }
 
 #[test]

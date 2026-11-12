@@ -106,6 +106,74 @@ pub const ALL_ISSUES: Operation = Operation {
     ),
 };
 
+/// The open issues of one thing that has some (a team, a cycle, a view, a project, a label), asked
+/// for by its id: the id is a variable, and what the issues are of is the one thing that differs.
+macro_rules! issues_of {
+    ($name:literal, $root:literal) => {
+        Operation {
+            name: $name,
+            text: concat!(
+                "query ",
+                $name,
+                "($id: String!, $first: Int!, $after: String, $filter: IssueFilter) { viewer { ",
+                viewer_fields!(),
+                " } ",
+                $root,
+                "(id: $id) { issues(first: $first, after: $after, orderBy: updatedAt, filter: $filter) { \
+                 nodes { ",
+                issue_fields!(),
+                " } pageInfo { hasNextPage endCursor } } } }"
+            ),
+        }
+    };
+}
+
+/// The open issues of a team.
+pub const TEAM_ISSUES: Operation = issues_of!("TeamIssues", "team");
+/// The open issues of a cycle.
+pub const CYCLE_ISSUES: Operation = issues_of!("CycleIssues", "cycle");
+/// The open issues a saved view of issues shows.
+pub const VIEW_ISSUES: Operation = issues_of!("ViewIssues", "customView");
+/// The open issues of a project.
+pub const PROJECT_ISSUES: Operation = issues_of!("ProjectIssues", "project");
+/// The open issues that have a label.
+pub const LABEL_ISSUES: Operation = issues_of!("LabelIssues", "issueLabel");
+
+/// The favorites of the person: what Linear starred (views, projects, cycles, labels, and what is not
+/// a list here).
+pub const LIST_FAVORITES: Operation = Operation {
+    name: "ListFavorites",
+    text: "query ListFavorites($first: Int!, $after: String) { \
+           favorites(first: $first, after: $after) { nodes { type sortOrder \
+           customView { id name modelName team { key } } project { id name } \
+           cycle { id number name endsAt team { key } } label { id name team { key } } } \
+           pageInfo { hasNextPage endCursor } } }",
+};
+
+/// The teams, each with the cycle that runs now.
+pub const LIST_TEAMS: Operation = Operation {
+    name: "ListTeams",
+    text: "query ListTeams($first: Int!, $after: String) { \
+           teams(first: $first, after: $after) { nodes { id key name \
+           activeCycle { id number name endsAt } } pageInfo { hasNextPage endCursor } } }",
+};
+
+/// The saved views (of issues and of other things: the program keeps those of issues).
+pub const LIST_VIEWS: Operation = Operation {
+    name: "ListViews",
+    text: "query ListViews($first: Int!, $after: String) { \
+           customViews(first: $first, after: $after) { nodes { id name modelName team { key } } \
+           pageInfo { hasNextPage endCursor } } }",
+};
+
+/// The projects that are not finished.
+pub const LIST_PROJECTS: Operation = Operation {
+    name: "ListProjects",
+    text: "query ListProjects($first: Int!, $after: String, $filter: ProjectFilter) { \
+           projects(first: $first, after: $after, filter: $filter) { nodes { id name } \
+           pageInfo { hasNextPage endCursor } } }",
+};
+
 /// An issue another issue is tied to, as much as names it and opens it.
 macro_rules! neighbor_fields {
     () => {
@@ -187,10 +255,19 @@ pub const COMMENT_CREATE: Operation = Operation {
 
 /// Every operation there is, for the test that scans for a `mutation`.
 #[cfg(test)]
-pub const ALL: [Operation; 9] = [
+pub const ALL: [Operation; 18] = [
     VERIFY,
     MY_ISSUES,
     ALL_ISSUES,
+    TEAM_ISSUES,
+    CYCLE_ISSUES,
+    VIEW_ISSUES,
+    PROJECT_ISSUES,
+    LABEL_ISSUES,
+    LIST_FAVORITES,
+    LIST_TEAMS,
+    LIST_VIEWS,
+    LIST_PROJECTS,
     ISSUE,
     NEW_ISSUE_TEAMS,
     NEW_ISSUE_OPTIONS,
@@ -236,6 +313,24 @@ pub struct Page<'a> {
     pub first: u32,
     pub after: Option<&'a str>,
     pub filter: Filter,
+}
+
+/// The variables of a page of the issues of one thing that has some: its id, and the page.
+#[derive(Debug, Serialize)]
+pub struct Owned<'a> {
+    pub id: &'a str,
+    #[serde(flatten)]
+    pub page: Page<'a>,
+}
+
+/// The variables of a page of names (of favorites, teams, views), and of the projects that are
+/// not finished.
+#[derive(Debug, Serialize)]
+pub struct Named<'a> {
+    pub first: u32,
+    pub after: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filter: Option<serde_json::Value>,
 }
 
 /// The issues that are still open: not completed and not canceled.
@@ -317,7 +412,9 @@ mod tests {
         let declared = source
             .lines()
             .filter(|line| {
-                line.starts_with("pub const ") && line.ends_with(": Operation = Operation {")
+                line.starts_with("pub const ")
+                    && (line.ends_with(": Operation = Operation {")
+                        || line.contains("= issues_of!("))
             })
             .count();
         assert_eq!(declared, ALL.len());

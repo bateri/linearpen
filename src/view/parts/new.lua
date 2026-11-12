@@ -298,15 +298,16 @@ function new.create()
 			return true
 		end
 		N.open = false
-		N.pending = { id = result.id, expires = S.now + WAIT }
+		-- (Where All issues is shown the issue is in it, whoever it is for.)
+		local kind = (S.scope == "mine" and mine) and "mine" or "all"
+		N.pending = { id = result.id, kind = kind, expires = S.now + WAIT }
 		-- The list is looked at as it is where the issue will be: no filter, the list it is in, its
 		-- group open.
 		head.field.value = ""
 		if group ~= nil then
 			S.closed[group] = false
 		end
-		-- (Where All issues is shown the issue is in it, whoever it is for.)
-		act.view({ scope = (S.scope == "mine" and mine) and "mine" or "all", filter = "", closed = S.closed })
+		act.view({ list = { kind = kind }, filter = "", closed = S.closed })
 		return u:focus(nil)
 	end)
 	return true
@@ -321,6 +322,10 @@ function act.listed()
 	end
 	if S.now > pending.expires then
 		N.pending = nil
+		return
+	end
+	-- (A list that is not the one the issue is waited for in, or that is on its way, is not looked in.)
+	if S.scope ~= pending.kind or S.issues.listing ~= "ready" then
 		return
 	end
 	local item = list.reveal_issue(pending.id)

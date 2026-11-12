@@ -1,0 +1,98 @@
+{
+  "data": {
+    "viewer": {
+      "id": "user-1",
+      "name": "Ada",
+      "organization": {
+        "name": "Acme",
+        "urlKey": "acme"
+      }
+    },
+    "cycle": {
+      "issues": {
+        "nodes": [
+          {
+            "id": "issue-417",
+            "identifier": "ACM-417",
+            "title": "Split the billing worker from the API",
+            "priority": 3.0,
+            "updatedAt": "2026-11-10T14:20:00.000Z",
+            "url": "https://linear.app/acme/issue/ACM-417/split-the-billing-worker-from-the-api",
+            "branchName": "ada/acm-417-split-the-billing-worker-from-the-api",
+            "state": {
+              "id": "s-prog",
+              "name": "In Progress",
+              "type": "started",
+              "position": 2.0
+            },
+            "labels": {
+              "nodes": [
+                {
+                  "id": "l-infra",
+                  "name": "infra",
+                  "color": "#05a2c2"
+                }
+              ]
+            },
+            "team": {
+              "id": "team-acm",
+              "key": "ACM"
+            },
+            "cycle": {
+              "id": "c-12",
+              "number": 12
+            },
+            "project": null,
+            "assignee": {
+              "id": "u-deniz",
+              "displayName": "Deniz",
+              "isMe": false
+            }
+          },
+          {
+            "id": "issue-412",
+            "identifier": "ACM-412",
+            "title": "Add rate limiting to the public API",
+            "priority": 2.0,
+            "updatedAt": "2026-11-09T14:20:00.000Z",
+            "url": "https://linear.app/acme/issue/ACM-412/add-rate-limiting-to-the-public-api",
+            "branchName": "ada/acm-412-add-rate-limiting-to-the-public-api",
+            "state": {
+              "id": "s-prog",
+              "name": "In Progress",
+              "type": "started",
+              "position": 2.0
+            },
+            "labels": {
+              "nodes": [
+                {
+                  "id": "l-api",
+                  "name": "api",
+                  "color": "#3e63dd"
+                }
+              ]
+            },
+            "team": {
+              "id": "team-acm",
+              "key": "ACM"
+            },
+            "cycle": {
+              "id": "c-12",
+              "number": 12
+            },
+            "project": null,
+            "assignee": {
+              "id": "u-ada",
+              "displayName": "Ada",
+              "isMe": true
+            }
+          }
+        ],
+        "pageInfo": {
+          "hasNextPage": false,
+          "endCursor": null
+        }
+      }
+    }
+  }
+}

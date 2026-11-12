@@ -1,0 +1,95 @@
+{
+  "data": {
+    "viewer": {
+      "id": "user-1",
+      "name": "Ada",
+      "organization": {
+        "name": "Acme",
+        "urlKey": "acme"
+      }
+    },
+    "customView": {
+      "issues": {
+        "nodes": [
+          {
+            "id": "issue-398",
+            "identifier": "ACM-398",
+            "title": "Checkout test fails one run in ten",
+            "priority": 1.0,
+            "updatedAt": "2026-11-09T13:50:00.000Z",
+            "url": "https://linear.app/acme/issue/ACM-398/checkout-test-fails-one-run-in-ten",
+            "branchName": "ada/acm-398-checkout-test-fails-one-run-in-ten",
+            "state": {
+              "id": "s-prog",
+              "name": "In Progress",
+              "type": "started",
+              "position": 2.0
+            },
+            "labels": {
+              "nodes": [
+                {
+                  "id": "l-bug",
+                  "name": "bug",
+                  "color": "#e5484d"
+                }
+              ]
+            },
+            "team": {
+              "id": "team-acm",
+              "key": "ACM"
+            },
+            "cycle": {
+              "id": "c-12",
+              "number": 12
+            },
+            "project": null,
+            "assignee": {
+              "id": "u-ada",
+              "displayName": "Ada",
+              "isMe": true
+            }
+          },
+          {
+            "id": "issue-420",
+            "identifier": "ACM-420",
+            "title": "Invoice PDF cuts long company names",
+            "priority": 3.0,
+            "updatedAt": "2026-11-10T14:20:00.000Z",
+            "url": "https://linear.app/acme/issue/ACM-420/invoice-pdf-cuts-long-company-names",
+            "branchName": "ada/acm-420-invoice-pdf-cuts-long-company-names",
+            "state": {
+              "id": "s-todo",
+              "name": "Todo",
+              "type": "unstarted",
+              "position": 1.0
+            },
+            "labels": {
+              "nodes": [
+                {
+                  "id": "l-bug",
+                  "name": "bug",
+                  "color": "#e5484d"
+                }
+              ]
+            },
+            "team": {
+              "id": "team-acm",
+              "key": "ACM"
+            },
+            "cycle": null,
+            "project": null,
+            "assignee": {
+              "id": "u-ada",
+              "displayName": "Ada",
+              "isMe": true
+            }
+          }
+        ],
+        "pageInfo": {
+          "hasNextPage": false,
+          "endCursor": null
+        }
+      }
+    }
+  }
+}

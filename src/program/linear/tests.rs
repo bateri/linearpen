@@ -84,7 +84,7 @@ fn mine_page(count: usize) -> Reply {
 #[test]
 fn my_issues_are_one_page_when_that_is_all_there_is() {
     let transport = Scripted::new(vec![Ok(mine_page(3))]);
-    let fetched = fetch(&transport, &key(), Scope::Mine).unwrap();
+    let fetched = fetch(&transport, &key(), &Scope::Mine).unwrap();
     assert_eq!(fetched.listing.issues.len(), 3);
     assert!(!fetched.listing.truncated);
     assert_eq!(fetched.viewer.organization.url_key, "acme");
@@ -97,7 +97,7 @@ fn pages_follow_the_cursor_until_there_is_no_next() {
         Ok(all_page(0, 100, true)),
         Ok(all_page(100, 40, false)),
     ]);
-    let fetched = fetch(&transport, &key(), Scope::All).unwrap();
+    let fetched = fetch(&transport, &key(), &Scope::All).unwrap();
     assert_eq!(fetched.listing.issues.len(), 140);
     assert!(!fetched.listing.truncated);
     let sent = transport.sent();
@@ -111,7 +111,7 @@ fn pages_follow_the_cursor_until_there_is_no_next() {
 fn a_list_stops_at_five_hundred_and_says_there_was_more() {
     // A workspace that never runs out: the sixth page is not asked for.
     let transport = Scripted::new((0..8).map(|n| Ok(all_page(n * 100, 100, true))).collect());
-    let fetched = fetch(&transport, &key(), Scope::All).unwrap();
+    let fetched = fetch(&transport, &key(), &Scope::All).unwrap();
     assert_eq!(fetched.listing.issues.len(), LIMIT);
     assert!(fetched.listing.truncated);
     assert_eq!(transport.sent().len(), 5);
@@ -120,7 +120,7 @@ fn a_list_stops_at_five_hundred_and_says_there_was_more() {
 #[test]
 fn exactly_five_hundred_is_not_a_truncation() {
     let transport = Scripted::new((0..5).map(|n| Ok(all_page(n * 100, 100, n < 4))).collect());
-    let fetched = fetch(&transport, &key(), Scope::All).unwrap();
+    let fetched = fetch(&transport, &key(), &Scope::All).unwrap();
     assert_eq!(fetched.listing.issues.len(), 500);
     assert!(!fetched.listing.truncated);
 }
@@ -134,7 +134,7 @@ fn no_cursor_ends_the_pages_even_if_linear_says_there_is_more() {
         ),
     };
     let transport = Scripted::always(reply, 3);
-    let fetched = fetch(&transport, &key(), Scope::All).unwrap();
+    let fetched = fetch(&transport, &key(), &Scope::All).unwrap();
     assert!(fetched.listing.issues.is_empty());
     assert_eq!(transport.sent().len(), 1);
 }
@@ -142,7 +142,7 @@ fn no_cursor_ends_the_pages_even_if_linear_says_there_is_more() {
 #[test]
 fn the_request_is_a_plain_query_with_its_variables() {
     let transport = Scripted::new(vec![Ok(mine_page(0))]);
-    fetch(&transport, &key(), Scope::Mine).unwrap();
+    fetch(&transport, &key(), &Scope::Mine).unwrap();
     let sent = transport.sent();
     assert!(
         sent[0].contains(r#""operationName":"MyIssues""#),
@@ -216,7 +216,7 @@ fn another_status_or_a_body_that_is_not_json_is_failed() {
 fn an_unreachable_transport_is_unreachable() {
     let transport = Scripted::new(vec![Err(Error::Unreachable("down".to_owned()))]);
     assert_eq!(
-        fetch(&transport, &key(), Scope::Mine),
+        fetch(&transport, &key(), &Scope::Mine),
         Err(Error::Unreachable("down".to_owned()))
     );
 }
@@ -990,4 +990,271 @@ fn no_change_asks_for_the_description_or_the_team_to_be_written() {
             "{variables}"
         );
     }
+}
+
+// --- The lists a person can go to: the issues of each, and their names --------------------------------
+
+/// A page of the issues of one thing that has them (`root`: a team, a cycle, a view, a project, a
+/// label): `count` of them, numbered from `from`.
+fn owned_page(root: &str, from: usize, count: usize, more: bool) -> Reply {
+    let nodes: Vec<String> = (from..from + count).map(issue).collect();
+    Reply {
+        status: 200,
+        body: format!(
+            r#"{{"data":{{"viewer":{{{VIEWER}}},"{root}":{{"issues":{{"nodes":[{}],"pageInfo":{{"hasNextPage":{more},"endCursor":"c{}"}}}}}}}}}}"#,
+            nodes.join(","),
+            from + count
+        ),
+    }
+}
+
+/// What a scope is asked with: the operation, and what the issues belong to in the answer.
+fn sources() -> [(Scope, &'static str, &'static str); 5] {
+    [
+        (Scope::Team("t-acm".to_owned()), "TeamIssues", "team"),
+        (Scope::Cycle("c-24".to_owned()), "CycleIssues", "cycle"),
+        (Scope::View("v-1".to_owned()), "ViewIssues", "customView"),
+        (Scope::Project("p-1".to_owned()), "ProjectIssues", "project"),
+        (Scope::Label("l-1".to_owned()), "LabelIssues", "issueLabel"),
+    ]
+}
+
+#[test]
+fn each_source_asks_its_own_question_with_its_id_a_variable_and_the_open_filter() {
+    for (scope, name, root) in sources() {
+        let transport = Scripted::new(vec![Ok(owned_page(root, 0, 3, false))]);
+        let fetched = fetch(&transport, &key(), &scope).unwrap();
+        assert_eq!(fetched.listing.issues.len(), 3, "{name}");
+        assert!(!fetched.listing.truncated, "{name}");
+        assert_eq!(fetched.viewer.organization.url_key, "acme", "{name}");
+        let sent = transport.sent();
+        assert_eq!(sent.len(), 1, "{name}");
+        let request: serde_json::Value = serde_json::from_str(&sent[0]).unwrap();
+        assert_eq!(request["operationName"], name);
+        let id = scope.id().unwrap();
+        // The id is a variable, never a part of the text that is asked.
+        assert_eq!(request["variables"]["id"], id, "{name}");
+        assert!(!request["query"].as_str().unwrap().contains(id), "{name}");
+        assert_eq!(
+            request["variables"]["filter"]["state"]["type"]["nin"],
+            serde_json::json!(["completed", "canceled"]),
+            "{name}"
+        );
+        assert_eq!(request["variables"]["first"], 100, "{name}");
+        assert!(!sent[0].to_lowercase().contains("mutation"), "{name}");
+    }
+}
+
+#[test]
+fn a_source_follows_the_cursor_and_stops_at_five_hundred_like_the_other_lists() {
+    for (scope, name, root) in sources() {
+        let transport = Scripted::new(
+            (0..8)
+                .map(|n| Ok(owned_page(root, n * 100, 100, true)))
+                .collect(),
+        );
+        let fetched = fetch(&transport, &key(), &scope).unwrap();
+        assert_eq!(fetched.listing.issues.len(), LIMIT, "{name}");
+        assert!(fetched.listing.truncated, "{name}");
+        assert_eq!(transport.sent().len(), 5, "{name}");
+        // Exactly five hundred is not a cut.
+        let transport = Scripted::new(
+            (0..5)
+                .map(|n| Ok(owned_page(root, n * 100, 100, n < 4)))
+                .collect(),
+        );
+        let fetched = fetch(&transport, &key(), &scope).unwrap();
+        assert_eq!(fetched.listing.issues.len(), 500, "{name}");
+        assert!(!fetched.listing.truncated, "{name}");
+    }
+}
+
+#[test]
+fn a_scope_is_told_and_read_by_its_kind_and_its_id() {
+    let all = [
+        (Scope::Mine, "mine", None),
+        (Scope::All, "all", None),
+        (Scope::Team("t".to_owned()), "team", Some("t")),
+        (Scope::Cycle("c".to_owned()), "cycle", Some("c")),
+        (Scope::View("v".to_owned()), "view", Some("v")),
+        (Scope::Project("p".to_owned()), "project", Some("p")),
+        (Scope::Label("l".to_owned()), "label", Some("l")),
+    ];
+    for (scope, kind, id) in all {
+        assert_eq!(scope.kind(), kind);
+        assert_eq!(scope.id(), id);
+        assert_eq!(Scope::of(kind, id), Some(scope));
+    }
+    // A kind that is not one, an id where there is none, and no id where there must be one.
+    assert_eq!(Scope::of("folder", Some("x")), None);
+    assert_eq!(Scope::of("mine", Some("x")), None);
+    assert_eq!(Scope::of("view", None), None);
+    assert_eq!(Scope::of("view", Some("")), None);
+}
+
+fn reply(body: &str) -> Reply {
+    Reply {
+        status: 200,
+        body: body.to_owned(),
+    }
+}
+
+fn empty(root: &str) -> Reply {
+    reply(&format!(
+        r#"{{"data":{{"{root}":{{"nodes":[],"pageInfo":{{"hasNextPage":false,"endCursor":null}}}}}}}}"#
+    ))
+}
+
+#[test]
+fn the_names_of_the_lists_come_from_four_questions_and_are_in_the_order_of_the_card() {
+    let transport = Scripted::new(vec![
+        // The favorites, out of their order, with a folder and a view of projects that are no lists,
+        // a name with a line break in it and a kind of favorite that is not a list.
+        Ok(reply(
+            r#"{"data":{"favorites":{"nodes":[
+                {"type":"project","sortOrder":3.0,"project":{"id":"p-bill","name":"Billing"}},
+                {"type":"folder","sortOrder":0.5,"customView":null,"project":null,"cycle":null,"label":null},
+                {"type":"customView","sortOrder":1.0,"customView":{"id":"v-bugs","name":"Bugs\nto triage","modelName":"Issue","team":null}},
+                {"type":"customView","sortOrder":1.5,"customView":{"id":"v-proj","name":"All projects","modelName":"Project","team":null}},
+                {"type":"customView","sortOrder":4.0,"customView":{"id":"v-ready","name":"Agent-ready","modelName":"Issue","team":{"key":"ACM"}}},
+                {"type":"cycle","sortOrder":5.0,"cycle":{"id":"c-24","number":24.0,"name":null,"endsAt":"2026-11-15T00:00:00.000Z","team":{"key":"ACM"}}},
+                {"type":"label","sortOrder":6.0,"label":{"id":"l-perf","name":"perf","team":null}},
+                {"type":"predefinedView","sortOrder":7.0}
+            ],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}"#,
+        )),
+        Ok(reply(
+            r#"{"data":{"teams":{"nodes":[
+                {"id":"t-web","key":"WEB","name":"Web","activeCycle":{"id":"c-11","number":11.0,"name":"Spring","endsAt":"2026-11-18T00:00:00.000Z"}},
+                {"id":"t-acm","key":"ACM","name":"Acme","activeCycle":{"id":"c-24","number":24.0,"name":null,"endsAt":"2026-11-15T00:00:00.000Z"}},
+                {"id":"t-ops","key":"OPS","name":"Ops","activeCycle":null}
+            ],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}"#,
+        )),
+        Ok(reply(
+            r#"{"data":{"customViews":{"nodes":[
+                {"id":"v-stale","name":"Stale in review","modelName":"Issue","team":{"key":"ACM"}},
+                {"id":"v-bugs","name":"Bugs to triage","modelName":"Issue","team":null},
+                {"id":"v-docs","name":"Docs","modelName":"Project","team":null},
+                {"id":"v-cust","name":"Bugs by customer","modelName":"Issue","team":null}
+            ],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}"#,
+        )),
+        Ok(reply(
+            r#"{"data":{"projects":{"nodes":[
+                {"id":"p-bash","name":"Bug bash"},
+                {"id":"p-bill","name":"Billing"}
+            ],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}"#,
+        )),
+    ]);
+    let entries = names(&transport, &key()).unwrap();
+    let seen: Vec<(&str, &str, &str)> = entries
+        .iter()
+        .map(|entry| {
+            (
+                entry.scope.kind(),
+                entry.section.name(),
+                entry.title.as_str(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        seen,
+        [
+            // The favorites, by their sort order: the ones that are lists.
+            ("view", "favorite", "Bugs to triage"),
+            ("project", "favorite", "Billing"),
+            ("view", "favorite", "Agent-ready"),
+            ("cycle", "favorite", "ACM \u{b7} Cycle 24"),
+            ("label", "favorite", "perf"),
+            // The teams by key, each with its running cycle (a cycle that is a favorite is not said
+            // twice, nor is a team without one) and its open issues.
+            ("team", "team", "ACM \u{b7} Active issues"),
+            ("team", "team", "OPS \u{b7} Active issues"),
+            ("cycle", "team", "WEB \u{b7} Current cycle"),
+            ("team", "team", "WEB \u{b7} Active issues"),
+            // The views that are not favorites, by name, of issues only; then the projects.
+            ("view", "view", "Bugs by customer"),
+            ("view", "view", "Stale in review"),
+            ("project", "project", "Bug bash"),
+        ]
+    );
+    let sent = transport.sent();
+    let named: Vec<String> = sent
+        .iter()
+        .map(|body| {
+            serde_json::from_str::<serde_json::Value>(body).unwrap()["operationName"]
+                .as_str()
+                .unwrap()
+                .to_owned()
+        })
+        .collect();
+    assert_eq!(
+        named,
+        ["ListFavorites", "ListTeams", "ListViews", "ListProjects"]
+    );
+    for body in &sent {
+        assert!(!body.to_lowercase().contains("mutation"), "{body}");
+    }
+    // The projects asked for are the open ones.
+    assert!(
+        sent[3].contains(r#""completedAt":{"null":true}"#),
+        "{}",
+        sent[3]
+    );
+    // What a cycle is told with, and the team a list is of.
+    let cycle = entries
+        .iter()
+        .find(|entry| entry.scope == Scope::Cycle("c-24".to_owned()))
+        .unwrap();
+    assert_eq!(cycle.cycle.as_ref().unwrap().number, 24);
+    assert_eq!(
+        cycle.cycle.as_ref().unwrap().ends_at,
+        "2026-11-15T00:00:00.000Z"
+    );
+    assert_eq!(cycle.team.as_deref(), Some("ACM"));
+    let ready = entries
+        .iter()
+        .find(|entry| entry.title == "Agent-ready")
+        .unwrap();
+    assert_eq!(ready.team.as_deref(), Some("ACM"));
+    let spring = entries
+        .iter()
+        .find(|entry| entry.title == "WEB \u{b7} Current cycle")
+        .unwrap();
+    assert_eq!(spring.cycle.as_ref().unwrap().number, 11);
+}
+
+#[test]
+fn the_names_are_taken_a_page_at_a_time_up_to_a_ceiling_and_a_failure_is_said() {
+    let page = |from: usize, more: bool| {
+        let nodes: Vec<String> = (from..from + 100)
+            .map(|n| {
+                format!(r#"{{"id":"v{n}","name":"View {n:04}","modelName":"Issue","team":null}}"#)
+            })
+            .collect();
+        reply(&format!(
+            r#"{{"data":{{"customViews":{{"nodes":[{}],"pageInfo":{{"hasNextPage":{more},"endCursor":"c{}"}}}}}}}}"#,
+            nodes.join(","),
+            from + 100
+        ))
+    };
+    let transport = Scripted::new(vec![
+        Ok(empty("favorites")),
+        Ok(empty("teams")),
+        Ok(page(0, true)),
+        Ok(page(100, true)),
+        Ok(empty("projects")),
+    ]);
+    let entries = names(&transport, &key()).unwrap();
+    // Two hundred views are the most taken: the third page is not asked for.
+    assert_eq!(entries.len(), names::NAMES_MOST);
+    assert_eq!(transport.sent().len(), 5);
+    assert!(transport.sent()[3].contains(r#""after":"c100""#));
+    // A question that fails fails the names (the lists of issues do not wait for them).
+    let transport = Scripted::new(vec![
+        Ok(empty("favorites")),
+        Err(Error::Unreachable("down".to_owned())),
+    ]);
+    assert!(matches!(
+        names(&transport, &key()),
+        Err(Error::Unreachable(_))
+    ));
 }

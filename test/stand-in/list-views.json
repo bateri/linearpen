@@ -1,0 +1,62 @@
+{
+  "data": {
+    "customViews": {
+      "nodes": [
+        {
+          "id": "view-bugs",
+          "name": "Bugs to triage",
+          "modelName": "Issue",
+          "team": null
+        },
+        {
+          "id": "view-cust",
+          "name": "Bugs by customer, last 30 days",
+          "modelName": "Issue",
+          "team": null
+        },
+        {
+          "id": "view-mobile",
+          "name": "Mobile crash bugs: the iOS 18 regression watchlist",
+          "modelName": "Issue",
+          "team": {
+            "key": "ACM"
+          }
+        },
+        {
+          "id": "view-ready",
+          "name": "Agent-ready",
+          "modelName": "Issue",
+          "team": {
+            "key": "ACM"
+          }
+        },
+        {
+          "id": "view-unlabelled",
+          "name": "Unlabelled bugs nobody owns yet",
+          "modelName": "Issue",
+          "team": {
+            "key": "MOB"
+          }
+        },
+        {
+          "id": "view-stale",
+          "name": "Stale in review",
+          "modelName": "Issue",
+          "team": {
+            "key": "ACM"
+          }
+        },
+        {
+          "id": "view-roadmap",
+          "name": "Roadmap",
+          "modelName": "Project",
+          "team": null
+        }
+      ],
+      "pageInfo": {
+        "hasNextPage": false,
+        "endCursor": null
+      }
+    }
+  }
+}

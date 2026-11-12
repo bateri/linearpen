@@ -31,6 +31,16 @@ pub(crate) type Page = Headless<InProcess>;
 const MY_ISSUES: &str = include_str!("../../test/stand-in/my-issues.json");
 const MY_ISSUES_EMPTY: &str = include_str!("../../test/stand-in/my-issues-empty.json");
 const ALL_ISSUES: &str = include_str!("../../test/stand-in/all-issues.json");
+const TEAM_ISSUES: &str = include_str!("../../test/stand-in/team-issues.json");
+const TEAM_ISSUES_BIG: &str = include_str!("../../test/stand-in/team-issues-big.json");
+const CYCLE_ISSUES: &str = include_str!("../../test/stand-in/cycle-issues.json");
+const VIEW_ISSUES: &str = include_str!("../../test/stand-in/view-issues.json");
+const PROJECT_ISSUES: &str = include_str!("../../test/stand-in/project-issues.json");
+const LABEL_ISSUES: &str = include_str!("../../test/stand-in/label-issues.json");
+const LIST_FAVORITES: &str = include_str!("../../test/stand-in/list-favorites.json");
+const LIST_TEAMS: &str = include_str!("../../test/stand-in/list-teams.json");
+const LIST_VIEWS: &str = include_str!("../../test/stand-in/list-views.json");
+const LIST_PROJECTS: &str = include_str!("../../test/stand-in/list-projects.json");
 const VERIFY: &str = include_str!("../../test/stand-in/verify.json");
 const ISSUE: &str = include_str!("../../test/stand-in/issue.json");
 const REFUSED: &str = include_str!("../../test/stand-in/refused.json");
@@ -80,6 +90,10 @@ pub(crate) struct Canned {
     bare: Mutex<bool>,
     /// Whether Linear has one team.
     one_team: Mutex<bool>,
+    /// Whether a team has more issues than the pen takes.
+    big_team: Mutex<bool>,
+    /// Whether Linear cannot tell the names of the lists (the issues of a list come).
+    no_names: Mutex<bool>,
     /// How a change is answered.
     change: Mutex<Change>,
     /// The inputs of the `IssueBatchUpdate` requests that were sent (`ids` and `input`), in order.
@@ -135,6 +149,8 @@ impl Canned {
             made: Mutex::new(None),
             bare: Mutex::new(false),
             one_team: Mutex::new(false),
+            big_team: Mutex::new(false),
+            no_names: Mutex::new(false),
             change: Mutex::new(Change::Fine),
             changes: Mutex::new(Vec::new()),
             comment: Mutex::new(Comment::Fine),
@@ -145,6 +161,16 @@ impl Canned {
             details: Mutex::new(std::collections::HashMap::new()),
             issues_asked: Mutex::new(Vec::new()),
         })
+    }
+
+    /// From now on a team has more issues than the pen takes (500).
+    pub(crate) fn set_big_team(&self) {
+        *self.big_team.lock().unwrap() = true;
+    }
+
+    /// From now on Linear cannot tell the names of the lists.
+    pub(crate) fn set_no_names(&self) {
+        *self.no_names.lock().unwrap() = true;
     }
 
     /// From now on `Issue` tells the issue `id` with `extra` (the members of an object) over what the
@@ -400,7 +426,11 @@ impl Canned {
             &mut value["data"]["issues"]["nodes"]
         };
         let nodes = nodes.as_array_mut().unwrap();
-        if let Some(node) = self.made_node() {
+        // (An issue made for someone else is not in the person's own list.)
+        if let Some(node) = self
+            .made_node()
+            .filter(|node| !mine || node["assignee"]["isMe"] == true)
+        {
             nodes.insert(0, node);
         }
         let now: Vec<serde_json::Value> = nodes
@@ -429,6 +459,32 @@ impl Canned {
     pub(crate) fn last_key(&self) -> Option<String> {
         self.key.lock().unwrap().clone()
     }
+}
+
+/// The hundred issues of the fixture of a team that has more than the pen takes, as the page `page`
+/// (from 0) of it: the numbers go on from where the page before ended.
+fn big_page(page: usize) -> String {
+    let mut text = TEAM_ISSUES_BIG.to_owned();
+    if page == 0 {
+        return text;
+    }
+    for at in 0..100 {
+        let now = page * 100 + at;
+        for (was, is) in [
+            (format!("\"big-{at}\""), format!("\"big-{now}\"")),
+            (
+                format!("\"ACM-{}\"", 1000 + at),
+                format!("\"ACM-{}\"", 1000 + now),
+            ),
+            (
+                format!("Issue number {at} of"),
+                format!("Issue number {now} of"),
+            ),
+        ] {
+            text = text.replace(&was, &is);
+        }
+    }
+    text
 }
 
 /// The state, label, project or member `id` of the options the fixtures have for Acme, as a node
@@ -524,6 +580,15 @@ impl Transport for Canned {
             "IssueCreate",
             "IssueBatchUpdate",
             "CommentCreate",
+            "TeamIssues",
+            "CycleIssues",
+            "ViewIssues",
+            "ProjectIssues",
+            "LabelIssues",
+            "ListFavorites",
+            "ListTeams",
+            "ListViews",
+            "ListProjects",
             "NewIssueTeams",
             "NewIssueOptions",
             "Issue",
@@ -554,6 +619,26 @@ impl Transport for Canned {
                 "Verify" => reply(200, VERIFY),
                 "MyIssues" => reply(200, &self.listing(MY_ISSUES, true)),
                 "AllIssues" => reply(200, &self.listing(ALL_ISSUES, false)),
+                "TeamIssues" if *self.big_team.lock().unwrap() => {
+                    // Five pages of a hundred make a run of the list (the page asked for is told by
+                    // how many were asked), each with issues of its own.
+                    let page = (self.times("TeamIssues") + 4) % 5;
+                    reply(200, &big_page(page))
+                }
+                "TeamIssues" => reply(200, TEAM_ISSUES),
+                "CycleIssues" => reply(200, CYCLE_ISSUES),
+                "ViewIssues" => reply(200, VIEW_ISSUES),
+                "ProjectIssues" => reply(200, PROJECT_ISSUES),
+                "LabelIssues" => reply(200, LABEL_ISSUES),
+                "ListFavorites" | "ListTeams" | "ListViews" | "ListProjects"
+                    if *self.no_names.lock().unwrap() =>
+                {
+                    reply(200, r#"{"errors":[{"message":"Linear is not telling"}]}"#)
+                }
+                "ListFavorites" => reply(200, LIST_FAVORITES),
+                "ListTeams" => reply(200, LIST_TEAMS),
+                "ListViews" => reply(200, LIST_VIEWS),
+                "ListProjects" => reply(200, LIST_PROJECTS),
                 "Issue" => {
                     let asked: serde_json::Value = serde_json::from_str(body).unwrap();
                     let id = asked["variables"]["id"].as_str().unwrap_or_default();
@@ -753,8 +838,9 @@ fn cursor_on(page: &mut Page, words: &str) {
     page.wait_for(WITHIN, |page| cursor(page).contains(words))
         .unwrap_or_else(|why| {
             panic!(
-                "the cursor is on {words:?}: {why:?}; it is on {:?}",
-                cursor(page)
+                "the cursor is on {words:?}: {why:?}; it is on {:?}; the page says {}",
+                cursor(page),
+                said(page)
             )
         });
 }
@@ -4065,6 +4151,406 @@ fn the_list_button_says_which_list_and_how_many_and_opens_the_card_of_lists() {
     })
     .unwrap_or_else(|why| panic!("All issues: {why:?}: {}", said(&page)));
     assert!(!page.says("Assigned to you"), "{}", said(&page));
+}
+
+// --- The lists to go to -----------------------------------------------------------------------------
+
+/// The card of lists, open (`g`), with the names of the other lists in it.
+fn open_card_of_lists(page: &mut Page) {
+    page.press("g").expect("g");
+    page.wait_for(WITHIN, |page| {
+        page.says("Assigned to you") && page.says("Bug bash, November")
+    })
+    .unwrap_or_else(|why| panic!("the card of lists with the names: {why:?}: {}", said(page)));
+}
+
+/// Waits until the button of the lists says `name`.
+fn list_button_says(page: &mut Page, name: &str) {
+    page.wait_for(WITHIN, |page| {
+        page.words_in("lists").iter().any(|word| word == name)
+    })
+    .unwrap_or_else(|why| {
+        panic!(
+            "the button of the lists says {name:?}: {why:?}: {:?}",
+            page.words_in("lists")
+        )
+    });
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_card_of_lists_has_mine_all_the_favorites_the_teams_the_views_and_the_projects_each_saying_what_it_is()
+ {
+    let (_linear, _session, mut page) = open_lists(WIDE);
+    open_card_of_lists(&mut page);
+    let says = said(&page);
+    // The first two, with their keys, then the favorites with theirs (3 to 5 of three), then the rest.
+    let at = |words: &str| {
+        says.find(words)
+            .unwrap_or_else(|| panic!("{words:?} is on the card: {says}"))
+    };
+    let order = [
+        "My issues|Assigned to you|1",
+        "All issues|The workspace|2",
+        "Bugs to triage|View|3",
+        "Billing|Project|4",
+        "Agent-ready|View \u{b7} ACM|5",
+        "ACM \u{b7} Current cycle|Cycle 24, ends Nov 15",
+        "ACM \u{b7} Active issues|Team",
+        "MOB \u{b7} Current cycle|Cycle 7, ends Nov 15",
+        "MOB \u{b7} Active issues|Team",
+        "OPS \u{b7} Active issues|Team",
+        "WEB \u{b7} Current cycle|Cycle 11, ends Nov 18",
+        "Bugs by customer, last 30 days|View",
+        "Stale in review|View \u{b7} ACM",
+        "Unlabelled bugs nobody owns yet|View \u{b7} MOB",
+        "Bug bash, November|Project",
+    ];
+    let mut last = 0;
+    for words in order {
+        let here = at(words);
+        assert!(here >= last, "{words:?} is in its place: {says}");
+        last = here;
+    }
+    // The folder that was starred is not a list, and a team without a cycle has no cycle line.
+    assert!(!page.says("OPS \u{b7} Current cycle"), "{says}");
+    // The list shown is still the person's own, and the lines of the page stand behind the card.
+    assert!(page.says("ACM-412"), "{says}");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn typing_in_the_card_of_lists_finds_a_list_and_enter_goes_to_it_with_its_name_and_count_in_the_button()
+ {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    open_card_of_lists(&mut page);
+    page.type_text("billing").expect("the words");
+    page.wait_for(WITHIN, |page| !page.says("Assigned to you"))
+        .unwrap_or_else(|why| panic!("the card narrows: {why:?}: {}", said(&page)));
+    assert!(page.says("Billing"), "{}", said(&page));
+    page.press("enter").expect("enter");
+    list_button_says(&mut page, "Billing");
+    page.wait_for(WITHIN, |page| page.says("ACM-418"))
+        .unwrap_or_else(|why| panic!("the project's issues come: {why:?}: {}", said(&page)));
+    let button = page.words_in("lists");
+    assert!(button.iter().any(|word| word == "2"), "{button:?}");
+    assert!(page.says("ACM-389"), "{}", said(&page));
+    // Not the person's own issues, nor the card.
+    assert!(!page.says("ACM-412"), "{}", said(&page));
+    assert!(!page.says("Assigned to you"), "{}", said(&page));
+    // Whose each is, where the list is not the person's own ("you" where it is theirs).
+    assert!(page.says("you"), "{}", said(&page));
+    assert_eq!(linear.times("ProjectIssues"), 1);
+    assert_eq!(linear.times("AllIssues"), 0, "All issues was not asked for");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_keys_three_to_nine_go_to_the_favorites_and_one_comes_back_to_my_issues() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    // The names come after the first lists: the card is where they are known to have come.
+    open_card_of_lists(&mut page);
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| !page.says("Assigned to you"))
+        .unwrap_or_else(|why| panic!("the card closes: {why:?}: {}", said(&page)));
+    page.advance(0.3).expect("a moment");
+    page.press("3").expect("3");
+    list_button_says(&mut page, "Bugs to triage");
+    page.wait_for(WITHIN, |page| page.says("ACM-398") && page.says("ACM-420"))
+        .unwrap_or_else(|why| panic!("the view's issues: {why:?}: {}", said(&page)));
+    assert!(!page.says("ACM-412"), "{}", said(&page));
+    page.press("5").expect("5");
+    list_button_says(&mut page, "Agent-ready");
+    // The sixth favorite there is not: its key does nothing.
+    page.press("9").expect("9");
+    page.advance(0.3).expect("a moment");
+    list_button_says(&mut page, "Agent-ready");
+    let asked = linear.times("ViewIssues");
+    page.press("1").expect("1");
+    list_button_says(&mut page, "My issues");
+    page.wait_for(WITHIN, |page| page.says("ACM-412"))
+        .unwrap_or_else(|why| panic!("my issues are back: {why:?}: {}", said(&page)));
+    // The lists the person left are not asked for again to be left.
+    assert_eq!(linear.times("ViewIssues"), asked);
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_list_that_has_not_come_says_so_where_its_lines_will_be_and_the_head_stays() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    open_card_of_lists(&mut page);
+    let head = (page.bounds("lists"), page.bounds("filter-box"));
+    linear.set(Mode::Held);
+    page.type_text("billing").expect("the words");
+    page.press("enter").expect("enter");
+    page.wait_for(WITHIN, |page| page.says("Asking Linear for Billing"))
+        .unwrap_or_else(|why| panic!("the list is on its way: {why:?}: {}", said(&page)));
+    // The lines of the list left are not there, the button already says which list it is and has no count.
+    assert!(!page.says("ACM-412"), "{}", said(&page));
+    let button = page.words_in("lists");
+    assert!(button.iter().any(|word| word == "Billing"), "{button:?}");
+    assert!(!button.iter().any(|word| word == "14"), "{button:?}");
+    assert_eq!(page.bounds("filter-box").map(|b| b.y), head.1.map(|b| b.y));
+    // (The name of the list is the button's width, but not where it begins.)
+    assert_eq!(
+        page.bounds("lists").map(|b| (b.x, b.y)),
+        head.0.map(|b| (b.x, b.y))
+    );
+    linear.set(Mode::Fine);
+    page.wait_for(WITHIN, |page| page.says("ACM-418"))
+        .unwrap_or_else(|why| panic!("the list comes: {why:?}: {}", said(&page)));
+    assert!(!page.says("Asking Linear for"), "{}", said(&page));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_list_of_more_than_five_hundred_shows_the_most_recent_and_says_so_in_the_button_and_under_the_lines()
+ {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    open_card_of_lists(&mut page);
+    linear.set_big_team();
+    page.type_text("OPS").expect("the words");
+    page.press("enter").expect("enter");
+    page.wait_for(WITHIN, |page| {
+        page.words_in("lists").iter().any(|word| word == "500+")
+    })
+    .unwrap_or_else(|why| panic!("the count is cut: {why:?}: {:?}", page.words_in("lists")));
+    // The line that says it is at the end of the list, where the last line of the list brings it.
+    assert!(
+        !page.says("changed last"),
+        "not at the top: {}",
+        said(&page)
+    );
+    page.press("end").expect("end");
+    page.wait_for(WITHIN, |page| {
+        page.says("The 500 issues changed last. Filter them, or go to a list, for the others.")
+    })
+    .unwrap_or_else(|why| panic!("the list says it was cut: {why:?}: {}", said(&page)));
+    // The cursor does not stop on it: the last line of the list is where it is, and up is one line up.
+    let last = cursor(&page);
+    assert!(last.contains("ACM") || last.contains("OPS"), "{last:?}");
+    page.press("home").expect("home");
+    // The filter works on the 500, and its count says so.
+    page.press("/").expect("/");
+    page.type_text("Nothing matches this").expect("typing");
+    page.wait_for(WITHIN, |page| page.says("0 of 500"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    // A list that is whole has neither.
+    page.press("escape").expect("escape");
+    page.press("escape").expect("escape");
+    page.press("1").expect("1");
+    page.wait_for(WITHIN, |page| page.says("ACM-412"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    assert!(!page.says("changed last"), "{}", said(&page));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn where_the_names_of_the_lists_cannot_be_asked_for_the_card_still_has_mine_and_all_and_says_why() {
+    let linear = Canned::new(Mode::Fine);
+    linear.set_no_names();
+    let session = session_over(&linear, Some("lin_api_test"), None);
+    let mut page = open(&session, WIDE, None, "ACM-412").expect("the page opens");
+    page.press("g").expect("g");
+    page.wait_for(WITHIN, |page| {
+        page.says("The other lists could not be asked for")
+    })
+    .unwrap_or_else(|why| panic!("the card says why: {why:?}: {}", said(&page)));
+    assert!(
+        page.says("My issues") && page.says("All issues"),
+        "{}",
+        said(&page)
+    );
+    assert!(!page.says("Billing"), "{}", said(&page));
+    // The key of a favorite there is not does nothing, and the others are as they were.
+    page.press("escape").expect("escape");
+    page.press("3").expect("3");
+    page.advance(0.3).expect("a moment");
+    assert!(page.says("ACM-412"), "{}", said(&page));
+    page.press("2").expect("2");
+    page.wait_for(WITHIN, |page| page.says("ACM-417"))
+        .unwrap_or_else(|why| panic!("all issues come: {why:?}: {}", said(&page)));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn only_the_list_shown_and_my_issues_are_asked_for_and_refresh_asks_for_those_again() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    assert_eq!(linear.times("MyIssues"), 1);
+    assert_eq!(linear.times("AllIssues"), 0, "All issues waits to be shown");
+    assert_eq!(linear.times("TeamIssues"), 0);
+    open_card_of_lists(&mut page);
+    page.type_text("ACM \u{b7} Active").expect("the words");
+    page.press("enter").expect("enter");
+    page.wait_for(WITHIN, |page| page.says("ACM-423"))
+        .unwrap_or_else(|why| panic!("the team's issues come: {why:?}: {}", said(&page)));
+    assert_eq!(linear.times("TeamIssues"), 1);
+    assert_eq!(linear.times("AllIssues"), 0);
+    // Going to a list asks for that list, not for the names of the lists again.
+    assert_eq!(linear.times("ListTeams"), 1, "the names come at the start");
+    // Refresh asks for the list shown, and My issues, and the names; not the lists never shown.
+    page.press("mod+r").expect("mod+r");
+    page.wait_for(WITHIN, |_| {
+        linear.times("TeamIssues") >= 2 && linear.times("ListTeams") >= 2
+    })
+    .unwrap_or_else(|why| panic!("the list and the names are asked for again: {why:?}"));
+    page.wait_for(WITHIN, |page| page.says("ACM-423"))
+        .unwrap_or_else(|why| panic!("it is still there: {why:?}: {}", said(&page)));
+    assert_eq!(linear.times("AllIssues"), 0);
+    assert!(
+        linear.times("MyIssues") >= 2,
+        "My issues are asked for again"
+    );
+    assert_eq!(linear.times("ProjectIssues"), 0);
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_long_name_of_a_list_is_cut_in_the_button_and_the_rest_of_the_head_stays_where_it_was() {
+    for size in [PANE, (780.0, 600.0), WIDE] {
+        let (_linear, _session, mut page) = open_lists(size);
+        let before = head_places(&page);
+        open_card_of_lists(&mut page);
+        page.type_text("mobile crash").expect("the words");
+        page.press("enter").expect("enter");
+        page.wait_for(WITHIN, |page| {
+            page.words_in("lists")
+                .iter()
+                .any(|word| word.starts_with("Mobile crash"))
+        })
+        .unwrap_or_else(|why| panic!("{size:?}: the list is gone to: {why:?}: {}", said(&page)));
+        let words = page.words_in("lists");
+        let name = words
+            .iter()
+            .find(|word| word.starts_with("Mobile crash"))
+            .expect("the name");
+        assert!(name.ends_with('\u{2026}'), "cut with the mark: {name:?}");
+        assert!(name.chars().count() <= 27, "{name:?}");
+        // The button is the pane's and does not reach the filter; the rest of the head is where it was.
+        let button = page.bounds("lists").expect("the button");
+        assert!(button.x + button.w <= size.0 + 0.5, "{size:?}: {button:?}");
+        if let Some(filter) = page.bounds("filter-box") {
+            let apart = filter.y >= button.y + button.h || button.x + button.w <= filter.x;
+            assert!(apart, "{size:?}: {button:?} {filter:?}");
+        }
+        for (name, was) in &before {
+            if *name != "lists" {
+                head_is_as_it_was(
+                    &page,
+                    &[(*name, *was)],
+                    &format!("at {size:?} in another list"),
+                );
+            }
+        }
+    }
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_card_of_keys_has_one_line_for_the_favorites_and_the_palette_has_none_of_the_seven_keys() {
+    let (_linear, _session, mut page) = open_lists(WIDE);
+    open_card_of_lists(&mut page);
+    page.press("escape").expect("escape");
+    page.advance(0.4).expect("a moment");
+    page.press("?").expect("?");
+    page.wait_for(WITHIN, |page| page.says("Keys"))
+        .unwrap_or_else(|why| panic!("the card opens: {why:?}: {}", said(&page)));
+    for words in [
+        "Go to a list",
+        "Go to a favorite (3 to 9)",
+        "Show my issues",
+        "Show all issues",
+    ] {
+        assert!(page.says(words), "{words}: {}", said(&page));
+    }
+    // One line for the seven keys.
+    assert!(!page.says("Go to the first favorite"), "{}", said(&page));
+    page.press("escape").expect("escape");
+    page.advance(0.6).expect("a moment");
+    for words in ["Go to the first favorite", "Go to the seventh favorite"] {
+        assert!(
+            !palette_offers(&mut page, words),
+            "{words}: {}",
+            said(&page)
+        );
+    }
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn in_an_80_by_24_pane_the_card_of_lists_and_the_palette_stay_inside_it_with_their_foot_and_the_arrows_reach_every_line()
+ {
+    let (_linear, _session, mut page) = open_lists(PANE);
+    open_card_of_lists(&mut page);
+    page.advance(0.6).expect("the card comes to rest");
+    let card = page.bounds("lists1/card").expect("the card is laid out");
+    assert!(
+        card.y >= 0.0 && card.y + card.h <= PANE.1 + 0.5,
+        "the card is inside the pane: {card:?}"
+    );
+    // The foot of the card, and the first lines (the others are under the arrows).
+    for words in ["Enter", "Close", "Assigned to you", "Agent-ready"] {
+        assert!(page.says(words), "{words}: {}", said(&page));
+    }
+    // The last list is reached by the arrows, and Enter goes to it.
+    for _ in 0..16 {
+        page.press("down").expect("down");
+    }
+    page.press("enter").expect("enter");
+    list_button_says(&mut page, "Bug bash, November");
+    // The palette of the commands is in the pane too.
+    page.advance(0.6).expect("a moment");
+    page.press("mod+k").expect("mod+k");
+    page.wait_for(WITHIN, |page| page.says("Do it"))
+        .unwrap_or_else(|why| panic!("the palette opens: {why:?}: {}", said(&page)));
+    page.advance(0.6).expect("the card comes to rest");
+    let card = page
+        .bounds("palette1/card")
+        .expect("the palette is laid out");
+    assert!(
+        card.y >= 0.0 && card.y + card.h <= PANE.1 + 0.5,
+        "the palette is inside the pane: {card:?}"
+    );
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_list_linear_could_not_tell_says_so_in_its_place_and_try_again_and_my_issues_are_there() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    open_card_of_lists(&mut page);
+    linear.set(Mode::Down);
+    page.type_text("billing").expect("the words");
+    page.press("enter").expect("enter");
+    page.wait_for(WITHIN, |page| page.says("Linear did not answer"))
+        .unwrap_or_else(|why| panic!("the list says it did not come: {why:?}: {}", said(&page)));
+    // The head says which list it is, and has no count; the lines of the list left are not there.
+    let button = page.words_in("lists");
+    assert!(button.iter().any(|word| word == "Billing"), "{button:?}");
+    assert!(!button.iter().any(|word| word == "14"), "{button:?}");
+    assert!(!page.says("ACM-412"), "{}", said(&page));
+    assert!(page.says("Try again"), "{}", said(&page));
+    // My issues are still there: one press brings them back.
+    page.press("1").expect("1");
+    page.wait_for(WITHIN, |page| page.says("ACM-412"))
+        .unwrap_or_else(|why| panic!("my issues are back: {why:?}: {}", said(&page)));
+    assert!(!page.says("Linear did not answer"), "{}", said(&page));
+    // Linear is back: the key of the list asks for it again.
+    linear.set(Mode::Fine);
+    page.press("4").expect("4");
+    page.wait_for(WITHIN, |page| page.says("ACM-418"))
+        .unwrap_or_else(|why| panic!("the list comes: {why:?}: {}", said(&page)));
+    // And a list that fails again is asked for again by its own button.
+    linear.set(Mode::Down);
+    page.press("1").expect("1");
+    page.press("5").expect("5");
+    page.wait_for(WITHIN, |page| page.says("Try again"))
+        .unwrap_or_else(|why| panic!("the list fails: {why:?}: {}", said(&page)));
+    linear.set(Mode::Fine);
+    page.click("retry").expect("Try again is pressed");
+    page.wait_for(WITHIN, |page| {
+        page.says("ACM-398") && !page.says("Try again")
+    })
+    .unwrap_or_else(|why| panic!("Try again asks for the list: {why:?}: {}", said(&page)));
 }
 
 // --- The bar of the selection ----------------------------------------------------------------------------

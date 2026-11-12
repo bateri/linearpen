@@ -274,9 +274,46 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     // The lists, from the button in the head.
     let mut page = lists(BIG, &fonts)?;
     page.click("lists")?;
-    page.wait_for(Duration::from_secs(20), |page| page.says("The workspace"))?;
+    page.wait_for(Duration::from_secs(20), |page| {
+        page.says("The workspace") && page.says("Bug bash, November")
+    })?;
     page.advance(0.6)?;
     save(&page, &fonts, Palette::Dark, "lists.png");
+    // What is typed finds a list by its name, and the first favorite is where the key 3 goes.
+    page.type_text("bug")?;
+    page.wait_for(Duration::from_secs(20), |page| {
+        !page.says("Assigned to you")
+    })?;
+    page.advance(0.6)?;
+    save(&page, &fonts, Palette::Dark, "lists-typed.png");
+    page.press("escape")?;
+    page.advance(0.6)?;
+    page.press("3")?;
+    page.wait_for(Duration::from_secs(20), |page| {
+        page.says("ACM-398") && !page.says("ACM-412")
+    })?;
+    page.advance(0.6)?;
+    save(&page, &fonts, Palette::Dark, "favorite.png");
+
+    // A list that Linear has more of than the program takes: the button says 500+, and a line at the
+    // end of the list says which ones it holds.
+    let linear = Canned::new(Mode::Fine);
+    linear.set_big_team();
+    let session = session_over(&linear, Some("lin_api_test"), None);
+    let mut page = open(&session, BIG, Some(&fonts), "ACM-412")?;
+    page.press("g")?;
+    page.wait_for(Duration::from_secs(20), |page| {
+        page.says("Bug bash, November")
+    })?;
+    page.type_text("OPS")?;
+    page.press("enter")?;
+    page.wait_for(Duration::from_secs(20), |page| {
+        page.words_in("lists").iter().any(|word| word == "500+")
+    })?;
+    page.press("end")?;
+    page.wait_for(Duration::from_secs(20), |page| page.says("changed last"))?;
+    page.advance(0.6)?;
+    save(&page, &fonts, Palette::Dark, "cut.png");
 
     // An issue handed to an agent: the form (on a machine that has bateri and three agents), and the
     // list after the start, where the issue says who works on it.

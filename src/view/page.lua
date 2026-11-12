@@ -125,6 +125,12 @@ commands.when.postable = function()
 		and comment.typing()
 		and comment.sendable(detail.id)
 end
+-- The key 3 to 9 goes to the first to the seventh favorite, where the person has that many.
+for number = 3, 9 do
+	commands.when["favorite_" .. number] = function()
+		return commands.when.headed() and lists.favorite(number - 2) ~= nil
+	end
+end
 -- Work on is the open issue's: where an issue is open (its detail has the button).
 commands.when.workable = function()
 	return commands.when.idle() and work.workable()
@@ -184,6 +190,12 @@ end
 -- The list's room: the lines, or what stands where they would.
 local function body()
 	local snapshot = S.issues
+	-- A list the person went to: on its way, or one that Linear could not tell.
+	if snapshot.listing == "loading" then
+		return screens.coming()
+	elseif snapshot.listing == "failed" then
+		return screens.failed(snapshot.error or { message = "The list could not be asked for" })
+	end
 	if list.count() == 0 then
 		if S.scope == "mine" and head.field.value == "" and snapshot.counts.mine == 0 then
 			return screens.empty()
@@ -196,7 +208,8 @@ end
 -- The line that says the last asking failed while the lists of before are still shown.
 local function problem()
 	local error = S.issues.error
-	if error == nil then
+	-- (A list that could not be asked for says why in its own place.)
+	if error == nil or S.issues.listing ~= "ready" then
 		return nil
 	end
 	return u:banner("problem", {
@@ -343,9 +356,14 @@ local function command(id)
 	elseif id == "read_up" then
 		panel.scroll(-1)
 	elseif id == "scope_mine" then
-		act.view({ scope = "mine" })
+		act.view({ list = { kind = "mine" } })
 	elseif id == "scope_all" then
-		act.view({ scope = "all" })
+		act.view({ list = { kind = "all" } })
+	elseif string.sub(id, 1, 9) == "favorite_" then
+		local go = lists.favorite(tonumber(string.sub(id, 10)) - 2)
+		if go ~= nil then
+			act.view({ list = go })
+		end
 	elseif id == "filter" then
 		return head.focus()
 	elseif id == "refresh" then
@@ -373,7 +391,7 @@ local function press(id)
 	if id == "refresh" or id == "retry" then
 		act.refresh()
 	elseif id == "show-all" then
-		act.view({ scope = "all" })
+		act.view({ list = { kind = "all" } })
 	elseif id == "connect" then
 		act.connect(screens.field.value)
 	elseif id == "create-key" then

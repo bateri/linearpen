@@ -43,10 +43,20 @@ used first, and kept nowhere. A key file that other users can read is still read
 <img src="docs/issue.png" width="720" alt="linearpen: an issue open beside the list">
 
 The head of the page has the list button, the filter, Refresh and New issue, each in its own place
-whatever the page is doing. The list is **My issues** (what is assigned to you) or **All issues** (the
-open issues of the workspace, each saying whose it is), grouped by state with the backlog folded, and
-asked of Linear again every five minutes; the list button says which it is and how many it has, and
-opens the card of lists (`g`, or `1` and `2` for the two). `/` filters the list by title, identifier or
+whatever the page is doing. The list is **My issues** (what is assigned to you) or any other list
+you go to: **All issues** (the open issues of the workspace, each saying whose it is), what you
+starred in Linear, a team's open issues or its cycle that runs, a saved view, a project. Each is
+grouped by state with the backlog folded, and asked of Linear again every five minutes. The list
+button says which it is and how many it has, and opens the card of lists (`g`): My issues is `1`, All
+issues `2`, your first seven favorites `3` to `9`; the card is the palette, so typing finds a list by
+its name, and each line says what it is (`View`, `Project`, `Team`, `Cycle 24, ends Nov 15`). Only
+the list you look at is asked for (with My issues), so the others cost nothing until you go to
+them. Linear is asked for no more than 500 issues of a list, the ones that changed last: the button
+says `500+` and a line at the end of the list says so.
+
+<img src="docs/lists.png" width="720" alt="linearpen: the card of lists, over My issues">
+
+`/` filters the list by title, identifier or
 label, and the field says how many it lets through (`4 of 14`) inside itself. Enter or `o` opens an
 issue beside the list (from the filter too), with its description, its comments, its cycle, its
 project and who has it, and the issues round it: its parent, its sub-issues and what it is tied to
@@ -212,7 +222,7 @@ or `Space` then presses.
 | `c`                   | write a new issue                                                    |
 | `⇧M`                  | write a comment on the issue open (`⌘Enter` posts it, `Esc` leaves)  |
 | `⌘Enter`              | start the agent, or create the issue, in the form that is open       |
-| `g`                   | go to a list (`1` `2`: My issues, All issues)                        |
+| `g`                   | go to a list (`1` `2`: My issues, All issues; `3`-`9`: favorites)    |
 | `/`                   | filter                                                               |
 | `⌘R`                  | ask Linear again                                                     |
 | `⌘K`, `?`             | find a command, the card of keys                                     |

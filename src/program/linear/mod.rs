@@ -9,6 +9,7 @@ mod change;
 mod comment;
 mod error;
 mod key;
+mod names;
 mod new_issue;
 pub mod query;
 pub mod transport;
@@ -18,6 +19,7 @@ pub use change::Change;
 pub use comment::{NOT_POSTED, post as comment};
 pub use error::{Error, plain, tidy};
 pub use key::{Key, KeyError};
+pub use names::{Entry, names};
 pub use new_issue::{Created, NewIssue, Options, StateChoice, Team};
 pub use transport::Transport;
 pub use types::{Issue, Priority, Viewer};
@@ -28,20 +30,61 @@ use serde::{Deserialize, Serialize};
 use query::{Filter, Lookup, Operation, Page};
 use types::Connection;
 
-/// Which issues: the ones assigned to the person, or all of the workspace's.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// Which issues a list shows: the ones assigned to the person, all of the workspace's, or the open
+/// issues of one thing Linear has (by its id): a team, a cycle, a saved view, a project, a label.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Scope {
     Mine,
     All,
+    Team(String),
+    Cycle(String),
+    View(String),
+    Project(String),
+    Label(String),
 }
 
 impl Scope {
-    /// The name the page is told: `mine` or `all`.
+    /// The word the page is told: `mine`, `all`, `team`, `cycle`, `view`, `project` or `label`.
     #[must_use]
-    pub fn name(self) -> &'static str {
+    pub fn kind(&self) -> &'static str {
         match self {
             Self::Mine => "mine",
             Self::All => "all",
+            Self::Team(_) => "team",
+            Self::Cycle(_) => "cycle",
+            Self::View(_) => "view",
+            Self::Project(_) => "project",
+            Self::Label(_) => "label",
+        }
+    }
+
+    /// Linear's id of what the list is of, where it is of one.
+    #[must_use]
+    pub fn id(&self) -> Option<&str> {
+        match self {
+            Self::Mine | Self::All => None,
+            Self::Team(id)
+            | Self::Cycle(id)
+            | Self::View(id)
+            | Self::Project(id)
+            | Self::Label(id) => Some(id),
+        }
+    }
+
+    /// The scope the page names by `kind` and `id`; none where it names no scope (a kind there is not,
+    /// an id for a list that has none, no id for one that needs it).
+    #[must_use]
+    pub fn of(kind: &str, id: Option<&str>) -> Option<Self> {
+        let id = id.map(str::to_owned);
+        match (kind, id) {
+            ("mine", None) => Some(Self::Mine),
+            ("all", None) => Some(Self::All),
+            ("team", Some(id)) if !id.is_empty() => Some(Self::Team(id)),
+            ("cycle", Some(id)) if !id.is_empty() => Some(Self::Cycle(id)),
+            ("view", Some(id)) if !id.is_empty() => Some(Self::View(id)),
+            ("project", Some(id)) if !id.is_empty() => Some(Self::Project(id)),
+            ("label", Some(id)) if !id.is_empty() => Some(Self::Label(id)),
+            _ => None,
         }
     }
 }
@@ -201,11 +244,30 @@ struct AllData {
     issues: Connection,
 }
 
+/// The issues of one thing that has some, whatever Linear calls it (`team`, `cycle`, `customView`,
+/// `project`, `issueLabel`).
+#[derive(Deserialize)]
+struct OwnerIssues {
+    issues: Connection,
+}
+
+#[derive(Deserialize)]
+struct OwnedData {
+    viewer: Viewer,
+    #[serde(
+        alias = "team",
+        alias = "cycle",
+        alias = "customView",
+        alias = "project",
+        alias = "issueLabel"
+    )]
+    owner: OwnerIssues,
+}
+
 /// The open issues of `scope`, a hundred a page, up to [`LIMIT`].
-pub fn fetch(transport: &dyn Transport, key: &Key, scope: Scope) -> Result<Fetched, Error> {
+pub fn fetch(transport: &dyn Transport, key: &Key, scope: &Scope) -> Result<Fetched, Error> {
     let mut issues: Vec<Issue> = Vec::new();
     let mut after: Option<String> = None;
-    let mut truncated = false;
     loop {
         let page = Page {
             first: PAGE,
@@ -221,15 +283,33 @@ pub fn fetch(transport: &dyn Transport, key: &Key, scope: Scope) -> Result<Fetch
                 let data: AllData = run(transport, key, &query::ALL_ISSUES, Some(page))?;
                 (data.viewer, data.issues)
             }
+            Scope::Team(id)
+            | Scope::Cycle(id)
+            | Scope::View(id)
+            | Scope::Project(id)
+            | Scope::Label(id) => {
+                let operation = match scope {
+                    Scope::Team(_) => &query::TEAM_ISSUES,
+                    Scope::Cycle(_) => &query::CYCLE_ISSUES,
+                    Scope::View(_) => &query::VIEW_ISSUES,
+                    Scope::Project(_) => &query::PROJECT_ISSUES,
+                    _ => &query::LABEL_ISSUES,
+                };
+                let data: OwnedData =
+                    run(transport, key, operation, Some(query::Owned { id, page }))?;
+                (data.viewer, data.owner.issues)
+            }
         };
         issues.extend(connection.nodes);
         let more = connection.page_info.has_next_page;
         if issues.len() >= LIMIT {
             issues.truncate(LIMIT);
-            truncated = more;
             return Ok(Fetched {
                 viewer,
-                listing: Listing { issues, truncated },
+                listing: Listing {
+                    issues,
+                    truncated: more,
+                },
             });
         }
         match (more, connection.page_info.end_cursor) {
@@ -237,7 +317,10 @@ pub fn fetch(transport: &dyn Transport, key: &Key, scope: Scope) -> Result<Fetch
             _ => {
                 return Ok(Fetched {
                     viewer,
-                    listing: Listing { issues, truncated },
+                    listing: Listing {
+                        issues,
+                        truncated: false,
+                    },
                 });
             }
         }

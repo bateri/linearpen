@@ -4,6 +4,7 @@
 
 local kit = require("../lib/kit")
 local commands = require("./commands")
+local lists = require("./lists")
 
 local b, u, S, SIZE = kit.b, kit.u, kit.S, kit.SIZE
 
@@ -69,7 +70,7 @@ function screens.loading()
 	local box = b.div():col():grow(1):min_h(0):clip()
 	box:child(
 		b.div():row():items_center():gap(10):pt(SIZE.head_top):pb(SIZE.head_bottom):px(SIZE.pad):h(SIZE.control + SIZE.head_top + SIZE.head_bottom):no_shrink():child(
-			b.text(S.scope == "all" and "All issues" or "My issues"):text_size(15):weight(700)
+			b.text(lists.name()):text_size(15):weight(700)
 		):child(kit.spinner(13, "dim")):child(b.text("Loading"):text_size(SIZE.small):color("dim"))
 	)
 	local groups = { { 112, { 52, 38, 61, 44 } }, { 96, { 47, 58 } }, { 60, { 41, 66, 35 } } }
@@ -101,6 +102,14 @@ function screens.failed(err)
 		busy = S.refreshing,
 		disabled = S.refreshing,
 	})))
+	return centered(card)
+end
+
+-- A list that is shown and has not come (the person went to it and Linear is being asked).
+function screens.coming()
+	local card = b.div():col():items_center():gap(10)
+	card:child(kit.spinner(18, "quiet"))
+	card:child(b.text("Asking Linear for " .. lists.name()):color("dim"):truncate():max_w(420))
 	return centered(card)
 end
 

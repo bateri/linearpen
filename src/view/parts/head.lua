@@ -8,6 +8,7 @@
 local kit = require("../lib/kit")
 local commands = require("./commands")
 local list = require("./list")
+local lists = require("./lists")
 
 local b, u, S, SIZE, act = kit.b, kit.u, kit.S, kit.SIZE, kit.act
 
@@ -72,22 +73,33 @@ function head.action(action)
 	return nil
 end
 
--- How many open issues a list holds, as the button says it: "500+" where there are more than the
--- program takes.
-local function count_words(snapshot, scope)
-	local counts = snapshot ~= nil and snapshot.loaded and snapshot.counts or nil
+-- How many open issues the list shown holds, as the button says it: "500+" where there are more than
+-- the program takes. Nothing while the list has not come.
+local function count_words(snapshot)
+	local counts = snapshot ~= nil and snapshot.loaded and snapshot.listing == "ready" and snapshot.counts or nil
 	if counts == nil then
 		return nil
 	end
-	local cut = scope == "mine" and counts.mineCut or scope == "all" and counts.allCut
-	return tostring(scope == "mine" and counts.mine or counts.all) .. (cut and "+" or "")
+	return tostring(counts.shown) .. (counts.shownCut and "+" or "")
+end
+
+-- The most of a list's name the button shows; a longer one is cut with the kit's mark.
+local NAME_MOST = 26
+
+-- The name of the list shown, cut where it is longer than the button has room for.
+local function name_words()
+	local name = lists.name()
+	if utf8.len(name) > NAME_MOST then
+		return string.sub(name, 1, utf8.offset(name, NAME_MOST) - 1) .. "\u{2026}"
+	end
+	return name
 end
 
 -- The list that is shown: its name and its count, and the mark of the card it opens.
 local function lists_button()
-	return kit.button("lists", S.scope == "all" and "All issues" or "My issues", {
+	return kit.button("lists", name_words(), {
 		bold = true,
-		count = count_words(S.issues, S.scope),
+		count = count_words(S.issues),
 		chevron = true,
 		tip = "Go to another list, key " .. (commands.label("lists") or "g"),
 	})
@@ -99,8 +111,7 @@ local function matched_words()
 	if F.value == "" or snapshot == nil or not snapshot.loaded then
 		return nil
 	end
-	local total = S.scope == "mine" and snapshot.counts.mine or snapshot.counts.all
-	return string.format("%d of %d", snapshot.matched, total)
+	return string.format("%d of %d", snapshot.matched, snapshot.counts.shown)
 end
 
 -- The filter, a field of the same width whatever it holds: how many it lets through is inside it, at

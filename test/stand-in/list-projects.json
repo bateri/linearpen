@@ -1,0 +1,20 @@
+{
+  "data": {
+    "projects": {
+      "nodes": [
+        {
+          "id": "proj-bash",
+          "name": "Bug bash, November"
+        },
+        {
+          "id": "proj-billing",
+          "name": "Billing"
+        }
+      ],
+      "pageInfo": {
+        "hasNextPage": false,
+        "endCursor": null
+      }
+    }
+  }
+}

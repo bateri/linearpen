@@ -73,8 +73,15 @@ Errors: `bad-params` (the text is not a key: `Empty`, too long, or a character n
 What the page is looking at; the answer is the list for it, as the topic tells it. Every member is
 optional (`{}` asks for the list as it is). Params:
 
-- `scope`: `"mine"` (the open issues assigned to the person, the default) or `"all"` (the open issues
-  of the workspace).
+- `list`: `{ "kind", "id"? }`, the list the page shows. `kind` is `"mine"` (the open issues assigned
+  to the person, the default), `"all"` (the open issues of the workspace; asked for when it is shown),
+  or one of `"team"` (the open issues of a team), `"cycle"` (the issues of a team's cycle that runs),
+  `"view"` (a saved view of issues), `"project"` (a project's open issues) and `"label"` (the open
+  issues with a label), which take the `id` of what they are of (the ids the topic's `catalog` tells).
+  `mine` and `all` take no `id`. Only the list shown and My issues are asked for: going to another
+  list lets go of the one left and asks Linear for the new one, and the topic tells it as `listing`
+  `"loading"` until it comes. An `id` Linear does not know is not an error of the call: `listing` is `failed`
+  and `error` has Linear's words. The old member `scope` is not taken.
 - `filter`: the words typed, at most 200 characters. An issue is let through where they are in its
   title, its identifier or the name of a label, whatever the case. While it is not empty no group is
   folded.
@@ -82,7 +89,7 @@ optional (`{}` asks for the list as it is). Params:
   (`false`), at most 64; one not named is as it begins (`backlog` and `triage` folded). It replaces
   what the program held.
 - `seq`: the number of this call among the page's `view` calls, which grows with each. Calls run at
-  the same time and may be told out of their order: a member (`scope`, `filter` or `closed`) that a
+  the same time and may be told out of their order: a member (`list`, `filter` or `closed`) that a
   call with a higher `seq` has set is left as it is. A call with no `seq` is taken as the latest.
 
 Answer: the **list** (below).
@@ -352,9 +359,10 @@ Changes one field of one issue or of several, in Linear. Params:
 { "issues": [{ "id": "issue-412", "listed": false }, { "id": "issue-405", "listed": true }] }
 ```
 
-The answer tells the issues Linear changed, and for each whether the list in view (the scope the
+The answer tells the issues Linear changed, and for each whether the list in view (the list the
 page last set with `view`) still holds it: one that is done or canceled is in no list, and one given
-to another person is not in My issues. What Linear says of them is written into both lists and into
+to another person is not in My issues. What Linear says of them is written into the lists the program holds (My issues and the one
+shown: a list other than All issues keeps an issue it holds and lets it go where it is done) and into
 the issues kept for `issue`, and the topic `issues` tells it: the lists are not asked for again.
 
 The change is sent **once**, to all the issues in one request; the program never sends it again by
@@ -416,8 +424,8 @@ post it: ...`).
 
 ### `refresh`
 
-Asks Linear for both lists again, and for the teams and choices of a new issue the next time they are
-needed. It answers at once with `{}`; the topic tells the lists when they come. Params: none. Errors:
+Asks Linear for My issues and the list shown again, for the names of the lists the page can go to, and
+for the teams and choices of a new issue the next time they are needed. It answers at once with `{}`; the topic tells the lists when they come. Params: none. Errors:
 `no-key`.
 
 ## Topic
@@ -430,8 +438,17 @@ the lists came, asking failed). The same value `view` answers with.
 ```json
 {
   "loaded": true, "refreshing": false, "error": null,
-  "scope": "mine", "filter": "", "matched": 12,
-  "counts": { "mine": 14, "all": 19, "mineCut": false, "allCut": false },
+  "scope": "mine", "listId": null, "listing": "ready", "filter": "", "matched": 12,
+  "counts": { "mine": 14, "mineCut": false, "shown": 14, "shownCut": false },
+  "catalog": {
+    "loaded": true, "error": null,
+    "items": [
+      { "key": "view:view-bugs", "kind": "view", "id": "view-bugs", "title": "Bugs to triage",
+        "section": "favorite", "team": null, "cycle": null },
+      { "key": "cycle:c-24", "kind": "cycle", "id": "c-24", "title": "ACM \u00b7 Current cycle",
+        "section": "team", "team": "ACM", "cycle": { "number": 24, "endsAt": "2026-11-15T00:00:00.000Z" } }
+    ]
+  },
   "groups": [
     { "key": "started:In Progress", "name": "In Progress", "kind": "started",
       "count": 4, "closed": false,
@@ -454,9 +471,24 @@ the lists came, asking failed). The same value `view` answers with.
   (`{ "kind", "message" }`, the kinds of the errors above). With `loaded` the lists are the last that
   came, and an `error` says that the last asking failed.
 - `refreshing`: Linear is being asked now.
-- `counts`: how many open issues each list holds, unfiltered; `mineCut` and `allCut` say there are
-  more than the 500 the program takes of a list.
-- `matched`: how many issues of the scope the filter lets through.
+- `scope` is the kind of the list shown (`mine`, `all`, `team`, `cycle`, `view`, `project` or `label`)
+  and `listId` its id (null for `mine` and `all`).
+- `listing`: whether the list shown has come: `ready`; `loading` (it is being asked for: `groups` is
+  empty, and `counts.shown` is 0); or `failed` (Linear could not tell it: `error` says why, and
+  `loaded` is still true because My issues came).
+- `counts`: how many open issues My issues holds (`mine`) and the list shown holds (`shown`),
+  unfiltered; `mineCut` and `shownCut` say there are more than the 500 the program takes of a list,
+  the 500 that changed last.
+- `catalog`: the lists the page can go to besides My issues and All issues, as Linear last said them.
+  `loaded` is false until the first answer, and `error` says why one could not come (the lists of
+  before stay). Each `item` has `key` (`kind:id`, what the page keeps it by), `kind` and `id` (what
+  `view`'s `list` takes), `title` (named as the card shows it: a team by its key, `ACM \u00b7 Active
+  issues` and, where it has a cycle running, `ACM \u00b7 Current cycle`), `section` (`favorite`, in
+  the order Linear's sidebar has them; `team`; `view`; `project`, the last three by name), `team` (the
+  key of the team a view is of, or null) and, for a `cycle`, its `number` and when it `endsAt`. A
+  favorite that is a folder, or a view Linear defines itself, is not an item. At most 200 of each
+  kind are asked for.
+- `matched`: how many issues of the list shown the filter lets through.
 - `groups`: by the kind of the state (`started`, `unstarted`, `backlog`, `triage`, then
   `completed`, `canceled`, `other`), within a kind by the position of the state; states of one name
   in several teams are one group. A group is named by `key`, `kind:name`. A folded group has `count`
@@ -465,7 +497,7 @@ the lists came, asking failed). The same value `view` answers with.
   (null where it has none): what the page copies (`Copy link`, `Copy branch name`). Neither holds a
   control character.
 - `priority`: `none`, `urgent`, `high`, `medium` or `low`. `updated`: the day of the last change as
-  the list writes it. `assignee` is set only in the list of all issues: `"you"`, a name, or null.
+  the list writes it. `assignee` is set in every list but My issues: `"you"`, a name, or null.
 - A label's `color` is Linear's own (`#rrggbb`): data, not a role of the theme.
 - `teamId`, `stateId`, `assigneeId` (null where unassigned), `projectId` (null where in none) and
   `cycleId` (null where in no cycle) are Linear's ids of what the issue is of and in, and each label

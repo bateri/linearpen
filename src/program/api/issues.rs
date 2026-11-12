@@ -1,5 +1,6 @@
-//! The list the page draws: what the person is looking at (the scope, the filter, the groups folded)
-//! made from the two lists the session holds, as the topic `issues` and the answer of `view`.
+//! The list the page draws: what the person is looking at (the list, the filter, the groups folded)
+//! made from the lists the session holds, as the topic `issues` and the answer of `view`, and the
+//! names of the lists a person can go to.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -9,7 +10,7 @@ use std::time::Duration;
 use pencere::{Options, ViewError};
 use serde::Serialize;
 
-use crate::linear::{Issue, Scope, plain};
+use crate::linear::{Entry, Issue, Scope, plain};
 use crate::model::filter::Filter;
 use crate::model::groups::{Group, group};
 use crate::model::time::short_date;
@@ -104,11 +105,73 @@ pub struct ErrorMessage {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Counts {
+    /// How many issues are the person's.
     pub mine: usize,
-    pub all: usize,
     /// There are more than the program takes of that list.
     pub mine_cut: bool,
-    pub all_cut: bool,
+    /// How many the list the page looks at holds (the same as `mine` where it is My issues), and
+    /// whether there are more than the program takes of it.
+    pub shown: usize,
+    pub shown_cut: bool,
+}
+
+/// A cycle of a list of the card.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CycleMessage {
+    pub number: u32,
+    /// When it ends, as Linear says it: the page says the day.
+    pub ends_at: String,
+}
+
+/// A list a person can go to: what to ask for it by (`kind` and `id`), what it is called, and what
+/// the card says of it.
+#[derive(Debug, Serialize)]
+pub struct ItemMessage {
+    /// `view:<id>`: the name the page keeps it by.
+    pub key: String,
+    pub kind: &'static str,
+    pub id: Option<String>,
+    pub title: String,
+    /// Where in the card it stands: `favorite`, `team`, `view` or `project`.
+    pub section: &'static str,
+    /// The key of the team it is of (`ACM`).
+    pub team: Option<String>,
+    pub cycle: Option<CycleMessage>,
+}
+
+/// The lists a person can go to, besides My issues and All issues, as Linear last said them.
+#[derive(Debug, Serialize)]
+pub struct CatalogMessage {
+    /// Linear has said them (the first time it was asked).
+    pub loaded: bool,
+    /// Why the last asking could not, where it could not.
+    pub error: Option<ErrorMessage>,
+    pub items: Vec<ItemMessage>,
+}
+
+/// The name a scope is kept by: `mine`, `all`, or `view:<id>`.
+#[must_use]
+pub fn scope_key(scope: &Scope) -> String {
+    match scope.id() {
+        Some(id) => format!("{}:{id}", scope.kind()),
+        None => scope.kind().to_owned(),
+    }
+}
+
+fn item(entry: &Entry) -> ItemMessage {
+    ItemMessage {
+        key: scope_key(&entry.scope),
+        kind: entry.scope.kind(),
+        id: entry.scope.id().map(str::to_owned),
+        title: entry.title.clone(),
+        section: entry.section.name(),
+        team: entry.team.clone(),
+        cycle: entry.cycle.as_ref().map(|cycle| CycleMessage {
+            number: cycle.number,
+            ends_at: cycle.ends_at.clone(),
+        }),
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -126,7 +189,13 @@ pub struct Snapshot {
     /// Linear is being asked now.
     pub refreshing: bool,
     pub error: Option<ErrorMessage>,
+    /// Which list the page looks at: `mine`, `all`, `team`, `cycle`, `view`, `project` or `label`;
+    /// and Linear's id of it, for the ones that have one.
     pub scope: &'static str,
+    #[serde(rename = "listId")]
+    pub list_id: Option<String>,
+    /// Whether that list has come: `ready`, `loading` (it is being asked for) or `failed`.
+    pub listing: &'static str,
     pub filter: String,
     pub counts: Counts,
     /// How many issues of the scope the filter lets through.
@@ -138,6 +207,7 @@ pub struct Snapshot {
     pub person: Option<String>,
     /// The issues an agent works on, by Linear's id.
     pub working: BTreeMap<String, WorkingMessage>,
+    pub catalog: CatalogMessage,
 }
 
 /// The branch Linear suggests for an issue, as one line with no control character in it, or none.
@@ -149,7 +219,7 @@ pub fn branch_name(issue: &Issue) -> Option<String> {
         .filter(|name| !name.is_empty())
 }
 
-fn row(issue: &Issue, scope: Scope) -> RowMessage {
+fn row(issue: &Issue, scope: &Scope) -> RowMessage {
     RowMessage {
         id: issue.id.clone(),
         identifier: issue.identifier.clone(),
@@ -159,10 +229,11 @@ fn row(issue: &Issue, scope: Scope) -> RowMessage {
         priority: issue.priority.name(),
         updated: short_date(&issue.updated_at),
         labels: labels(issue),
+        // Whose it is is said where the list is not the person's own.
         assignee: match (scope, &issue.assignee) {
-            (Scope::All, Some(who)) if who.is_me => Some("you".to_owned()),
-            (Scope::All, Some(who)) => Some(who.display_name.clone()),
-            _ => None,
+            (Scope::Mine, _) | (_, None) => None,
+            (_, Some(who)) if who.is_me => Some("you".to_owned()),
+            (_, Some(who)) => Some(who.display_name.clone()),
         },
         ids: ids(issue),
     }
@@ -175,15 +246,12 @@ fn key_of(group: &Group<'_>) -> String {
 
 /// What the page is to draw, from `state`.
 pub fn snapshot(state: &State) -> Snapshot {
-    let scope = state.view.scope;
+    let scope = &state.view.scope;
     let filter = Filter::new(&state.view.filter);
     let mut groups = Vec::new();
     let mut matched = 0;
-    if let Some(lists) = &state.lists {
-        let listing = match scope {
-            Scope::Mine => &lists.mine,
-            Scope::All => &lists.all,
-        };
+    let held = state.lists.as_ref().and_then(|lists| lists.of(scope));
+    if let Some(listing) = held {
         for found in group(&listing.issues, &filter) {
             let key = key_of(&found);
             // A filter shows what it finds: no group is folded over a match.
@@ -212,17 +280,38 @@ pub fn snapshot(state: &State) -> Snapshot {
     let counts = state.lists.as_ref().map_or(
         Counts {
             mine: 0,
-            all: 0,
             mine_cut: false,
-            all_cut: false,
+            shown: 0,
+            shown_cut: false,
         },
         |lists| Counts {
             mine: lists.mine.issues.len(),
-            all: lists.all.issues.len(),
             mine_cut: lists.mine.truncated,
-            all_cut: lists.all.truncated,
+            shown: held.map_or(0, |listing| listing.issues.len()),
+            shown_cut: held.is_some_and(|listing| listing.truncated),
         },
     );
+    // The list the page looks at: here, or on its way, or one Linear could not tell.
+    let listing = match (&state.lists, held) {
+        (None, _) => "loading",
+        (Some(_), Some(_)) => "ready",
+        (Some(_), None) if state.refreshing || state.refresh_wanted_now() => "loading",
+        (Some(_), None) => "failed",
+    };
+    let catalog = CatalogMessage {
+        loaded: state.names.is_some(),
+        error: state.names_error.as_ref().map(|error| ErrorMessage {
+            kind: error.kind(),
+            message: error.to_string(),
+        }),
+        items: state
+            .names
+            .as_deref()
+            .unwrap_or_default()
+            .iter()
+            .map(item)
+            .collect(),
+    };
     Snapshot {
         loaded: state.lists.is_some(),
         refreshing: state.refreshing,
@@ -230,7 +319,9 @@ pub fn snapshot(state: &State) -> Snapshot {
             kind: error.kind(),
             message: error.to_string(),
         }),
-        scope: scope.name(),
+        scope: scope.kind(),
+        list_id: scope.id().map(str::to_owned),
+        listing,
         filter: state.view.filter.clone(),
         counts,
         matched,
@@ -254,6 +345,7 @@ pub fn snapshot(state: &State) -> Snapshot {
                 )
             })
             .collect(),
+        catalog,
     }
 }
 
@@ -301,7 +393,7 @@ mod tests {
 
     #[test]
     fn a_row_tells_the_ids_of_what_the_issue_is_of_and_in() {
-        let value = serde_json::to_value(row(&fixture_issue(), Scope::Mine)).unwrap();
+        let value = serde_json::to_value(row(&fixture_issue(), &Scope::Mine)).unwrap();
         assert_eq!(value["teamId"], "team-acm");
         assert_eq!(value["stateId"], "s1");
         assert_eq!(value["assigneeId"], "u-ada");

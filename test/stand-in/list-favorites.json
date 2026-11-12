@@ -1,0 +1,46 @@
+{
+  "data": {
+    "favorites": {
+      "nodes": [
+        {
+          "type": "customView",
+          "sortOrder": 1.0,
+          "customView": {
+            "id": "view-bugs",
+            "name": "Bugs to triage",
+            "modelName": "Issue",
+            "team": null
+          }
+        },
+        {
+          "type": "project",
+          "sortOrder": 2.0,
+          "project": {
+            "id": "proj-billing",
+            "name": "Billing"
+          }
+        },
+        {
+          "type": "customView",
+          "sortOrder": 3.0,
+          "customView": {
+            "id": "view-ready",
+            "name": "Agent-ready",
+            "modelName": "Issue",
+            "team": {
+              "key": "ACM"
+            }
+          }
+        },
+        {
+          "type": "folder",
+          "sortOrder": 0.5
+        }
+      ],
+      "pageInfo": {
+        "hasNextPage": false,
+        "endCursor": null
+      }
+    }
+  }
+}

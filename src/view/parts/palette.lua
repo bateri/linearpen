@@ -66,7 +66,7 @@ function palette.view(root)
 		label = "Command palette",
 		hint = "Find a command, or filter the issues",
 		filter = found,
-		rows = 10,
+		rows = kit.card_rows(),
 		footer = {
 			{ keys = "enter", title = "Do it" },
 			{ keys = "escape", title = "Close" },

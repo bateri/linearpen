@@ -89,8 +89,8 @@ fn summary(note: Option<&str>) -> Result<String, Failed> {
         },
         status: 1,
     };
-    let mine = linear::fetch(&transport, &found.key, Scope::Mine).map_err(failed)?;
-    let all = linear::fetch(&transport, &found.key, Scope::All).map_err(failed)?;
+    let mine = linear::fetch(&transport, &found.key, &Scope::Mine).map_err(failed)?;
+    let all = linear::fetch(&transport, &found.key, &Scope::All).map_err(failed)?;
     Ok(Summary {
         viewer: &mine.viewer,
         mine: &mine.listing,

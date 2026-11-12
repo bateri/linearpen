@@ -96,7 +96,7 @@ local function check(key, look)
 end
 
 -- An issue: the box of a selection, its priority, its identifier, its title that gives way, the
--- agent that is on it, its labels, whose it is (in the list of all issues, where the page is wide
+-- agent that is on it, its labels, whose it is (in any list but the person's own, where the page is wide
 -- enough) and the day it changed. `o`: `labels` and `who` say whether there is room for them, `scope` the list shown.
 function row.issue(item, look, o)
 	local issue = item.row
@@ -132,7 +132,7 @@ function row.issue(item, look, o)
 			el:child(label(info))
 		end
 	end
-	if o.scope == "all" and o.who then
+	if o.scope ~= "mine" and o.who then
 		el:child(
 			b.div():w(SIZE.who):no_shrink():row():justify_end():child(
 				b.text(issue.assignee or ""):text_size(SIZE.tiny):color("dim"):truncate()
