@@ -4,10 +4,8 @@
 
 ### Added
 
-- **An issue is dragged out of the page.** A line, dragged out of the page into a terminal's pane or
-  another application, brings the issue as one line of words (its identifier, its title and its
-  link) and the link for the applications that take one; a line break in the title is a space, and a
-  title with a control of the direction of text in it is not carried.
+- **Drag an issue out of the list.** Drop it on a terminal pane, for example one running Claude Code,
+  and its ID, title and link are typed there. Nothing runs until you press Enter.
 
 ## [0.1.0] - 2026-11-12
 
