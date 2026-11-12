@@ -11,8 +11,12 @@ usage: linearpen [--text]
 
 In a terminal that shows pencere views (bateri) linearpen opens in the pane. In any other it
 prints the issues as text and exits. The Linear API key is read from LINEAR_API_KEY, or from the
-file `key` in ~/.config/linearpen. linearpen writes one thing to Linear, the issues you make
-with its New issue form; nothing else is changed.
+file `key` in ~/.config/linearpen.
+
+linearpen writes to Linear only what you do in the pane: an issue you make with its New issue
+form, a change you make to an issue (its status, priority, assignee, labels, project or title),
+and the status of an issue an agent is started on, where the form says In Progress. It never
+writes a description, and `linearpen --text` only reads.
 ";
 
 /// What a run is asked to do.
@@ -75,5 +79,30 @@ mod tests {
         assert!(matches!(read_of(&["--help"]), Asked::Say(words) if words.contains("--text")));
         assert!(matches!(read_of(&["-V"]), Asked::Say(words) if words.starts_with("linearpen ")));
         assert!(matches!(read_of(&["--json"]), Asked::Refuse(_)));
+    }
+
+    // The pen makes issues, changes them and moves the ones an agent is started on: the help may
+    // not say that it writes less than it does.
+    #[test]
+    fn help_says_everything_linearpen_writes() {
+        // (The words as one line: where a line of the help ends is not what it says.)
+        let says = |named: &str| {
+            matches!(read_of(&["--help"]), Asked::Say(words)
+                if words.split_whitespace().collect::<Vec<_>>().join(" ").contains(named))
+        };
+        for named in [
+            "New issue",
+            "status",
+            "priority",
+            "assignee",
+            "labels",
+            "project",
+            "title",
+            "agent",
+        ] {
+            assert!(says(named), "the help does not name {named}");
+        }
+        assert!(says("never writes a description"));
+        assert!(!says("one thing") && !says("nothing else is changed"));
     }
 }

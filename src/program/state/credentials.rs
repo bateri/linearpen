@@ -146,8 +146,9 @@ impl Problem {
     /// What to tell the person, which says where a key can be given.
     #[must_use]
     pub fn words(&self) -> String {
-        const WHERE: &str =
-            "Make a personal API key with Read permission in Linear (Settings, Account, Security).";
+        // The permissions by the names Linear gives them, and what each lets the pen do.
+        const WHERE: &str = "Make a personal API key in Linear (Settings, Account, Security & Access): \
+             Read shows your issues, Create issues makes new ones, Write changes them.";
         match self {
             Self::Missing { file: Some(file) } => format!(
                 "linearpen has no Linear API key. Set LINEAR_API_KEY, or put the key in {}.\n{WHERE}",
@@ -231,6 +232,10 @@ mod tests {
         let words = problem.words();
         assert!(words.contains("LINEAR_API_KEY"));
         assert!(words.contains(&home.path().join(FILE).display().to_string()));
+        // Which key to make: what each thing the pen does needs, by the names Linear gives them.
+        for named in ["Read", "Create issues", "Write", "Security & Access"] {
+            assert!(words.contains(named), "the words do not name {named}");
+        }
         assert_eq!(find(None, None), Err(Problem::Missing { file: None }));
     }
 

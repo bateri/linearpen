@@ -134,8 +134,8 @@ pub const NEW_ISSUE_OPTIONS: Operation = Operation {
          issueLabels(first: 100, filter: { team: { null: true } }) { nodes { id name color isGroup } } }",
 };
 
-/// The one thing the pen writes: the issue the person made in the form. Sent by `linear::create`
-/// and by nothing else.
+/// One of the two things the pen writes: the issue the person made in the form. Sent by
+/// `linear::create` and by nothing else.
 pub const ISSUE_CREATE: Operation = Operation {
     name: "IssueCreate",
     text: "mutation IssueCreate($input: IssueCreateInput!) { issueCreate(input: $input) { \

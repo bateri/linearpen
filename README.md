@@ -33,7 +33,7 @@ Or run it where it is built: `cargo build --release`, then `target/release/linea
 ### The key
 
 linearpen asks Linear with a personal API key that has Read permission, Create issues too if you
-want to make new issues in it, and Write too if you want to change the issues you have. Make one in Linear under Settings, Account, Security. A pane that has no key asks for one (the field hides what you type),
+want to make new issues in it, and Write too if you want to change the issues you have. Make one in Linear under Settings, Account, Security & Access. A pane that has no key asks for one (the field hides what you type),
 tries it with a question to Linear and keeps it in the file `key` of `~/.config/linearpen` (or of
 `$XDG_CONFIG_HOME/linearpen`), made readable by you alone. `LINEAR_API_KEY` in the environment is
 used first, and kept nowhere. A key file that other users can read is still read, and `linearpen --text` warns about it.
