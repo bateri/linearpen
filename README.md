@@ -187,6 +187,7 @@ or `Space` then presses.
 | `←` `→`               | close and open a group                                               |
 | `Enter`, `o`          | open the issue beside the list                                       |
 | `⇧O`                  | open it in Linear                                                    |
+| `⌘⇧↑` `⌘⇧↓`            | open its parent, open a sub-issue or a related issue (a menu)        |
 | `Space`, `⇧ Space`    | scroll the open issue down, up                                       |
 | `x`, `Shift ↑↓`, `⌘A` | select the issue, select more, select all                            |
 | `s` `p` `a` `l` `⇧P`  | change the status, priority, assignee, labels, project               |

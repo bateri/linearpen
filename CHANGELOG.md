@@ -16,7 +16,10 @@
 - **The issues round an issue.** Under its values the issue open lists its parent, its sub-issues and
   what it is tied to (`Blocks`, `Blocked by`, `Related`, `Duplicate of`, `Duplicated by`), each a line
   that opens that issue (beside the list, as it is, where the list does not hold it); the file Work
-  on writes for the agent tells them too, under the same frame. They are read only.
+  on writes for the agent tells them too, under the same frame. They are read only. `Cmd Shift Up`
+  opens the parent and `Cmd Shift Down` opens a sub-issue or a related issue (a menu, each line with
+  its way, or straight to the one there is), as in Linear; both are in the palette and on the card
+  of keys.
 - **The head of the page has fixed places.** The list button (the list, how many it has and a
   chevron) opens a card of lists, which for now holds My issues and All issues (`g`, or `1` and
   `2`); the filter says how many it lets through (`4 of 14`) inside itself, and Refresh and New

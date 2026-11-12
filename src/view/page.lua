@@ -99,6 +99,14 @@ end
 commands.when.titleable = function()
 	return commands.when.plain_change() and #change.targets() == 1
 end
+-- The parent and the other neighbours are the open issue's, as it tells them (they are not offered
+-- where it has none).
+commands.when.parented = function()
+	return commands.when.idle() and panel.has_parent()
+end
+commands.when.neighboured = function()
+	return commands.when.idle() and panel.neighbours() > 0
+end
 -- Work on is the open issue's: where an issue is open (its detail has the button).
 commands.when.workable = function()
 	return commands.when.idle() and work.workable()
@@ -300,6 +308,10 @@ local function command(id)
 		return context.copy("link", context.single())
 	elseif id == "link" then
 		return context.link(context.single())
+	elseif id == "parent" then
+		return panel.open_parent()
+	elseif id == "near" then
+		return panel.open_neighbours()
 	elseif id == "lists" then
 		lists.show()
 	elseif id == "read_down" then
@@ -394,6 +406,9 @@ local function on_action(action)
 	end
 	if reply == nil then
 		reply = context.action(action)
+	end
+	if reply == nil then
+		reply = panel.action(action)
 	end
 	if reply == nil then
 		reply = work.action(action)

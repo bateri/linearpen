@@ -21,7 +21,8 @@ local panel = {}
 -- `pin` is set while a change of the issue is on its way or has just been made: the issue stays open
 -- (it may have left the list) until the cursor is moved by the person (`{ id, moves }`). `near` is
 -- the id of an issue the person came to from the one that was open, which the list does not hold.
-local P = { open = nil, kept = {}, pin = nil, near = nil }
+-- `serial` numbers the menu of the neighbours (a pick of an older one is not one).
+local P = { open = nil, kept = {}, pin = nil, near = nil, serial = 0 }
 panel.state = P
 
 -- The box that scrolls: the description and the comments.
@@ -433,18 +434,19 @@ local function comments(detail)
 end
 
 -- The issues round the open one, each with how it is tied: the parent, the parts, then what blocks it,
--- what it blocks and so on. A way is said once, on the first line of its run.
+-- what it blocks and so on. A way is said once, on the first line of its run (`label`); `way` is the
+-- way of the line, said by the menu of the neighbours where each line is alone.
 local function near_of(detail)
 	local out = {}
 	if detail.parent ~= nil then
-		out[#out + 1] = { label = "Parent", issue = detail.parent }
+		out[#out + 1] = { label = "Parent", way = "Parent", issue = detail.parent }
 	end
 	for index, child in detail.children or {} do
-		out[#out + 1] = { label = index == 1 and "Sub-issues" or "", issue = child, part = true }
+		out[#out + 1] = { label = index == 1 and "Sub-issues" or "", way = "Sub-issue", issue = child, part = true }
 	end
 	local last = nil
 	for _, tie in detail.ties or {} do
-		out[#out + 1] = { label = tie.label ~= last and tie.label or "", issue = tie.issue }
+		out[#out + 1] = { label = tie.label ~= last and tie.label or "", way = tie.label, issue = tie.issue }
 		last = tie.label
 	end
 	return out
@@ -520,6 +522,90 @@ function panel.open_near(id)
 	P.pin = { id = id, moves = list.moves() }
 	P.near = id
 	return true
+end
+
+-- The issues the open one has as parts and as ties, in the order it tells them: its neighbours but the
+-- parent, which has its own key.
+local function others(detail)
+	local out = {}
+	for _, entry in near_of(detail) do
+		if entry.way ~= "Parent" then
+			out[#out + 1] = entry
+		end
+	end
+	return out
+end
+
+-- Whether the issue open has a parent, and how many other neighbours it has.
+function panel.has_parent()
+	local detail = panel.detail()
+	return detail ~= nil and detail.parent ~= nil
+end
+
+function panel.neighbours()
+	local detail = panel.detail()
+	return detail ~= nil and #others(detail) or 0
+end
+
+-- Opens the parent of the issue open, as a press on its line does. The reply.
+function panel.open_parent()
+	local detail = panel.detail()
+	if detail == nil or detail.parent == nil then
+		return true
+	end
+	return panel.open_near(detail.parent.id)
+end
+
+local NEIGHBOURS = "neighbours-menu"
+local TITLE_MOST = 45
+
+-- A title as a line of a menu has room for it: cut, with the mark, where it is long.
+local function short(title)
+	local length = utf8.len(title)
+	if length == nil or length <= TITLE_MOST then
+		return title
+	end
+	local cut = string.sub(title, 1, utf8.offset(title, TITLE_MOST + 1) - 1)
+	return string.gsub(cut, "%s+$", "") .. "\u{2026}"
+end
+
+-- Opens the neighbours of the issue open, but the parent: the one there is where there is one, else
+-- the host's menu of them, each with its way (`ACM-389  Cache the pricing table  · Blocked by`). The
+-- reply.
+function panel.open_neighbours()
+	local detail = panel.detail()
+	local entries = detail ~= nil and others(detail) or {}
+	if #entries == 0 then
+		return true
+	elseif #entries == 1 then
+		return panel.open_near(entries[1].issue.id)
+	end
+	P.serial += 1
+	local items = {}
+	for _, entry in entries do
+		local issue = entry.issue
+		items[#items + 1] = {
+			key = P.serial .. "|" .. issue.id,
+			title = issue.identifier .. "  " .. short(issue.title) .. "  \u{b7} " .. entry.way,
+		}
+	end
+	local where = { at = { x = S.width / 2 - 100, y = S.height / 3 } }
+	if b.layout.bounds("panel-value:state") ~= nil then
+		where = { near = "panel-value:state" }
+	end
+	return u:menu(NEIGHBOURS, items, where) or true
+end
+
+-- What a pick of that menu chose. The reply, or nil where it was not the menu's.
+function panel.action(action)
+	if action.from ~= NEIGHBOURS or action.kind ~= "menu" then
+		return nil
+	end
+	local serial, id = string.match(action.entry, "^(%d+)|(.+)$")
+	if serial == nil or tonumber(serial) ~= P.serial then
+		return true
+	end
+	return panel.open_near(id)
 end
 
 -- What stands under the facts: the description and the comments, or why they are not there.

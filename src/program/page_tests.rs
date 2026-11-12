@@ -4553,6 +4553,149 @@ fn the_detail_tells_sub_issues_and_each_tie_under_its_words_said_once() {
     assert!(order.windows(2).all(|pair| pair[0] < pair[1]), "{order:?}");
 }
 
+/// Opens the palette, says whether it offers `words`, and closes it again.
+fn palette_offers(page: &mut Page, words: &str) -> bool {
+    page.press("mod+k").expect("mod+k");
+    page.wait_for(WITHIN, |page| page.says("Do it"))
+        .unwrap_or_else(|why| panic!("the palette opens: {why:?}: {}", said(page)));
+    let offered = page.says(words);
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| !page.says("Do it"))
+        .expect("escape closes the palette");
+    page.advance(0.6).expect("a moment");
+    offered
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_parent_and_the_one_neighbour_are_commands_with_linears_keys_in_the_palette_and_on_the_card()
+{
+    let (linear, _session, mut page) = open_lists(WIDE);
+    open_the_controls(&mut page);
+    // The fixture's issue has a parent and one tie (what blocks it): both commands are offered.
+    for words in [
+        "Open the parent issue",
+        "Open a sub-issue or a related issue",
+    ] {
+        assert!(palette_offers(&mut page, words), "{words}: {}", said(&page));
+    }
+    page.press("?").expect("?");
+    page.wait_for(WITHIN, |page| page.says("Keys"))
+        .unwrap_or_else(|why| panic!("the card opens: {why:?}: {}", said(&page)));
+    for words in [
+        "Open the parent issue",
+        "Open a sub-issue or a related issue",
+    ] {
+        assert!(page.says(words), "{words}: {}", said(&page));
+    }
+    page.press("escape").expect("escape");
+    page.advance(0.6).expect("a moment");
+    // One tie only: the key goes to it without a menu, and the list holds it, so the cursor goes there.
+    page.press("mod+shift+down").expect("the key");
+    cursor_on(&mut page, "ACM-389");
+    assert!(page.menu().is_none(), "no menu for the one");
+    page.press("home").expect("home");
+    page.press("down").expect("down");
+    cursor_on(&mut page, "ACM-412");
+    // The parent is one the lists do not hold: it is read as it is, beside the list.
+    page.press("mod+shift+up").expect("the key");
+    page.wait_for(WITHIN, |page| {
+        page.says("Everything about the limits of a plan.")
+    })
+    .unwrap_or_else(|why| panic!("the parent opens: {why:?}: {}", said(&page)));
+    assert!(linear.issues_asked().contains(&"issue-400".to_owned()));
+    // That one has no parent and nothing tied to it: neither is offered, and the keys do nothing.
+    for words in [
+        "Open the parent issue",
+        "Open a sub-issue or a related issue",
+    ] {
+        assert!(
+            !palette_offers(&mut page, words),
+            "{words}: {}",
+            said(&page)
+        );
+    }
+    let asked = linear.issues_asked().len();
+    page.press("mod+shift+up").expect("the key");
+    page.press("mod+shift+down").expect("the key");
+    page.advance(0.4).expect("a moment");
+    assert!(page.menu().is_none());
+    assert_eq!(linear.issues_asked().len(), asked, "{}", said(&page));
+    assert!(
+        page.says("Everything about the limits of a plan."),
+        "{}",
+        said(&page)
+    );
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_key_of_the_neighbours_opens_a_menu_of_the_parts_and_the_ties_and_a_pick_opens_that_issue() {
+    let linear = Canned::new(Mode::Fine);
+    let neighbor = |n: u32, title: &str, state: &str, kind: &str| {
+        serde_json::json!({
+            "id": format!("issue-{n}"), "identifier": format!("ACM-{n}"), "title": title,
+            "state": { "id": "s", "name": state, "type": kind, "position": 1.0 }
+        })
+    };
+    linear.set_detail(
+        "issue-412",
+        serde_json::json!({
+            "children": { "nodes": [
+                neighbor(413, "Write the limiter", "Done", "completed"),
+                neighbor(414, "Show the limit on the usage page", "Todo", "unstarted"),
+            ] },
+            "relations": { "nodes": [
+                { "type": "blocks", "relatedIssue": neighbor(405, "Webhook retries", "In Progress", "started") },
+                { "type": "related", "relatedIssue": neighbor(
+                    377,
+                    "A title that runs on and on, past what a line of a menu is for, so that it is cut",
+                    "Todo",
+                    "unstarted",
+                ) },
+            ] },
+        }),
+    );
+    let session = session_over(&linear, Some("lin_api_test"), None);
+    let mut page = open(&session, WIDE, None, "ACM-412").expect("the page opens");
+    open_the_controls(&mut page);
+    page.wait_for(WITHIN, |page| page.says("Write the limiter"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    let entries = menu_after(&mut page, "mod+shift+down");
+    // The parts, then the ties as the detail tells them; the parent is not here (it has its own key);
+    // each says its way, and a long title is cut.
+    assert_eq!(
+        titles(&entries),
+        vec![
+            "ACM-413  Write the limiter  \u{b7} Sub-issue",
+            "ACM-414  Show the limit on the usage page  \u{b7} Sub-issue",
+            "ACM-405  Webhook retries  \u{b7} Blocks",
+            "ACM-389  Cache the pricing table at the edge  \u{b7} Blocked by",
+            "ACM-377  A title that runs on and on, past what a line\u{2026}  \u{b7} Related",
+        ]
+    );
+    assert!(entries.iter().all(|(_, enabled)| *enabled), "{entries:?}");
+    // A pick of one the lists do not hold reads it beside the list.
+    page.pick_titled("ACM-413  Write the limiter  \u{b7} Sub-issue")
+        .expect("the part");
+    page.wait_for(WITHIN, |_| {
+        linear.issues_asked().contains(&"issue-413".to_owned())
+    })
+    .unwrap_or_else(|why| panic!("the part is asked for: {why:?}: {}", said(&page)));
+    assert!(page.menu().is_none());
+    // A pick of one the lists hold takes the cursor to it.
+    page.press("home").expect("home");
+    page.press("down").expect("down");
+    cursor_on(&mut page, "ACM-412");
+    page.wait_for(WITHIN, |page| page.says("Write the limiter"))
+        .unwrap_or_else(|why| panic!("the issue is back: {why:?}: {}", said(&page)));
+    let entries = menu_after(&mut page, "mod+shift+down");
+    assert_eq!(entries.len(), 5, "{entries:?}");
+    page.pick_titled("ACM-405  Webhook retries  \u{b7} Blocks")
+        .expect("what it blocks");
+    cursor_on(&mut page, "ACM-405");
+}
+
 // --- The right button and the copies ---------------------------------------------------------------------
 
 /// The titles of the entries of the host's menu that is open.
