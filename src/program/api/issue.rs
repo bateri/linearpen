@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 
 use super::issues::{Ids, LabelMessage, ids, labels};
 use super::{Failure, call};
-use crate::linear::Issue;
 use crate::linear::types::{Comment, Neighbor};
+use crate::linear::{Issue, plain};
 use crate::model::time::short_date;
 use crate::session::Session;
 
@@ -177,7 +177,7 @@ fn message(issue: &Issue) -> IssueMessage {
         id: issue.id.clone(),
         identifier: issue.identifier.clone(),
         title: issue.title.clone(),
-        url: issue.url.clone(),
+        url: plain(&issue.url),
         branch_name: super::issues::branch_name(issue),
         description,
         priority: issue.priority.name(),
@@ -216,7 +216,7 @@ pub(super) fn check_id(id: &str) -> Result<(), Failure> {
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
     {
         return Err(Failure::BadParams(format!(
-            "id is Linear's id of an issue or its identifier, up to {ID_MOST} letters, digits and dashes"
+            "id is Linear's id of an issue or its identifier, up to {ID_MOST} letters, digits, dashes and underscores"
         )));
     }
     Ok(())

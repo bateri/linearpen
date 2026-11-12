@@ -39,10 +39,14 @@ function act.view(params, after)
 	-- undo a later one.
 	S.view_seq = (S.view_seq or 0) + 1
 	params.seq = S.view_seq
-	kit.call("view", params, function(result)
+	kit.call("view", params, function(result, err)
 		-- The answer of a call that a later one has gone past is not what the program holds now.
 		if result and params.seq == S.view_seq then
 			apply(result)
+		end
+		-- Filters the program did not take: the chips say what it holds, and the person is told.
+		if err and params.filters ~= nil and act.filters_refused ~= nil then
+			act.filters_refused(err)
 		end
 		if after ~= nil then
 			after()

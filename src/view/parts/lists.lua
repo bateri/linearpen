@@ -69,7 +69,8 @@ local function items()
 				number += 1
 			end
 			out[#out + 1] = entry
-			keys[#keys + 1] = item.key
+			-- (A view that was renamed, or a cycle whose end moved, is the same list with other words.)
+			keys[#keys + 1] = item.key .. "\n" .. item.title .. "\n" .. (entry.hint or "") .. "\n" .. (entry.keys or "")
 		end
 		-- Where the names have not come, or could not be asked for, the card says so in a line that
 		-- goes nowhere.

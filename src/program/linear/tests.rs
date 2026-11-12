@@ -1264,3 +1264,33 @@ fn the_names_are_taken_a_page_at_a_time_up_to_a_ceiling_and_a_failure_is_said() 
         Err(Error::Unreachable(_))
     ));
 }
+
+#[test]
+fn the_choices_of_the_filters_leave_out_a_name_a_filter_would_refuse() {
+    let long = "x".repeat(101);
+    let body = format!(
+        r##"{{"data":{{"workflowStates":{{"nodes":[
+            {{"name":"Todo","type":"unstarted","position":1}},
+            {{"name":"{long}","type":"started","position":2}}]}},
+        "users":{{"nodes":[{{"id":"u1","displayName":"Ada","isMe":true}}]}},
+        "issueLabels":{{"nodes":[{{"name":"bug","color":"#f00"}},{{"name":"{long}","color":"#0f0"}}]}}}}}}"##
+    );
+    let transport = Scripted::new(vec![Ok(Reply { status: 200, body })]);
+    let options = filter_options(&transport, &key()).unwrap();
+    assert_eq!(
+        options
+            .states
+            .iter()
+            .map(|s| s.name.as_str())
+            .collect::<Vec<_>>(),
+        ["Todo"]
+    );
+    assert_eq!(
+        options
+            .labels
+            .iter()
+            .map(|l| l.name.as_str())
+            .collect::<Vec<_>>(),
+        ["bug"]
+    );
+}

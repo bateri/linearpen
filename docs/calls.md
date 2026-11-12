@@ -75,7 +75,8 @@ optional (`{}` asks for the list as it is). Params:
 
 - `list`: `{ "kind", "id"? }`, the list the page shows. `kind` is `"mine"` (the open issues assigned
   to the person, the default), `"all"` (the open issues of the workspace; asked for when it is shown),
-  or one of `"team"` (the open issues of a team), `"cycle"` (the issues of a team's cycle that runs),
+  or one of `"team"` (the open issues of a team), `"cycle"` (the open issues of a cycle: the `id` of any
+  cycle, the running one of a team is in the `catalog`),
   `"view"` (a saved view of issues), `"project"` (a project's open issues) and `"label"` (the open
   issues with a label), which take the `id` of what they are of (the ids the topic's `catalog` tells);
   or `"search"`, which takes the words in `id` (at most 200 characters, no control character, trimmed)
@@ -133,7 +134,7 @@ At most 250 of each are asked for.
 One issue with what a row of the list does not carry: its description, its comments, and the issues
 round it (its parent, its parts and what it is tied to). Asked of Linear when the issue is opened,
 and kept for the run. Params: `{ "id": "issue-412" }`, Linear's id
-of the issue (a row's `id`) or its identifier: up to 64 letters, digits and dashes.
+of the issue (a row's `id`) or its identifier: up to 64 letters, digits, dashes and underscores.
 
 ```json
 {
@@ -378,7 +379,7 @@ Changes one field of one issue or of several, in Linear. Params:
 ```
 
 - `ids`: Linear's ids of the issues (a row's `id`), from one to 50 (Linear's own limit of a batch);
-  up to 64 letters, digits and dashes each. One said twice is one.
+  up to 64 letters, digits, dashes and underscores each. One said twice is one.
 - **Exactly one** of these, which is the field that is changed (two, or none, is `bad-params`; so is
   any member this call does not take, `description` and `team` among them: neither is written):
   `status` (the id of a state, from `new_options`' `allStates`), `priority` (`none`, `urgent`,
@@ -396,7 +397,8 @@ Changes one field of one issue or of several, in Linear. Params:
 The answer tells the issues Linear changed, and for each whether the list in view (the list the
 page last set with `view`) still holds it: one that is done or canceled is in no list, and one given
 to another person is not in My issues. What Linear says of them is written into the lists the program holds (My issues and the one
-shown: a list other than All issues keeps an issue it holds and lets it go where it is done) and into
+shown: a list other than All issues keeps an issue it holds and lets it go where it is done, a search,
+which holds closed issues too, keeps it) and into
 the issues kept for `issue`, and the topic `issues` tells it: the lists are not asked for again.
 
 The change is sent **once**, to all the issues in one request; the program never sends it again by
@@ -426,7 +428,7 @@ Posts a comment on an issue, in Linear, in the words the person wrote. Params:
 ```
 
 - `issue`: Linear's id of the issue (the `id` of a row or of `issue`), or its identifier; up to 64
-  letters, digits and dashes.
+  letters, digits, dashes and underscores.
 - `body`: the words, as they were written (Markdown, which is what Linear takes), from one to 10 000
   characters, with something in them besides white space. They are not changed, and they are a
   variable of the request and never part of its text. Nothing else is taken (`bad-params`): not a
@@ -448,8 +450,8 @@ holds; the words say that it may have been posted, and the person looks at the c
 write it again. An answer that says no (Linear's own error, or `refused`: the key is not taken) says
 it was not posted, and nothing is asked about.
 
-Errors: `bad-params`, `no-key`, `refused`, and `comment-failed`: Linear did not post it, or it is not
-known. The words say why: `Linear did not post it: this key cannot comment` where the key reads and
+Errors: `bad-params`, `no-key`, `refused`, `failed` (the program could not make an id for the
+comment, and sent nothing), and `comment-failed`: Linear did not post it, or it is not known. The words say why: `Linear did not post it: this key cannot comment` where the key reads and
 may not write, `Linear did not post it` where Linear answered without posting it, `Linear did not
 answer whole, so it may have posted it: look at the comments before writing it again` where the
 answer could not be read, `Linear could not be reached: ...; it may have been posted: look at the
@@ -513,8 +515,9 @@ the lists came, asking failed). The same value `view` answers with.
   empty, and `counts.shown` is 0); or `failed` (Linear could not tell it: `error` says why, and
   `loaded` is still true because My issues came).
 - `counts`: how many open issues My issues holds (`mine`, whole) and the list shown holds (`shown`, as
-  `filters` narrow it, a search's closed issues too; not by the words of `filter`); `mineCut` and `shownCut` say there are more than the 500 the program takes of a list,
-  the 500 that changed last.
+  `filters` narrow it, a search's closed issues too; not by the words of `filter`); `mineCut` and `shownCut` say there are more than the 500 the program takes of a list:
+  the 500 that changed last, and for a search the first 500 Linear finds (it has no order of its own).
+- A row tells at most 10 labels of its issue (the first Linear gives); the 11th is not marked.
 - `catalog`: the lists the page can go to besides My issues and All issues, as Linear last said them.
   `loaded` is false until the first answer, and `error` says why one could not come (the lists of
   before stay). Each `item` has `key` (`kind:id`, what the page keeps it by), `kind` and `id` (what

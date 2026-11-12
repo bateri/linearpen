@@ -253,7 +253,7 @@ linearpen tells Linear a new issue, a change to the issues you have and a commen
 nothing else. It has three mutations, `IssueCreate` (sent when you press Create in the form),
 `IssueBatchUpdate` (sent when you choose a status, a priority, an assignee, a label, a project, a
 cycle, an estimate, a due date or a title, for one issue or for those you selected; and sent once more,
-only for the status, when you start an agent with `Status` set to move the issues that have not begun)
+only for the status, when you start an agent with `Status` set to move the issue that has not begun)
 and `CommentCreate` (sent when you press Comment, `⌘Enter`, under the comments of the issue open, with
 the words you wrote and nothing else), and the list of mutations it may send is one place in the
 program that a test checks every query against, refusing any other before it is sent. What a change

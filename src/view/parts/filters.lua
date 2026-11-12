@@ -249,6 +249,12 @@ local function toggle(kind, value)
 	return true
 end
 
+-- The program did not take the filters the page sent (it says why): what the chips show is what it holds.
+act.filters_refused = function(err)
+	F.now = nil
+	kit.lib.toast(S.toasts, "The filters were not taken: " .. (err.message or err.code or "no reason given"), "warn")
+end
+
 -- Forgets the filters here: the program is told in the same call that goes to another list.
 function filters.forget()
 	F.now = empty()

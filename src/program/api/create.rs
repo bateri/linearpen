@@ -93,7 +93,7 @@ pub(super) fn check_ref(what: &str, text: &str) -> Result<(), Failure> {
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
     {
         return Err(Failure::BadParams(format!(
-            "{what} is an id of Linear: up to {REF_MOST} letters, digits and dashes"
+            "{what} is an id of Linear: up to {REF_MOST} letters, digits, dashes and underscores"
         )));
     }
     Ok(())

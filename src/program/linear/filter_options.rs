@@ -8,6 +8,7 @@ use std::collections::HashSet;
 use serde::Deserialize;
 
 use super::error::plain;
+use super::filters::VALUE_MOST;
 use super::query;
 use super::types::StateKind;
 use super::{Error, Key, Transport, run};
@@ -92,6 +93,12 @@ fn order(kind: StateKind) -> u8 {
     }
 }
 
+/// Whether `name` is one a filter takes: a longer one would be refused, and the chip would be set on a
+/// list that was not narrowed.
+fn fits(name: &str) -> bool {
+    !name.is_empty() && name.chars().count() <= VALUE_MOST
+}
+
 /// The states, the people and the labels the filters offer.
 ///
 /// # Errors
@@ -109,7 +116,7 @@ pub fn filter_options(transport: &dyn Transport, key: &Key) -> Result<FilterOpti
         .into_iter()
         .filter_map(|state| {
             let name = plain(&state.name);
-            (!name.is_empty() && seen.insert(name.clone())).then_some(StateOption {
+            (fits(&name) && seen.insert(name.clone())).then_some(StateOption {
                 name,
                 kind: state.kind,
             })
@@ -140,7 +147,7 @@ pub fn filter_options(transport: &dyn Transport, key: &Key) -> Result<FilterOpti
         .into_iter()
         .filter_map(|label| {
             let name = plain(&label.name);
-            (!name.is_empty() && seen.insert(name.clone())).then_some(LabelOption {
+            (fits(&name) && seen.insert(name.clone())).then_some(LabelOption {
                 name,
                 color: plain(&label.color),
             })

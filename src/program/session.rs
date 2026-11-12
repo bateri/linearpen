@@ -202,6 +202,14 @@ impl State {
         }
     }
 
+    /// Whether the worker asks for the names of the lists and the choices with the lists: it was asked
+    /// to (`r`), it is `due`, or the names were never asked for. Names that were asked for and did not
+    /// come are asked for again at `r` and the five minutes, not with every list the page goes to: a
+    /// list that Linear will not name would otherwise have four more questions with each.
+    fn asks_for_everything(&self, due: bool) -> bool {
+        self.everything || due || (self.names.is_none() && self.names_error.is_none())
+    }
+
     /// The worker is about to ask for the lists (it has been asked to, and has not begun).
     #[must_use]
     pub fn refresh_wanted_now(&self) -> bool {
@@ -417,7 +425,7 @@ fn work(shared: &Shared) {
             }
             // The names of the lists and the choices of a new issue are asked for with everything (the
             // first time, `r`, the five minutes); going to another list asks for that list only.
-            let everything = state.everything || state.names.is_none() || Instant::now() >= next;
+            let everything = state.asks_for_everything(Instant::now() >= next);
             state.refresh_wanted = false;
             state.everything = false;
             state.refreshing = true;
@@ -932,7 +940,9 @@ impl Session {
             if let Some(filters) = filters {
                 state.view.filters = filters;
             }
-            if is_apart(&state.view.scope, &state.view.filters) {
+            // (Where the last asking failed, even My issues is asked for again: the page that goes back to
+            // it from a list that failed must not be left under the error of that list.)
+            if is_apart(&state.view.scope, &state.view.filters) || state.error.is_some() {
                 state.refresh_wanted = true;
             }
         }
@@ -1345,30 +1355,36 @@ mod tests {
         for (reply, expected) in [
             (
                 said(r#"{"data":{"commentCreate":{"success":false,"comment":null}}}"#),
-                false,
+                "failed",
             ),
             (
                 said(r#"{"errors":[{"message":"Argument Validation Error"}]}"#),
-                false,
+                "failed",
             ),
             (
                 Ok(Reply {
                     status: 403,
                     body: r#"{"errors":[{"message":"Forbidden"}]}"#.to_owned(),
                 }),
-                true,
+                "forbidden",
             ),
             (
                 Ok(Reply {
                     status: 401,
                     body: String::new(),
                 }),
-                true,
+                "refused",
             ),
         ] {
             let (session, sent) = holding(vec![reply]);
             let failed = session.comment(COMMENT_ID, "a", "x").unwrap_err();
-            assert_ne!(failed, Error::Unsure, "{expected}");
+            let what = match &failed {
+                Error::Failed(_) => "failed",
+                Error::Forbidden => "forbidden",
+                Error::Refused => "refused",
+                other => panic!("not one a comment's answer says: {other:?}"),
+            };
+            assert_eq!(what, expected, "{failed:?}");
             assert_eq!(sent.lock().unwrap().len(), 1, "{failed:?}");
         }
     }
@@ -1740,6 +1756,42 @@ mod tests {
         assert!(!session.state().refresh_wanted_now());
         session.set_view(None, Some(Scope::Mine), None, None, None);
         assert!(!session.state().refresh_wanted_now());
+    }
+
+    #[test]
+    fn names_that_did_not_come_are_asked_for_again_at_r_and_not_with_each_list() {
+        let (session, _) = holding(vec![]);
+        {
+            let mut state = session.state();
+            state.names = None;
+            state.names_error = None;
+            state.everything = false;
+            assert!(state.asks_for_everything(false), "never asked for");
+            state.named(Err(Error::Failed("a favorite is gone".to_owned())));
+            assert!(
+                !state.asks_for_everything(false),
+                "asked for, and did not come: not with the next list"
+            );
+            assert!(state.asks_for_everything(true), "the five minutes");
+            state.everything = true;
+            assert!(state.asks_for_everything(false), "`r`");
+        }
+    }
+
+    #[test]
+    fn going_back_to_my_issues_from_a_list_that_failed_asks_again_and_does_not_keep_the_error() {
+        let (session, _) = holding(vec![]);
+        session.set_view(None, Some(team("t-gone")), None, None, None);
+        session.shared.lock().refresh_wanted = false;
+        session
+            .state()
+            .landed(Err(Error::Failed("nothing there".to_owned())));
+        assert!(session.state().error.is_some());
+        session.set_view(None, Some(Scope::Mine), None, None, None);
+        assert!(
+            session.state().refresh_wanted_now(),
+            "My issues is asked for again, so that the error of the list left is let go of"
+        );
     }
 
     #[test]

@@ -35,11 +35,11 @@ pub fn document(issue: &Issue) -> String {
     let mut text = String::from("# Linear issue\n\n");
     let _ = writeln!(text, "{FRAME}\n");
     let _ = writeln!(text, "## {}: {}\n", issue.identifier, plain(&issue.title));
-    let _ = writeln!(text, "- Link: {}", issue.url);
-    let _ = writeln!(text, "- State: {}", issue.state.name);
+    let _ = writeln!(text, "- Link: {}", plain(&issue.url));
+    let _ = writeln!(text, "- State: {}", plain(&issue.state.name));
     let _ = writeln!(text, "- Priority: {}", issue.priority.name());
     if !issue.labels.is_empty() {
-        let names: Vec<&str> = issue.labels.iter().map(|l| l.name.as_str()).collect();
+        let names: Vec<String> = issue.labels.iter().map(|l| plain(&l.name)).collect();
         let _ = writeln!(text, "- Labels: {}", names.join(", "));
     }
     if let Some(cycle) = &issue.cycle {
@@ -64,10 +64,10 @@ pub fn document(issue: &Issue) -> String {
         let _ = writeln!(text, "- Due: {}", plain(day));
     }
     if let Some(project) = &issue.project {
-        let _ = writeln!(text, "- Project: {}", project.name);
+        let _ = writeln!(text, "- Project: {}", plain(&project.name));
     }
     if let Some(who) = &issue.assignee {
-        let _ = writeln!(text, "- Assigned to: {}", who.display_name);
+        let _ = writeln!(text, "- Assigned to: {}", plain(&who.display_name));
     }
     // (A name that `git` would not take is left out: it is no suggestion.)
     if let Some(branch) = super::worktree::suggested(issue.branch_name.as_deref()) {
