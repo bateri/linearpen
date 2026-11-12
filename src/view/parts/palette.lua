@@ -64,7 +64,7 @@ function palette.view(root)
 		items = P.items,
 		state = P.state,
 		label = "Command palette",
-		hint = "Find a command, or type words to filter the issues",
+		hint = "Find a command, or filter the issues",
 		filter = found,
 		rows = 10,
 		footer = {

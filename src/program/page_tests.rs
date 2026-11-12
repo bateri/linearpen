@@ -826,10 +826,11 @@ fn without_a_key_the_page_asks_for_one_and_keeps_what_linear_takes() {
         said(&page)
     );
     assert!(
-        page.says("To make new ones it needs Create issues too."),
+        page.says("Create issues lets you make new ones."),
         "{}",
         said(&page)
     );
+    assert!(page.says("Write lets you change them."), "{}", said(&page));
     assert_eq!(
         linear.times("Verify"),
         0,

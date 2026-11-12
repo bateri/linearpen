@@ -54,11 +54,12 @@ function screens.connect()
 	}))
 	actions:child(kit.button("create-key", "Create a key in Linear", { tip = screens.KEYS_URL }))
 	card:child(actions)
-	-- What the key may do: it shows the issues with Read access, and makes new ones with Create issues.
+	-- What the key may do: it shows the issues with Read access, makes new ones with Create issues and
+	-- changes them with Write.
 	card:child(
 		b.div():col():gap(2):no_shrink():child(b.text("A key with Read access shows your issues."):text_size(SIZE.tiny):color("dim")):child(
-			b.text("To make new ones it needs Create issues too."):text_size(SIZE.tiny):color("dim")
-		)
+			b.text("Create issues lets you make new ones."):text_size(SIZE.tiny):color("dim")
+		):child(b.text("Write lets you change them."):text_size(SIZE.tiny):color("dim"))
 	)
 	return centered(card)
 end
