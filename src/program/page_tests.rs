@@ -4992,6 +4992,111 @@ fn command_enter_is_the_form_that_is_open_and_never_the_comment_that_waits() {
     assert!(linear.commented().is_empty(), "{:?}", linear.commented());
 }
 
+/// The buttons that say a key, with the key each says, and where each is.
+fn keyed_buttons(page: &Page) -> Vec<(&'static str, &'static str, Option<pencere_view::Rect>)> {
+    [
+        ("work", "W"),
+        ("open-linear", "\u{21e7}O"),
+        ("panel-close", "Esc"),
+        ("refresh", "\u{2318}R"),
+        ("new-slot", "C"),
+    ]
+    .into_iter()
+    .map(|(name, key)| (name, key, page.bounds(name)))
+    .collect()
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_button_says_its_key_and_stays_as_wide_whatever_has_the_keyboard() {
+    let (_linear, _session, mut page) = open_lists(WIDE);
+    open_the_controls(&mut page);
+    let before = keyed_buttons(&page);
+    for (name, key, at) in &before {
+        assert!(at.is_some(), "{name} is on the page: {}", said(&page));
+        assert!(
+            page.words_in(name).iter().any(|word| word == key),
+            "{name} says {key}: {:?}",
+            page.words_in(name)
+        );
+    }
+    let alike = |page: &Page, when: &str| {
+        for (name, key, was) in &before {
+            let now = page.bounds(name);
+            let (Some(was), Some(now)) = (was, now) else {
+                panic!("{name} {when}: {was:?} {now:?}");
+            };
+            assert!(
+                (was.x - now.x).abs() < 0.6
+                    && (was.y - now.y).abs() < 0.6
+                    && (was.w - now.w).abs() < 0.6
+                    && (was.h - now.h).abs() < 0.6,
+                "{name} {when}: was {was:?}, is {now:?}"
+            );
+            assert!(
+                page.words_in(name).iter().any(|word| word == key),
+                "{name} {when} says {key}: {:?}",
+                page.words_in(name)
+            );
+        }
+    };
+    // The field of a comment has the keyboard, empty and with words in it.
+    page.press("shift+m").expect("shift and m");
+    page.wait_for(WITHIN, |page| typing_in(page, &comment_editor("issue-412")))
+        .unwrap_or_else(|why| panic!("the keyboard is in the field: {why:?}: {}", said(&page)));
+    page.advance(0.3).expect("a moment");
+    alike(&page, "with the comment field empty and typed in");
+    page.type_text("Words").expect("the words");
+    page.advance(0.3).expect("a moment");
+    alike(&page, "with words in the comment field");
+    page.press("escape").expect("escape");
+    page.advance(0.3).expect("a moment");
+    alike(&page, "with the comment field left");
+    // The title is written.
+    page.press("r").expect("r");
+    page.wait_for(WITHIN, |page| page.says("save"))
+        .unwrap_or_else(|why| panic!("the title is a field: {why:?}: {}", said(&page)));
+    page.advance(0.3).expect("a moment");
+    alike(&page, "with the title written");
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| !page.says("save"))
+        .unwrap_or_else(|why| panic!("the title is left: {why:?}: {}", said(&page)));
+    // Words are typed in the filter.
+    page.press("/").expect("/");
+    page.type_text("bug").expect("the filter is typed");
+    page.advance(0.3).expect("a moment");
+    alike(&page, "with words typed in the filter");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn command_enter_posts_a_comment_only_while_the_field_of_the_comment_has_the_keyboard() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    open_the_controls(&mut page);
+    page.press("shift+m").expect("shift and m");
+    page.wait_for(WITHIN, |page| typing_in(page, &comment_editor("issue-412")))
+        .unwrap_or_else(|why| panic!("the keyboard is in the field: {why:?}: {}", said(&page)));
+    page.type_text("Waiting").expect("the words");
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| {
+        !typing_in(page, &comment_editor("issue-412")) && pressable(page, "comment-send")
+    })
+    .unwrap_or_else(|why| panic!("the words wait: {why:?}: {}", said(&page)));
+    // With the keyboard in the list, the key does nothing, and nothing is sent.
+    page.press("mod+enter").expect("command and enter");
+    page.advance(0.6).expect("a moment");
+    assert!(linear.commented().is_empty(), "{:?}", linear.commented());
+    assert_eq!(
+        page.editor_text(&comment_editor("issue-412")).as_deref(),
+        Some("Waiting")
+    );
+    // The button is the other way: a press on Comment sends what waits, once.
+    page.click("comment-send").expect("the button");
+    page.wait_for(WITHIN, |_| linear.commented().len() == 1)
+        .unwrap_or_else(|why| panic!("a press sends it: {why:?}: {}", said(&page)));
+    assert_eq!(linear.commented()[0]["body"], "Waiting");
+}
+
 // --- The right button and the copies ---------------------------------------------------------------------
 
 /// The titles of the entries of the host's menu that is open.

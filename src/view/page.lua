@@ -108,8 +108,9 @@ end
 commands.when.neighboured = function()
 	return commands.when.idle() and panel.neighbours() > 0
 end
--- The comment is the open issue's: its field is at the end of its comments, and where words may be
--- sent they are sent by ⌘Enter, which a form has for its own.
+-- The comment is the open issue's: its field is at the end of its comments, and the words in it are
+-- sent by ⌘Enter while the field has the keyboard, and by the press of Comment (a form has ⌘Enter for its
+-- own, and a key pressed elsewhere sends nothing the person wrote).
 commands.when.commentable = function()
 	return commands.when.idle() and panel.detail() ~= nil
 end
@@ -121,6 +122,7 @@ commands.when.postable = function()
 		and not new.is_open()
 		and not change.editing()
 		and detail ~= nil
+		and comment.typing()
 		and comment.sendable(detail.id)
 end
 -- Work on is the open issue's: where an issue is open (its detail has the button).
@@ -383,7 +385,9 @@ local function press(id)
 	elseif id == "new" then
 		return new.show()
 	elseif id == "comment-send" then
-		return command("comment_send")
+		-- (The button can be pressed where there is something to send: the words are posted as they are.)
+		local detail = panel.detail()
+		return detail ~= nil and comment.send(detail.id) or true
 	elseif id == "open-linear" then
 		return panel.link()
 	elseif id == "panel-close" then

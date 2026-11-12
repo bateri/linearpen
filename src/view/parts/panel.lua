@@ -673,7 +673,7 @@ function panel.view(width)
 	local buttons = b.div():row():items_center():gap(8):no_shrink()
 	buttons:child(kit.button("work", "Work on issue", {
 		primary = true,
-		suffix = u.holder == "page" and commands.label("work") or nil,
+		suffix = commands.label("work"),
 		tip = "Start an agent on it, in a pane beside this one",
 	}))
 	buttons:child(b.spacer()):child(kit.button("open-linear", "Open in Linear", {

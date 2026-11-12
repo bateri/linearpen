@@ -127,7 +127,8 @@ asks Linear what the issue holds now. The description and the team are never wri
 Under the comments of the issue that is open there is a field to write one (`⇧M` gives it the keyboard
 and brings it into view). While the keyboard is in it the keys are the field's: `⌘Enter` or the Comment
 button posts the words, `Esc` leaves the field with the words in it, `Tab` goes on to Comment. The words
-stay for the issue, whichever issue is open, until they are posted; they are never sent by themselves.
+stay for the issue, whichever issue is open, until they are posted; they are never sent by themselves,
+and `⌘Enter` posts nothing while the keyboard is elsewhere (the button is the way then).
 A comment is up to 10 000 characters. It is sent once, as it was written; if Linear does not post it,
 the page says so under the field and the words stay, and where no answer came it says that the comment
 may have been posted, and asks Linear for the issue instead of sending it again.
