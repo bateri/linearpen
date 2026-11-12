@@ -6,6 +6,7 @@
 local markdown = require("@pencere/markdown")
 local kit = require("./lib/kit")
 local change = require("./parts/change")
+local comment = require("./parts/comment")
 local commands = require("./parts/commands")
 local context = require("./parts/context")
 local data = require("./parts/data")
@@ -106,6 +107,21 @@ commands.when.parented = function()
 end
 commands.when.neighboured = function()
 	return commands.when.idle() and panel.neighbours() > 0
+end
+-- The comment is the open issue's: its field is at the end of its comments, and where words may be
+-- sent they are sent by ⌘Enter, which a form has for its own.
+commands.when.commentable = function()
+	return commands.when.idle() and panel.detail() ~= nil
+end
+commands.when.postable = function()
+	local detail = panel.detail()
+	return S.screen == "list"
+		and not modal()
+		and not work.is_open()
+		and not new.is_open()
+		and not change.editing()
+		and detail ~= nil
+		and comment.sendable(detail.id)
 end
 -- Work on is the open issue's: where an issue is open (its detail has the button).
 commands.when.workable = function()
@@ -235,6 +251,7 @@ local function render(size, now, reduce_motion)
 	S.new_open = S.screen == "list" and new.is_open()
 	S.form_open = S.work_open or S.new_open
 	S.editing = S.screen == "list" and change.editing()
+	S.writing = S.screen == "list" and comment.typing()
 	S.panel_open = S.screen == "list" and (panel.is_open() or S.form_open)
 	S.room = (S.panel_open and S.width >= 760) and S.width - panel.width(S.width) or S.width
 	-- The issue has the whole pane (it is too narrow for the list beside it): the list and its head
@@ -308,6 +325,11 @@ local function command(id)
 		return context.copy("link", context.single())
 	elseif id == "link" then
 		return context.link(context.single())
+	elseif id == "comment" then
+		return panel.write_comment()
+	elseif id == "comment_send" then
+		local detail = panel.detail()
+		return detail ~= nil and comment.send(detail.id) or true
 	elseif id == "parent" then
 		return panel.open_parent()
 	elseif id == "near" then
@@ -360,6 +382,8 @@ local function press(id)
 		return work.show()
 	elseif id == "new" then
 		return new.show()
+	elseif id == "comment-send" then
+		return command("comment_send")
 	elseif id == "open-linear" then
 		return panel.link()
 	elseif id == "panel-close" then
@@ -520,6 +544,10 @@ local function key(event)
 		-- The form takes Tab and Esc whoever holds the keyboard, and the list's keys are not its own.
 		return work.key(event)
 	end
+	local typed = comment.key(event)
+	if typed ~= nil then
+		return typed
+	end
 	if panel.editing() then
 		-- The title is being written: its keys are the field's (Enter and Esc come as its actions), and
 		-- the arrows do not take the cursor from the issue.
@@ -616,6 +644,8 @@ end
 
 local function handle(event)
 	local kind = event.type
+	-- What is written in the comment is kept before the event can take the field from the page.
+	comment.keep()
 	local freed, ends = keyboard_from_control(event)
 	if ends then
 		return kit.take(freed)
@@ -635,6 +665,9 @@ local function handle(event)
 	reply = b.merge(freed, reply)
 	if kind == "editor_ready" then
 		reply = b.merge(reply, new.ready(event))
+		reply = b.merge(reply, comment.ready(event))
+	elseif kind == "edit" then
+		reply = b.merge(reply, comment.edited(event))
 	end
 	for _, action in actions do
 		reply = b.merge(reply, on_action(action))

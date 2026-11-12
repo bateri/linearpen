@@ -6,6 +6,7 @@
 local markdown = require("@pencere/markdown")
 local kit = require("../lib/kit")
 local change = require("./change")
+local comment = require("./comment")
 local commands = require("./commands")
 local icons = require("./icons")
 local list = require("./list")
@@ -200,11 +201,26 @@ end
 
 -- Whether the title of the issue open is being written.
 function panel.editing()
-	return change.editing()
+	return change.editing() or comment.typing()
 end
 
--- What the change part asks of the issue open (it does not require this part).
+-- The keyboard goes to the field of the comment, at the end of the issue open, which is brought into
+-- view. The reply.
+function panel.write_comment()
+	local detail = panel.detail()
+	if detail == nil then
+		return true
+	end
+	panel.scroll_by(nil, "end")
+	return comment.focus(detail.id)
+end
+
+-- What the change part and the comment part ask of the issue open (they do not require this part).
 act.panel_id = panel.id
+act.panel_end = function()
+	-- (Past the end is the end, as the next frame is laid out.)
+	kit.scroll_to(SCROLL, 1e9, true)
+end
 act.panel_foreign = panel.foreign
 act.panel_hold = panel.hold
 act.panel_reask = panel.reask
@@ -636,6 +652,7 @@ local function body(entry)
 		box:child(b.text("No description"):text_size(SIZE.small):color("dim"))
 	end
 	box:child(comments(detail))
+	box:child(comment.view(detail.id))
 	if detail.more then
 		box:child(
 			b.text("There is more in Linear."):text_size(SIZE.small):color("dim"):mt(12):mb(4)

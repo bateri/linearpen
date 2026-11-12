@@ -13,13 +13,15 @@ the call takes: a member it does not know, a value out of range; the words say w
 installed, or the network, the name or the time failed), `failed` (Linear answered, but not with
 what was asked), `unavailable` (an agent cannot be started from here: bateri or the agent is not
 there), `start-failed` (it was tried and did not start: the words say why), `create-failed` (an
-issue was to be made and Linear did not make it: the words say why) and `change-failed` (a change was
-to be made to issues and Linear did not make it: the words say why). The words of an error are for
-the person and never hold the key.
+issue was to be made and Linear did not make it: the words say why), `change-failed` (a change was
+to be made to issues and Linear did not make it: the words say why) and `comment-failed` (a comment
+was to be posted and Linear did not post it, or it is not known whether it did: the words say why).
+The words of an error are for the person and never hold the key.
 
-The pen writes two things: the issue the person makes (`create`), and the change the person makes to
-issues (`change`): one of their status, priority, assignee, labels, project or title. The description
-and the team are never written, by any call. One more call writes, and only as `change` does: `start`
+The pen writes three things: the issue the person makes (`create`), the change the person makes to
+issues (`change`): one of their status, priority, assignee, labels, project, cycle, estimate, due date
+or title, and the comment the person writes on an issue (`comment`). The description and the team are
+never written, by any call. One more call writes, and only as `change` does: `start`
 moves the issue, if it has not begun, to its team's first state of work in progress, where the
 person chose that (`progress`), once the agent's pane is made. Nothing else here changes anything in
 Linear.
@@ -372,6 +374,45 @@ made, and the topic tells what Linear holds), and `change-failed`: Linear did no
 not known. The words say why: `Linear did not change it: this key cannot change issues` where the key
 reads and may not write, `Linear did not answer whole, so it may have changed it` where the answer
 could not be read, else Linear's own words (`Linear did not change it: ...`).
+
+### `comment`
+
+Posts a comment on an issue, in Linear, in the words the person wrote. Params:
+
+```json
+{ "issue": "issue-412", "body": "Looks right to me" }
+```
+
+- `issue`: Linear's id of the issue (the `id` of a row or of `issue`), or its identifier; up to 64
+  letters, digits and dashes.
+- `body`: the words, as they were written (Markdown, which is what Linear takes), from one to 10 000
+  characters, with something in them besides white space. They are not changed, and they are a
+  variable of the request and never part of its text. Nothing else is taken (`bad-params`): not a
+  comment to reply under, not a name to write as. The program makes the id the comment is posted under
+  (a UUID version 4, as for `create`'s drafts).
+
+```json
+{ "comment": { "author": "Ada", "at": "Nov 12", "body": "Looks right to me" } }
+```
+
+The answer is the comment as Linear says it is, in the form the comments of `issue` have. It is put
+among the comments of the issue kept for `issue`, so that the page asks for the issue again and has
+it.
+
+The comment is sent **once**; the program never sends it again by itself. If no answer came, or what
+came cannot be read (an HTTP status that is not 200 with no error in it, such as a gateway's 502),
+the call fails and the program asks Linear for the issue, so that what `issue` tells is what Linear
+holds; the words say that it may have been posted, and the person looks at the comments before they
+write it again. An answer that says no (Linear's own error, or `refused`: the key is not taken) says
+it was not posted, and nothing is asked about.
+
+Errors: `bad-params`, `no-key`, `refused`, and `comment-failed`: Linear did not post it, or it is not
+known. The words say why: `Linear did not post it: this key cannot comment` where the key reads and
+may not write, `Linear did not post it` where Linear answered without posting it, `Linear did not
+answer whole, so it may have posted it: look at the comments before writing it again` where the
+answer could not be read, `Linear could not be reached: ...; it may have been posted: look at the
+comments before writing it again` where no answer came, else Linear's own words (`Linear did not
+post it: ...`).
 
 ### `refresh`
 

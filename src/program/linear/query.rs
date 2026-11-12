@@ -1,6 +1,7 @@
 //! What is asked of Linear: every operation of the program, as constant text. The pen reads, and
-//! writes two things: the issue the person makes, and the change the person makes to issues. Every
-//! operation is a plain `query` except `IssueCreate` and `IssueBatchUpdate`, and `ALLOWED_MUTATIONS`
+//! writes three things: the issue the person makes, the change the person makes to issues and the
+//! comment the person writes. Every operation is a plain `query` except `IssueCreate`,
+//! `IssueBatchUpdate` and `CommentCreate`, and `ALLOWED_MUTATIONS`
 //! is the one list of what may be a `mutation`: the client refuses to send any other (`mod.rs`), and
 //! the tests scan `ALL` for one. Nothing from outside is put into the text: what varies goes in the
 //! `variables` of the request.
@@ -9,7 +10,7 @@ use serde::Serialize;
 
 /// The mutations the program may send, by name: the one list of what it may write. Anything else
 /// that is a `mutation` is refused before it is sent, however it is named.
-pub const ALLOWED_MUTATIONS: [&str; 2] = ["IssueCreate", "IssueBatchUpdate"];
+pub const ALLOWED_MUTATIONS: [&str; 3] = ["IssueCreate", "IssueBatchUpdate", "CommentCreate"];
 
 /// One operation: its name (which the stand-in `curl` of the tests tells them apart by) and its text.
 #[derive(Debug, Clone, Copy)]
@@ -155,7 +156,7 @@ pub const NEW_ISSUE_OPTIONS: Operation = Operation {
          issueLabels(first: 100, filter: { team: { null: true } }) { nodes { id name color isGroup } } }",
 };
 
-/// One of the two things the pen writes: the issue the person made in the form. Sent by
+/// One of the three things the pen writes: the issue the person made in the form. Sent by
 /// `linear::create` and by nothing else.
 pub const ISSUE_CREATE: Operation = Operation {
     name: "IssueCreate",
@@ -176,9 +177,17 @@ pub const ISSUE_BATCH_UPDATE: Operation = Operation {
     ),
 };
 
+/// The third thing the pen writes: a comment on an issue, in the words the person wrote (the issue's
+/// description and its team are written by nothing). Sent by `linear::comment` and by nothing else.
+pub const COMMENT_CREATE: Operation = Operation {
+    name: "CommentCreate",
+    text: "mutation CommentCreate($input: CommentCreateInput!) { commentCreate(input: $input) { \
+           success comment { id body createdAt user { displayName } } } }",
+};
+
 /// Every operation there is, for the test that scans for a `mutation`.
 #[cfg(test)]
-pub const ALL: [Operation; 8] = [
+pub const ALL: [Operation; 9] = [
     VERIFY,
     MY_ISSUES,
     ALL_ISSUES,
@@ -187,6 +196,7 @@ pub const ALL: [Operation; 8] = [
     NEW_ISSUE_OPTIONS,
     ISSUE_CREATE,
     ISSUE_BATCH_UPDATE,
+    COMMENT_CREATE,
 ];
 
 /// The variables of the question for one issue: Linear's id of it, or its identifier.
@@ -205,6 +215,12 @@ pub struct Team<'a> {
 #[derive(Debug, Serialize)]
 pub struct Create<'a> {
     pub input: &'a super::NewIssue,
+}
+
+/// The variables of `CommentCreate`.
+#[derive(Debug, Serialize)]
+pub struct Commented<'a> {
+    pub input: super::comment::Input<'a>,
 }
 
 /// The variables of `IssueBatchUpdate`: the issues by Linear's id, and what is changed in them.
@@ -286,9 +302,12 @@ mod tests {
                 writes.push(operation.name);
             }
         }
-        // The pen writes two things, and the list says which.
-        assert_eq!(ALLOWED_MUTATIONS, ["IssueCreate", "IssueBatchUpdate"]);
-        assert_eq!(writes, ["IssueCreate", "IssueBatchUpdate"]);
+        // The pen writes three things, and the list says which.
+        assert_eq!(
+            ALLOWED_MUTATIONS,
+            ["IssueCreate", "IssueBatchUpdate", "CommentCreate"]
+        );
+        assert_eq!(writes, ["IssueCreate", "IssueBatchUpdate", "CommentCreate"]);
     }
 
     /// A query added and left out of `ALL` would not be scanned: every `Operation` of this file is in it.
@@ -339,7 +358,23 @@ mod tests {
              issueBatchUpdate(ids: $ids, input: $input) { success } } \
              mutation IssueArchive($id: String!) { issueArchive(id: $id) { success } }",
         );
+        // The comment's text under another name, and under the name of another write.
+        not_allowed("Other", COMMENT_CREATE.text);
+        not_allowed("IssueCreate", COMMENT_CREATE.text);
+        not_allowed("CommentCreate", ISSUE_BATCH_UPDATE.text);
+        // The ways to take away what was said are not listed.
+        not_allowed(
+            "CommentCreate",
+            "mutation CommentCreate($input: CommentCreateInput!) { commentCreate(input: $input) { success } } \
+             mutation CommentDelete($id: String!) { commentDelete(id: $id) { success } }",
+        );
+        not_allowed(
+            "CommentDelete",
+            "mutation CommentDelete($id: String!) { commentDelete(id: $id) { success } }",
+        );
         // The ones listed are allowed and are not queries.
+        assert!(COMMENT_CREATE.allowed());
+        assert!(!COMMENT_CREATE.reads_only());
         assert!(ISSUE_CREATE.allowed());
         assert!(!ISSUE_CREATE.reads_only());
         assert!(ISSUE_BATCH_UPDATE.allowed());

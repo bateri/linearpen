@@ -1,11 +1,12 @@
-//! Linear: the questions the program asks it and how the answers are read. It reads, and writes two
-//! things, the issue the person makes and the change the person makes to issues: the operations are
-//! in `query.rs`, all of them plain `query` but `IssueCreate` and `IssueBatchUpdate`, and `run`
-//! refuses anything that is not listed there. `create` and `change` are the only functions that send
-//! them, and each sends once. The way to Linear is `curl` (`transport.rs`). It knows nothing of the
+//! Linear: the questions the program asks it and how the answers are read. It reads, and writes three
+//! things, the issue the person makes, the change the person makes to issues and the comment the
+//! person writes: the operations are in `query.rs`, all of them plain `query` but `IssueCreate`,
+//! `IssueBatchUpdate` and `CommentCreate`, and `run` refuses anything that is not listed there.
+//! `create`, `change` and `comment` are the only functions that send them, and each sends once. The way to Linear is `curl` (`transport.rs`). It knows nothing of the
 //! page; it takes and gives plain Rust values.
 
 mod change;
+mod comment;
 mod error;
 mod key;
 mod new_issue;
@@ -14,6 +15,7 @@ pub mod transport;
 pub mod types;
 
 pub use change::Change;
+pub use comment::{NOT_POSTED, post as comment};
 pub use error::{Error, plain, tidy};
 pub use key::{Key, KeyError};
 pub use new_issue::{Created, NewIssue, Options, StateChoice, Team};
@@ -115,7 +117,7 @@ fn run<V: Serialize, T: DeserializeOwned>(
 ) -> Result<T, Error> {
     if !operation.allowed() {
         return Err(Error::Failed(format!(
-            "{} is not a query, and what this program writes is a new issue and the changes of issues",
+            "{} is not a query, and what this program writes is a new issue, the changes of issues and comments",
             operation.name
         )));
     }
@@ -340,7 +342,7 @@ const NOT_CHANGED: &str = "Linear did not change the issues";
 /// sent and say nothing of whether Linear acted on it.
 #[must_use]
 pub fn left_open(why: &str) -> bool {
-    !(why.starts_with(SAID) || why == NOT_CHANGED)
+    !(why.starts_with(SAID) || why == NOT_CHANGED || why == NOT_POSTED)
 }
 
 #[cfg(test)]

@@ -43,7 +43,7 @@ function status.finish()
 	end
 	-- (In the form of a new issue, and while a title is written, `?` is a character of the words, not the
 	-- card of keys.)
-	if not S.new_open and not S.editing then
+	if not S.new_open and not S.editing and not S.writing then
 		finish[#finish + 1] = {
 			key = "help",
 			words = hint({ "help" }, "keys"),
@@ -86,6 +86,14 @@ local function edit_hints()
 	}
 end
 
+-- What the keyboard does while a comment is written: it goes in, it is posted, or it is left. Posting is
+-- on the Comment button, with its key (a key is written once), so the line says only how it is left.
+local function writing_hints()
+	return {
+		{ key = "leave", words = b.div():row():items_center():gap(5):no_shrink():child(u:kbd("escape")):child(b.text("leave")), priority = 8 },
+	}
+end
+
 -- The values the bar changes, in the order the keys are in the card: the kind of choice (`change`'s),
 -- the command, its words.
 local VALUES = {
@@ -111,7 +119,12 @@ end
 -- has the whole pane what is selected is not seen, and a change is of the issue read), and no form or
 -- title is where the keys are.
 function status.selecting()
-	return list.marked() > 0 and not S.alone and not S.work_open and not S.new_open and not S.editing
+	return list.marked() > 0
+		and not S.alone
+		and not S.work_open
+		and not S.new_open
+		and not S.editing
+		and not S.writing
 end
 
 -- The bar of the selection, in the place of the line of keys and as high. How many are selected is
@@ -157,6 +170,9 @@ end
 function status.view()
 	if S.editing then
 		return u:status("status", { start = edit_hints(), finish = status.finish() })
+	end
+	if S.writing then
+		return u:status("status", { start = writing_hints(), finish = status.finish() })
 	end
 	if S.new_open then
 		return u:status("status", { start = new_hints(), finish = status.finish() })

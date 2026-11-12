@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use super::issues::{Ids, LabelMessage, ids, labels};
 use super::{Failure, call};
 use crate::linear::Issue;
-use crate::linear::types::Neighbor;
+use crate::linear::types::{Comment, Neighbor};
 use crate::model::time::short_date;
 use crate::session::Session;
 
@@ -53,10 +53,26 @@ struct TieMessage {
 }
 
 #[derive(Debug, Serialize)]
-struct CommentMessage {
+pub(super) struct CommentMessage {
     author: String,
     at: String,
     body: String,
+}
+
+/// A comment as the detail tells it, and whether its words were cut.
+pub(super) fn comment_of(comment: &Comment) -> (CommentMessage, bool) {
+    let (body, was_cut) = cut(&comment.body, COMMENT_MOST);
+    (
+        CommentMessage {
+            author: comment
+                .user
+                .as_ref()
+                .map_or_else(|| "Someone".to_owned(), |user| user.display_name.clone()),
+            at: short_date(&comment.created_at),
+            body,
+        },
+        was_cut,
+    )
 }
 
 #[derive(Debug, Serialize)]
@@ -148,16 +164,9 @@ fn message(issue: &Issue) -> IssueMessage {
     let comments = comments
         .into_iter()
         .map(|comment| {
-            let (body, was_cut) = cut(&comment.body, COMMENT_MOST);
+            let (told, was_cut) = comment_of(comment);
             more |= was_cut;
-            CommentMessage {
-                author: comment
-                    .user
-                    .as_ref()
-                    .map_or_else(|| "Someone".to_owned(), |user| user.display_name.clone()),
-                at: short_date(&comment.created_at),
-                body,
-            }
+            told
         })
         .collect();
     more |= issue

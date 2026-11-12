@@ -44,6 +44,8 @@ local TABLE = {
 	{ id = "read_down", title = "Scroll the issue down", group = "Issue", keys = { "space" }, when = "reading" },
 	{ id = "read_up", title = "Scroll the issue up", group = "Issue", keys = { "shift+space" }, when = "reading" },
 	{ id = "work", title = "Work on the issue", group = "Issue", keys = { "w" }, when = "workable" },
+	{ id = "comment", title = "Leave a comment", group = "Issue", keys = { "shift+m" }, when = "commentable" },
+	{ id = "comment_send", title = "Post the comment", group = "Issue", keys = { "mod+enter" }, when = "postable" },
 	{ id = "new", title = "New issue", group = "Issue", keys = { "c" }, when = "idle" },
 	{ id = "next_field", title = "Next field", group = "Work on, New issue", keys = { "tab" }, native = true },
 	{ id = "choose", title = "Choose", group = "Work on, New issue", keys = { "left", "right", "enter" }, native = true },

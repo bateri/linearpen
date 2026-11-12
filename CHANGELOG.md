@@ -4,6 +4,13 @@
 
 ### Added
 
+- **Comments.** Under the comments of the issue open there is a field to write one (`Shift M` gives
+  it the keyboard; the keys are the field's while it has it, `Cmd Enter` posts, `Esc` leaves it).
+  Comment posts the words as they were written, once, with one more mutation, `CommentCreate`; the
+  comment is among the others when Linear has it, and the field is empty. What is written stays for
+  the issue in memory, whichever issue is open, and is never sent by itself. If Linear does not post
+  it, the words say so under the field and what was written stays; if no answer came, the words say
+  that it may have been posted, and nothing is sent again. A comment is up to 10 000 characters.
 - **Cycle, estimate and due date.** The issue open has a button for each (`Cycle 12`, `M`, `Nov 15`,
   or their names, dim, where it has none), and the keys `Shift C`, `Shift E` and `Shift D` change
   them for the issue under the cursor or for all that are selected; the bar of the selection has
@@ -130,6 +137,6 @@
 - **`linearpen --text` prints your open Linear issues.** Two lists, My issues and All issues, each
   grouped by the state the issues are in (started, then not started, then the backlog and triage),
   the issue updated last first. It is also what linearpen prints in a terminal that shows no views.
-- **It asks Linear with `curl`, and writes two things: a new issue and a change to an issue.** The key is read from `LINEAR_API_KEY`, or from
+- **It asks Linear with `curl`, and writes three things: a new issue, a change to an issue and a comment.** The key is read from `LINEAR_API_KEY`, or from
   the file `key` of `~/.config/linearpen`, and is given to `curl` on its stdin, never as an argument
   or in its environment. A key file that other users can read is read, and `linearpen --text` warns about it.

@@ -144,6 +144,22 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     page.advance(0.4)?;
     save(&page, &fonts, Palette::Dark, "narrow-issue.png");
 
+    // A comment being written: the field has the keyboard (its ring), Comment can be pressed, and the
+    // line under the page says how the field is left.
+    let mut page = lists(BIG, &fonts)?;
+    page.press("enter")?;
+    page.wait_for(Duration::from_secs(20), |page| {
+        page.says("600 requests a minute") && pressable(page, "panel-value:state")
+    })?;
+    page.press("shift+m")?;
+    page.advance(0.4)?;
+    page.type_text("Agreed. The fallback can answer from the last good count for a minute.")?;
+    page.wait_for(Duration::from_secs(20), |page| {
+        pressable(page, "comment-send")
+    })?;
+    page.advance(0.6)?;
+    save(&page, &fonts, Palette::Dark, "comment.png");
+
     // An issue changed. The controls of the issue open (the menu a press on one opens is the host's, which
     // a picture made without one does not draw), its title as a field (nor is what is typed into a
     // line), the issue done, left the list and still open, three issues selected for a change, and the

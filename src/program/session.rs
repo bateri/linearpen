@@ -17,7 +17,7 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use crate::linear::types::StateKind;
+use crate::linear::types::{Comment, StateKind};
 use crate::linear::{
     self, Change, Created, Error, Issue, Key, Listing, NewIssue, Options, Scope, Team, Transport,
     Viewer,
@@ -686,6 +686,42 @@ impl Session {
         }
     }
 
+    /// Posts `body` as a comment of the issue `issue` (Linear's id of it, or its identifier) under
+    /// `id`, a UUID the caller made: the program's third write. It is sent once, whatever comes back.
+    /// What Linear answers is put among the comments of the issue kept, so that the issue asked for
+    /// next has it. Where it did not come back whole (no answer, or what cannot be read) the issue is
+    /// asked for, so that what is shown is what Linear holds, and the failure is told (not known, for
+    /// an answer that cannot be read); nothing is sent again. An answer that is an error (Linear said
+    /// no, or the key is not taken) says it was not posted, and nothing is asked about.
+    pub fn comment(&self, id: &str, issue: &str, body: &str) -> Result<Comment, Error> {
+        let key = self.key()?;
+        match linear::comment(self.transport(), &key, id, issue, body) {
+            Ok(posted) => {
+                let mut state = self.shared.lock();
+                for kept in state
+                    .details
+                    .values_mut()
+                    .filter(|kept| kept.id == issue || kept.identifier == issue)
+                {
+                    if let Some(comments) = &mut kept.comments {
+                        comments.nodes.push(posted.clone());
+                    }
+                }
+                Ok(posted)
+            }
+            Err(failure @ (Error::Refused | Error::Forbidden)) => Err(failure),
+            Err(failure @ Error::Unreachable(_)) => {
+                let _ = self.detail_fresh(issue);
+                Err(failure)
+            }
+            Err(Error::Failed(why)) if linear::left_open(&why) => {
+                let _ = self.detail_fresh(issue);
+                Err(Error::Unsure)
+            }
+            Err(failure) => Err(failure),
+        }
+    }
+
     /// Asks Linear for each of the issues `ids`, one after the other, and writes what it says into
     /// what is held. It stops at the first that cannot be reached: the others would not be either.
     fn ask_again(&self, key: &Key, ids: &[String]) -> Vec<Changed> {
@@ -1061,6 +1097,118 @@ mod tests {
 
     fn strings(of: &[&str]) -> Vec<String> {
         of.iter().map(|id| (*id).to_owned()).collect()
+    }
+
+    const COMMENT_ID: &str = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+
+    const POSTED: &str = r#"{"data":{"commentCreate":{"success":true,"comment":{"id":"c-1","body":"Looks right","createdAt":"2026-11-12T09:30:00.000Z","user":{"displayName":"Ada"}}}}}"#;
+
+    /// An issue kept as the page opened it: its description and one comment.
+    fn opened() -> Issue {
+        let mut opened = issue_of(&wire("a", "Add it", "started", true));
+        opened.description = Some("The words".to_owned());
+        opened.comments = Some(
+            serde_json::from_str(
+                r#"{"nodes":[{"body":"First","createdAt":"2026-11-10T09:30:00.000Z","user":null}],
+                "pageInfo":{"hasNextPage":false,"endCursor":null}}"#,
+            )
+            .unwrap(),
+        );
+        opened
+    }
+
+    #[test]
+    fn a_comment_that_is_posted_is_among_the_comments_of_the_issue_kept_and_sent_once() {
+        let (session, sent) = holding(vec![said(POSTED)]);
+        // Kept by its id and by its identifier, as the page may have asked for it.
+        for by in ["a", "ACM-a"] {
+            session
+                .shared
+                .lock()
+                .details
+                .insert(by.to_owned(), opened());
+        }
+        let posted = session.comment(COMMENT_ID, "a", "Looks right").unwrap();
+        assert_eq!(posted.body, "Looks right");
+        for by in ["a", "ACM-a"] {
+            let kept = session.detail(by).unwrap();
+            let comments = kept.comments.unwrap().nodes;
+            assert_eq!(comments.len(), 2, "{by}");
+            assert_eq!(comments[1].body, "Looks right");
+            assert_eq!(kept.description.as_deref(), Some("The words"));
+        }
+        let sent = sent.lock().unwrap();
+        assert_eq!(sent.len(), 1, "the kept issue is not asked for");
+        assert!(sent[0].contains(r#""operationName":"CommentCreate""#));
+        assert!(sent[0].contains(COMMENT_ID));
+    }
+
+    #[test]
+    fn a_comment_with_no_answer_asks_for_the_issue_and_is_never_sent_twice() {
+        let found = said(&format!(
+            r#"{{"data":{{"issue":{}}}}}"#,
+            wire("a", "Add it", "started", true)
+        ));
+        let (session, sent) = holding(vec![Err(Error::Unreachable("timed out".to_owned())), found]);
+        let failed = session.comment(COMMENT_ID, "a", "Looks right").unwrap_err();
+        assert!(matches!(failed, Error::Unreachable(_)));
+        let sent = sent.lock().unwrap();
+        assert_eq!(sent.len(), 2);
+        assert!(sent[0].contains(r#""operationName":"CommentCreate""#));
+        assert!(sent[1].contains(r#""operationName":"Issue""#));
+    }
+
+    #[test]
+    fn a_comment_whose_answer_cannot_be_read_is_not_known_and_the_issue_is_asked_for() {
+        for broken in [
+            Ok(Reply {
+                status: 502,
+                body: "<html>Bad Gateway</html>".to_owned(),
+            }),
+            said("not json at all"),
+        ] {
+            let found = said(&format!(
+                r#"{{"data":{{"issue":{}}}}}"#,
+                wire("a", "Add it", "started", true)
+            ));
+            let (session, sent) = holding(vec![broken, found]);
+            let failed = session.comment(COMMENT_ID, "a", "x").unwrap_err();
+            assert_eq!(failed, Error::Unsure);
+            assert_eq!(sent.lock().unwrap().len(), 2);
+        }
+    }
+
+    #[test]
+    fn a_comment_linear_says_no_to_or_a_key_it_does_not_take_asks_about_nothing() {
+        for (reply, expected) in [
+            (
+                said(r#"{"data":{"commentCreate":{"success":false,"comment":null}}}"#),
+                false,
+            ),
+            (
+                said(r#"{"errors":[{"message":"Argument Validation Error"}]}"#),
+                false,
+            ),
+            (
+                Ok(Reply {
+                    status: 403,
+                    body: r#"{"errors":[{"message":"Forbidden"}]}"#.to_owned(),
+                }),
+                true,
+            ),
+            (
+                Ok(Reply {
+                    status: 401,
+                    body: String::new(),
+                }),
+                true,
+            ),
+        ] {
+            let (session, sent) = holding(vec![reply]);
+            let failed = session.comment(COMMENT_ID, "a", "x").unwrap_err();
+            assert_ne!(failed, Error::Unsure, "{expected}");
+            assert_eq!(sent.lock().unwrap().len(), 1, "{failed:?}");
+        }
     }
 
     #[test]

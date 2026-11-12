@@ -39,6 +39,7 @@ const NEW_ISSUE_OPTIONS: &str = include_str!("../../test/stand-in/new-issue-opti
 const CREATED_ISSUE: &str = include_str!("../../test/stand-in/created-issue.json");
 const CREATE_REFUSED: &str = include_str!("../../test/stand-in/create-refused.json");
 const CHANGE_REFUSED: &str = include_str!("../../test/stand-in/change-refused.json");
+const COMMENT_REFUSED: &str = include_str!("../../test/stand-in/comment-refused.json");
 
 /// How Linear answers in a test.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -83,6 +84,9 @@ pub(crate) struct Canned {
     change: Mutex<Change>,
     /// The inputs of the `IssueBatchUpdate` requests that were sent (`ids` and `input`), in order.
     changes: Mutex<Vec<serde_json::Value>>,
+    /// How a comment is answered, and the inputs of the `CommentCreate` requests that were sent.
+    comment: Mutex<Comment>,
+    comments: Mutex<Vec<serde_json::Value>>,
     /// What each issue was changed to, in order: the lists and `Issue` answer with it from then on.
     edits: Mutex<std::collections::HashMap<String, Vec<serde_json::Value>>>,
     /// The team of an issue where it is not Acme's: the id and the key.
@@ -99,6 +103,15 @@ pub(crate) struct Canned {
 /// What came, in the order it came: `Canned`'s writes (`linear IssueBatchUpdate <input>`) and what
 /// `Hands` runs (`bateri split`).
 pub(crate) type Ledger = Arc<Mutex<Vec<String>>>;
+
+/// How Linear answers a comment.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Comment {
+    /// By posting it.
+    Fine,
+    /// By not posting it (an error of its own).
+    Refused,
+}
 
 /// How Linear answers a change.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -124,6 +137,8 @@ impl Canned {
             one_team: Mutex::new(false),
             change: Mutex::new(Change::Fine),
             changes: Mutex::new(Vec::new()),
+            comment: Mutex::new(Comment::Fine),
+            comments: Mutex::new(Vec::new()),
             edits: Mutex::new(std::collections::HashMap::new()),
             teams_of: Mutex::new(std::collections::HashMap::new()),
             ledger: Mutex::new(None),
@@ -151,6 +166,15 @@ impl Canned {
     /// How a change is answered from now on.
     pub(crate) fn set_change(&self, change: Change) {
         *self.change.lock().unwrap() = change;
+    }
+
+    pub(crate) fn set_comment(&self, comment: Comment) {
+        *self.comment.lock().unwrap() = comment;
+    }
+
+    /// The `CommentCreate` requests that were sent, in order: `{ "id", "issueId", "body" }`.
+    pub(crate) fn commented(&self) -> Vec<serde_json::Value> {
+        self.comments.lock().unwrap().clone()
     }
 
     /// The `IssueBatchUpdate` requests that were sent, in order: `{ "ids": [..], "input": {..} }`.
@@ -499,6 +523,7 @@ impl Transport for Canned {
             "AllIssues",
             "IssueCreate",
             "IssueBatchUpdate",
+            "CommentCreate",
             "NewIssueTeams",
             "NewIssueOptions",
             "Issue",
@@ -582,6 +607,22 @@ impl Transport for Canned {
                             "success": true, "issues": nodes } } })
                         .to_string(),
                     )
+                }
+                "CommentCreate" => {
+                    let asked: serde_json::Value = serde_json::from_str(body).unwrap();
+                    let input = asked["variables"]["input"].clone();
+                    self.comments.lock().unwrap().push(input.clone());
+                    match *self.comment.lock().unwrap() {
+                        Comment::Refused => reply(400, COMMENT_REFUSED),
+                        Comment::Fine => reply(
+                            200,
+                            &serde_json::json!({ "data": { "commentCreate": { "success": true,
+                                "comment": { "id": input["id"], "body": input["body"],
+                                    "createdAt": "2026-11-12T09:30:00.000Z",
+                                    "user": { "displayName": "Ada" } } } } })
+                            .to_string(),
+                        ),
+                    }
                 }
                 "IssueCreate" => {
                     let asked: serde_json::Value = serde_json::from_str(body).unwrap();
@@ -4694,6 +4735,261 @@ fn the_key_of_the_neighbours_opens_a_menu_of_the_parts_and_the_ties_and_a_pick_o
     page.pick_titled("ACM-405  Webhook retries  \u{b7} Blocks")
         .expect("what it blocks");
     cursor_on(&mut page, "ACM-405");
+}
+
+// --- The comment ------------------------------------------------------------------------------------------
+
+/// The name of the editor of the comment of the issue `id` (the first one it has had).
+fn comment_editor(id: &str) -> String {
+    format!("comment-{id}-0")
+}
+
+/// Whether the keyboard is in the editor `name`.
+fn typing_in(page: &Page, name: &str) -> bool {
+    page.focus() == pencere_drive::headless::Focus::Editor(pencere_view::Id::named(name))
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn shift_m_writes_a_comment_whose_words_are_the_editors_and_command_enter_posts_it_once() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    open_the_controls(&mut page);
+    // Under the comments there is the field and Comment, which cannot be pressed with nothing to say.
+    page.wait_for(WITHIN, |page| {
+        page.editor_text(&comment_editor("issue-412")).is_some()
+    })
+    .unwrap_or_else(|why| panic!("the field is there: {why:?}: {}", said(&page)));
+    assert!(!pressable(&page, "comment-send"), "{}", said(&page));
+    assert!(palette_offers(&mut page, "Leave a comment"));
+    assert!(!palette_offers(&mut page, "Post the comment"));
+    page.press("shift+m").expect("shift and m");
+    page.wait_for(WITHIN, |page| typing_in(page, &comment_editor("issue-412")))
+        .unwrap_or_else(|why| panic!("the keyboard is in the field: {why:?}: {}", said(&page)));
+    // Every key is the editor's: the letters of a command and a question mark are words, the arrows
+    // move the caret and not the cursor of the list, and no menu opens.
+    page.type_text("Why s? Looks right").expect("the words");
+    page.press("up").expect("up");
+    page.advance(0.3).expect("a moment");
+    assert!(page.menu().is_none());
+    assert!(!page.says("Keys"), "{}", said(&page));
+    cursor_on(&mut page, "ACM-412");
+    assert_eq!(
+        page.editor_text(&comment_editor("issue-412")).as_deref(),
+        Some("Why s? Looks right")
+    );
+    // Now it can be sent. Its key is written once, on its button; the line under the page says how the
+    // field is left.
+    page.wait_for(WITHIN, |page| pressable(page, "comment-send"))
+        .unwrap_or_else(|why| panic!("Comment can be pressed: {why:?}: {}", said(&page)));
+    assert!(page.says("leave"), "{}", said(&page));
+    assert_eq!(
+        page.words()
+            .iter()
+            .filter(|word| **word == "\u{2318}Enter")
+            .count(),
+        1,
+        "{}",
+        said(&page)
+    );
+    page.press("mod+enter").expect("command and enter");
+    page.wait_for(WITHIN, |_| linear.commented().len() == 1)
+        .unwrap_or_else(|why| panic!("one comment is sent: {why:?}: {}", said(&page)));
+    let sent = &linear.commented()[0];
+    assert_eq!(sent["issueId"], "issue-412");
+    assert_eq!(sent["body"], "Why s? Looks right");
+    assert!(crate::state::draft::is_uuid(
+        sent["id"].as_str().unwrap_or_default()
+    ));
+    // What Linear holds is shown: the comment is among the others, the field is another one with nothing
+    // in it, and what was sent is not sent again.
+    page.wait_for(WITHIN, |page| {
+        page.says("Why s? Looks right") && page.says("Ada")
+    })
+    .unwrap_or_else(|why| {
+        panic!(
+            "the comment is among the comments: {why:?}: {}",
+            said(&page)
+        )
+    });
+    assert!(page.says("3"), "three comments now: {}", said(&page));
+    page.wait_for(WITHIN, |page| {
+        page.editor_text("comment-issue-412-1").as_deref() == Some("")
+    })
+    .unwrap_or_else(|why| panic!("the field is empty: {why:?}: {}", said(&page)));
+    assert!(!pressable(&page, "comment-send"), "{}", said(&page));
+    page.press("mod+enter").expect("command and enter");
+    page.advance(0.4).expect("a moment");
+    assert_eq!(linear.commented().len(), 1, "nothing to send");
+    // The key that gave the keyboard to the field is the list's again where the field has not got it.
+    cursor_on(&mut page, "ACM-412");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_words_of_a_comment_stay_for_the_issue_whatever_the_page_does_and_are_never_sent_by_themselves()
+ {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    open_the_controls(&mut page);
+    page.press("shift+m").expect("shift and m");
+    page.wait_for(WITHIN, |page| typing_in(page, &comment_editor("issue-412")))
+        .unwrap_or_else(|why| panic!("the keyboard is in the field: {why:?}: {}", said(&page)));
+    page.type_text("Half a thought").expect("the words");
+    // Esc takes the keyboard out of the field and keeps what is in it.
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| {
+        !typing_in(page, &comment_editor("issue-412"))
+    })
+    .unwrap_or_else(|why| panic!("the keyboard is out: {why:?}: {}", said(&page)));
+    assert_eq!(
+        page.editor_text(&comment_editor("issue-412")).as_deref(),
+        Some("Half a thought")
+    );
+    assert!(
+        page.bounds("panel-close").is_some(),
+        "the issue is still open"
+    );
+    // Another issue has a field of its own, with nothing in it; coming back, the words are there.
+    page.press("down").expect("down");
+    page.wait_for(WITHIN, |page| {
+        page.editor_text(&comment_editor("issue-398")).is_some()
+    })
+    .unwrap_or_else(|why| panic!("the other issue's field: {why:?}: {}", said(&page)));
+    assert_eq!(
+        page.editor_text(&comment_editor("issue-398")).as_deref(),
+        Some("")
+    );
+    page.press("up").expect("up");
+    page.wait_for(WITHIN, |page| {
+        page.editor_text(&comment_editor("issue-412")).as_deref() == Some("Half a thought")
+    })
+    .unwrap_or_else(|why| panic!("the words are back: {why:?}: {}", said(&page)));
+    // And after the issue was closed and opened again, and after the form of an agent was in its place.
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| page.bounds("panel-close").is_none())
+        .unwrap_or_else(|why| panic!("the issue is closed: {why:?}: {}", said(&page)));
+    open_the_issue(&mut page);
+    page.wait_for(WITHIN, |page| {
+        page.editor_text(&comment_editor("issue-412")).as_deref() == Some("Half a thought")
+    })
+    .unwrap_or_else(|why| panic!("the words are back again: {why:?}: {}", said(&page)));
+    page.press("w").expect("w");
+    page.wait_for(WITHIN, |page| {
+        page.editor_text(&comment_editor("issue-412")).is_none()
+    })
+    .unwrap_or_else(|why| panic!("the form has the place: {why:?}: {}", said(&page)));
+    page.press("escape").expect("escape");
+    page.advance(0.8).expect("a moment");
+    // (The form put away, the issue is opened again as it was before.)
+    if page.bounds("panel-close").is_none() {
+        open_the_issue(&mut page);
+    }
+    page.wait_for(WITHIN, |page| {
+        page.editor_text(&comment_editor("issue-412")).as_deref() == Some("Half a thought")
+    })
+    .unwrap_or_else(|why| {
+        panic!(
+            "the words are back after the form: {why:?}: {}",
+            said(&page)
+        )
+    });
+    // Nothing of it was sent.
+    page.advance(0.4).expect("a moment");
+    assert!(linear.commented().is_empty(), "{:?}", linear.commented());
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_comment_linear_does_not_post_says_so_under_the_field_keeps_its_words_and_can_be_sent_again() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    linear.set_comment(Comment::Refused);
+    open_the_controls(&mut page);
+    page.press("shift+m").expect("shift and m");
+    page.wait_for(WITHIN, |page| typing_in(page, &comment_editor("issue-412")))
+        .unwrap_or_else(|why| panic!("the keyboard is in the field: {why:?}: {}", said(&page)));
+    page.type_text("A comment too long for Linear")
+        .expect("the words");
+    // Where Comment is, against the field (the page may scroll, the two do not move apart).
+    let apart = |page: &Page| {
+        let field = page
+            .bounds(&comment_editor("issue-412"))
+            .expect("the field");
+        let button = page.bounds("comment-send").expect("the button");
+        (button.y - field.y, button.x - field.x)
+    };
+    let before = apart(&page);
+    page.press("mod+enter").expect("command and enter");
+    page.wait_for(WITHIN, |page| page.says("Linear did not post it"))
+        .unwrap_or_else(|why| panic!("the refusal is said: {why:?}: {}", said(&page)));
+    assert_eq!(linear.commented().len(), 1);
+    let after = apart(&page);
+    assert!(
+        (before.0 - after.0).abs() < 0.5 && (before.1 - after.1).abs() < 0.5,
+        "Comment did not move: {before:?} {after:?}"
+    );
+    assert_eq!(
+        page.editor_text(&comment_editor("issue-412")).as_deref(),
+        Some("A comment too long for Linear")
+    );
+    assert!(
+        !page.says("Ada"),
+        "it is not among the comments: {}",
+        said(&page)
+    );
+    // Nothing is sent again by itself; the person sends it when Linear takes it.
+    page.advance(1.0).expect("a moment");
+    assert_eq!(linear.commented().len(), 1);
+    linear.set_comment(Comment::Fine);
+    page.wait_for(WITHIN, |page| pressable(page, "comment-send"))
+        .unwrap_or_else(|why| panic!("Comment can be pressed again: {why:?}: {}", said(&page)));
+    page.click("comment-send").expect("the button");
+    page.wait_for(WITHIN, |page| page.says("Ada"))
+        .unwrap_or_else(|why| panic!("the comment is posted: {why:?}: {}", said(&page)));
+    assert_eq!(linear.commented().len(), 2);
+    assert!(!page.says("Linear did not post it"), "{}", said(&page));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn command_enter_is_the_form_that_is_open_and_never_the_comment_that_waits() {
+    let (linear, rig, mut page) = open_machine(WIDE, true, &["claude"]);
+    open_the_controls(&mut page);
+    page.press("shift+m").expect("shift and m");
+    page.wait_for(WITHIN, |page| typing_in(page, &comment_editor("issue-412")))
+        .unwrap_or_else(|why| panic!("the keyboard is in the field: {why:?}: {}", said(&page)));
+    page.type_text("Not yet").expect("the words");
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| pressable(page, "comment-send"))
+        .unwrap_or_else(|why| panic!("words wait to be sent: {why:?}: {}", said(&page)));
+    // The form of an agent has the key: it starts the agent, and the words wait.
+    open_form(&mut page);
+    page.press("mod+enter").expect("mod+enter");
+    form_done(&mut page);
+    assert!(
+        rig.hands
+            .asked()
+            .iter()
+            .any(|line| line.starts_with("bateri split")),
+        "the form started the agent: {:?}",
+        rig.hands.asked()
+    );
+    assert!(linear.commented().is_empty(), "{:?}", linear.commented());
+    rig.hands.end();
+    // So does the form of a new issue.
+    page.advance(0.8).expect("a moment");
+    if page.bounds("panel-close").is_none() {
+        open_the_issue(&mut page);
+    }
+    page.wait_for(WITHIN, |page| {
+        page.editor_text(&comment_editor("issue-412")).as_deref() == Some("Not yet")
+    })
+    .unwrap_or_else(|why| panic!("the words are still there: {why:?}: {}", said(&page)));
+    open_new(&mut page);
+    page.type_text("Retry the webhook").expect("the title");
+    page.press("mod+enter").expect("mod+enter");
+    made(&linear, &mut page, 1);
+    assert_eq!(linear.created().len(), 1, "{:?}", linear.created());
+    page.advance(0.6).expect("a moment");
+    assert!(linear.commented().is_empty(), "{:?}", linear.commented());
 }
 
 // --- The right button and the copies ---------------------------------------------------------------------

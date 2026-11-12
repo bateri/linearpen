@@ -2,9 +2,9 @@
 
 Your Linear issues in a terminal pane, and an agent started on the one you open: a list grouped
 by state, an issue beside it with its description and comments, and Claude, Codex or Cursor
-working on it in the pane next to it. You can write a new issue in it too, and change
-the status, priority, assignee, labels, project and title of the issues you have; those are the two
-things it writes to Linear, and never the description.
+working on it in the pane next to it. You can write a new issue in it too, change
+the status, priority, assignee, labels, project and title of the issues you have, and leave a
+comment; those are the three things it writes to Linear, and never the description.
 
 <img src="docs/list.png" width="720" alt="linearpen: the issues assigned to you, grouped by state">
 
@@ -122,6 +122,18 @@ Linear has one) and `⌘⇧,` its link, and the page says so for a moment.
 The change is sent once. Where no answer comes it is not sent again by the program: it tells you, and
 asks Linear what the issue holds now. The description and the team are never written.
 
+### Comment on an issue
+
+Under the comments of the issue that is open there is a field to write one (`⇧M` gives it the keyboard
+and brings it into view). While the keyboard is in it the keys are the field's: `⌘Enter` or the Comment
+button posts the words, `Esc` leaves the field with the words in it, `Tab` goes on to Comment. The words
+stay for the issue, whichever issue is open, until they are posted; they are never sent by themselves.
+A comment is up to 10 000 characters. It is sent once, as it was written; if Linear does not post it,
+the page says so under the field and the words stay, and where no answer came it says that the comment
+may have been posted, and asks Linear for the issue instead of sending it again.
+
+<img src="docs/comment.png" width="720" alt="linearpen: a comment being written under the comments of an issue">
+
 ### Work on an issue
 
 Work on is one issue's and is in its detail, at the start of the first line, where Linear has it: the
@@ -197,6 +209,7 @@ or `Space` then presses.
 | `⌘⇧I` `⌘⇧.` `⌘⇧,`     | copy the identifier, the branch name, the link                       |
 | `w`                   | work on the issue that is open                                       |
 | `c`                   | write a new issue                                                    |
+| `⇧M`                  | write a comment on the issue open (`⌘Enter` posts it, `Esc` leaves)  |
 | `⌘Enter`              | start the agent, or create the issue, in the form that is open       |
 | `g`                   | go to a list (`1` `2`: My issues, All issues)                        |
 | `/`                   | filter                                                               |
@@ -204,19 +217,22 @@ or `Space` then presses.
 | `⌘K`, `?`             | find a command, the card of keys                                     |
 | `Esc`                 | close what is on top: the form, the issue, the selection, the filter |
 
-## It writes two things
+## It writes three things
 
-linearpen tells Linear a new issue and a change to the issues you have, and nothing else. It has two
-mutations, `IssueCreate` (sent when you press Create in the form) and `IssueBatchUpdate` (sent when you
-choose a status, a priority, an assignee, a label, a project, a cycle, an estimate, a due date or a title, for one issue or for those you
-selected; and sent once more, only for the status, when you start an agent with `Status` set to move
-the issues that have not begun), and the list of mutations it may send is one place in the program that a test checks every
-query against, refusing any other before it is sent. What a change can be is a type of its own with
-those fields in it: the description and the team of an issue cannot be written by it, and a
-test looks for them in what is sent. A comment, an archive or a deletion changed from here would be a
-decision of its own. It does not send anything twice by itself: a new issue has an identity the draft
-was given, and an issue whose answer was lost is asked for by it; a change whose answer was lost is
-not sent again, and the issue is asked for.
+linearpen tells Linear a new issue, a change to the issues you have and a comment you wrote, and
+nothing else. It has three mutations, `IssueCreate` (sent when you press Create in the form),
+`IssueBatchUpdate` (sent when you choose a status, a priority, an assignee, a label, a project, a
+cycle, an estimate, a due date or a title, for one issue or for those you selected; and sent once more,
+only for the status, when you start an agent with `Status` set to move the issues that have not begun)
+and `CommentCreate` (sent when you press Comment, `⌘Enter`, under the comments of the issue open, with
+the words you wrote and nothing else), and the list of mutations it may send is one place in the
+program that a test checks every query against, refusing any other before it is sent. What a change
+can be is a type of its own with those fields in it: the description and the team of an issue cannot
+be written by it, and a test looks for them in what is sent. An archive, a deletion, an edit of a
+comment or of a description changed from here would be a decision of its own. It does not send
+anything twice by itself: a new issue has an identity the draft was given, and an issue whose answer
+was lost is asked for by it; a change or a comment whose answer was lost is not sent again, and the
+issue is asked for (the comment says that it may have been posted, and your words stay in the field).
 
 ## It talks to Linear with `curl`
 

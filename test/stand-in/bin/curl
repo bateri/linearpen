@@ -16,6 +16,9 @@
 #   STANDIN_CREATE=lost       Linear makes the issue and the answer never comes: curl times out
 #   STANDIN_CHANGE=refused    Linear does not make the change: a GraphQL error, HTTP 400
 #   STANDIN_CHANGE=lost       Linear makes the change and the answer never comes: curl times out
+#   STANDIN_COMMENT=refused   Linear does not post the comment: a GraphQL error, HTTP 400
+#   STANDIN_COMMENT=forbidden the key may not comment: HTTP 403
+#   STANDIN_COMMENT=lost      Linear posts the comment and the answer never comes: curl times out
 #   STANDIN_ISSUE=todo        `Issue` tells the issue it answers with (issue.json) as one in Todo, which
 #                             has not begun, where it is In Progress
 #   STANDIN_ISSUE=family      `Issue` tells it with sub-issues and ties of each kind (issue-family.json),
@@ -232,6 +235,31 @@ if is IssueCreate; then
 	esac
 	remember
 	fill "$here/issue-create.json"
+	printf '\n200'
+	exit 0
+fi
+
+# A comment (CommentCreate): answered with the id it was posted under and its words; nothing of it is
+# kept (the issue is told as the fixtures hold it).
+if is CommentCreate; then
+	id=$(printf '%s' "$plain" | sed -n 's/.*"input":{"id":"\([^"]*\)".*/\1/p')
+	title=$(printf '%s' "$plain" | sed -n 's/.*"body":"\([^"]*\)".*/\1/p')
+	case "${STANDIN_COMMENT-}" in
+	refused)
+		cat "$here/comment-refused.json"
+		printf '\n400'
+		exit 0
+		;;
+	forbidden)
+		printf '{"errors":[{"message":"Forbidden"}]}\n403'
+		exit 0
+		;;
+	lost)
+		echo "curl: (28) Operation timed out" >&2
+		exit 28
+		;;
+	esac
+	fill "$here/comment-create.json"
 	printf '\n200'
 	exit 0
 fi

@@ -301,7 +301,7 @@ fn a_mutation_that_is_not_listed_is_not_sent_at_all() {
 /// Each mutation leaves from its own function and from nowhere else: the places that name it are the
 /// file that lists it and the one function that sends it.
 #[test]
-fn only_create_and_change_name_the_mutations() {
+fn only_create_change_and_comment_name_the_mutations() {
     fn sources(dir: &std::path::Path, found: &mut Vec<(std::path::PathBuf, String)>) {
         for entry in std::fs::read_dir(dir).unwrap() {
             let path = entry.unwrap().path();
@@ -322,6 +322,7 @@ fn only_create_and_change_name_the_mutations() {
         let name = path.file_name().unwrap().to_str().unwrap();
         let uses = text.matches("ISSUE_CREATE").count();
         let batches = text.matches("ISSUE_BATCH_UPDATE").count();
+        let comments = text.matches("COMMENT_CREATE").count();
         match (
             path.parent()
                 .unwrap()
@@ -332,15 +333,25 @@ fn only_create_and_change_name_the_mutations() {
             name,
         ) {
             // Where they are defined and listed (and their guards).
-            ("linear", "query.rs") => assert!(uses >= 1 && batches >= 1),
+            ("linear", "query.rs") => assert!(uses >= 1 && batches >= 1 && comments >= 1),
             // Where each is sent: once.
             ("linear", "mod.rs") => {
                 assert_eq!(uses, 1, "{}", path.display());
                 assert_eq!(batches, 1, "{}", path.display());
+                assert_eq!(comments, 0, "{}", path.display());
+            }
+            ("linear", "comment.rs") => {
+                assert_eq!(comments, 1, "{}", path.display());
+                assert_eq!(uses + batches, 0, "{}", path.display());
             }
             // The tests of the client may name them.
             ("linear", "tests.rs") => {}
-            _ => assert_eq!(uses + batches, 0, "{} names a mutation", path.display()),
+            _ => assert_eq!(
+                uses + batches + comments,
+                0,
+                "{} names a mutation",
+                path.display()
+            ),
         }
     }
     // Nothing else posts a body to Linear but `run`, which reads the operation before it sends it,
@@ -358,6 +369,8 @@ fn only_create_and_change_name_the_mutations() {
         assert_eq!(makes, expected, "{} makes an issue", path.display());
         let changes = text.matches("linear::change(").count();
         assert_eq!(changes, expected, "{} changes issues", path.display());
+        let posts = text.matches("linear::comment(").count();
+        assert_eq!(posts, expected, "{} posts a comment", path.display());
     }
 }
 
@@ -747,6 +760,81 @@ fn a_create_that_says_it_did_not_succeed_is_a_failure() {
         );
         assert_eq!(transport.sent().len(), 1);
     }
+}
+
+const COMMENT_ID: &str = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+
+const POSTED: &str = r#"{"data":{"commentCreate":{"success":true,"comment":{"id":"c-1","body":"Looks right to me","createdAt":"2026-11-12T09:30:00.000Z","user":{"displayName":"Ada"}}}}}"#;
+
+#[test]
+fn a_comment_is_sent_once_with_its_words_and_its_id_as_variables_and_not_in_the_text() {
+    let transport = Scripted::new(vec![Ok(Reply {
+        status: 200,
+        body: POSTED.to_owned(),
+    })]);
+    let posted = comment(
+        &transport,
+        &key(),
+        COMMENT_ID,
+        "issue-412",
+        "Looks right to me",
+    )
+    .unwrap();
+    assert_eq!(posted.body, "Looks right to me");
+    assert_eq!(posted.user.as_ref().unwrap().display_name, "Ada");
+    let sent = transport.sent();
+    assert_eq!(sent.len(), 1, "one request, however it ends");
+    let body: serde_json::Value = serde_json::from_str(&sent[0]).unwrap();
+    assert_eq!(body["operationName"], "CommentCreate");
+    let text = body["query"].as_str().unwrap();
+    assert!(text.starts_with("mutation CommentCreate("));
+    assert_eq!(body["variables"]["input"]["id"], COMMENT_ID);
+    assert_eq!(body["variables"]["input"]["issueId"], "issue-412");
+    assert_eq!(body["variables"]["input"]["body"], "Looks right to me");
+    // The input is the three and nothing else: no parent, no author to pose as.
+    assert_eq!(body["variables"]["input"].as_object().unwrap().len(), 3);
+    // What the person typed is a variable: it is not in the text of the mutation.
+    assert!(!text.contains("Looks right to me"));
+}
+
+#[test]
+fn a_comment_that_says_it_was_not_posted_is_a_failure_that_leaves_nothing_open() {
+    for body in [
+        r#"{"data":{"commentCreate":{"success":false,"comment":null}}}"#,
+        r#"{"data":{"commentCreate":{"success":true,"comment":null}}}"#,
+        r#"{"data":{"commentCreate":null}}"#,
+    ] {
+        let transport = Scripted::new(vec![Ok(Reply {
+            status: 200,
+            body: body.to_owned(),
+        })]);
+        let failed = comment(&transport, &key(), COMMENT_ID, "issue-412", "x").unwrap_err();
+        assert!(
+            matches!(&failed, Error::Failed(why) if !left_open(why)),
+            "{body}: {failed:?}"
+        );
+        assert_eq!(transport.sent().len(), 1);
+    }
+}
+
+#[test]
+fn a_key_that_may_not_comment_is_forbidden_and_one_linear_does_not_take_is_refused() {
+    let transport = Scripted::new(vec![Ok(Reply {
+        status: 403,
+        body: r#"{"errors":[{"message":"Forbidden"}]}"#.to_owned(),
+    })]);
+    assert_eq!(
+        comment(&transport, &key(), COMMENT_ID, "issue-412", "x"),
+        Err(Error::Forbidden)
+    );
+    let transport = Scripted::new(vec![Ok(Reply {
+        status: 401,
+        body: String::new(),
+    })]);
+    assert_eq!(
+        comment(&transport, &key(), COMMENT_ID, "issue-412", "x"),
+        Err(Error::Refused)
+    );
 }
 
 #[test]

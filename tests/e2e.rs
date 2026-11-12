@@ -1192,3 +1192,132 @@ fn change_reads_its_params_before_it_sends_anything() {
     let heard = home.ask(&Script::new().call("change", json!({ "ids": [CHANGED], "status": "s" })));
     assert!(heard[0].failed("no-key"), "{:?}", heard[0]);
 }
+
+#[test]
+fn a_comment_is_posted_with_one_mutation_once_the_key_on_stdin_alone_and_nothing_else_written() {
+    let home = Home::new();
+    let heard = home.ask(&keyed().call(
+        "comment",
+        json!({ "issue": CHANGED, "body": "Looks right to me" }),
+    ));
+    let posted = heard[0].result();
+    assert_eq!(posted["comment"]["body"], "Looks right to me", "{posted}");
+    assert_eq!(posted["comment"]["author"], "Ada");
+    let sent = asked_of(&home, "CommentCreate");
+    assert_eq!(sent.len(), 1, "{:?}", home.calls());
+    assert_eq!(sent[0].argv, ["--config", "-"]);
+    assert_eq!(sent[0].env_key, "unset");
+    assert!(sent[0].stdin.contains(KEY));
+    // The words are a variable, with the issue and an id the program made; the text of the mutation
+    // does not hold them.
+    for part in [CHANGED, "Looks right to me", "\\\"issueId\\\""] {
+        assert!(sent[0].stdin.contains(part), "{part}: {}", sent[0].stdin);
+    }
+    let text = sent[0]
+        .stdin
+        .split("\\\"variables\\\"")
+        .next()
+        .unwrap_or_default();
+    assert!(!text.contains("Looks right to me"), "{text}");
+    // Nothing else of the pen is written: every other request is a query.
+    for call in home.calls() {
+        if !call
+            .stdin
+            .contains("\\\"operationName\\\":\\\"CommentCreate\\\"")
+        {
+            assert!(
+                !call.stdin.to_lowercase().contains("mutation"),
+                "{}",
+                call.stdin
+            );
+        }
+    }
+    assert!(!posted.to_string().contains(KEY));
+}
+
+#[test]
+fn a_comment_whose_answer_is_lost_is_not_sent_again_and_may_have_been_posted() {
+    let home = Home::new();
+    let heard = home.ask(&keyed().env("STANDIN_COMMENT", "lost").call(
+        "comment",
+        json!({ "issue": CHANGED, "body": "Looks right" }),
+    ));
+    assert!(heard[0].failed("comment-failed"), "{:?}", heard[0]);
+    let words = heard[0].message();
+    assert!(words.contains("may have been posted"), "{words}");
+    assert!(!words.contains(KEY));
+    assert_eq!(asked_of(&home, "CommentCreate").len(), 1, "sent once");
+    // The issue is asked for, so that what is shown is what Linear holds.
+    assert_eq!(asked_of(&home, "Issue").len(), 1);
+}
+
+#[test]
+fn a_comment_linear_refuses_or_a_key_that_cannot_comment_is_told_and_never_sent_twice() {
+    let home = Home::new();
+    let heard = home.ask(
+        &keyed()
+            .env("STANDIN_COMMENT", "refused")
+            .call("comment", json!({ "issue": CHANGED, "body": "x" })),
+    );
+    assert!(heard[0].failed("comment-failed"), "{:?}", heard[0]);
+    let words = heard[0].message();
+    assert!(words.starts_with("Linear did not post it"), "{words}");
+    assert!(!words.contains(KEY));
+    assert_eq!(
+        asked_of(&home, "CommentCreate").len(),
+        1,
+        "never sent twice"
+    );
+    let home = Home::new();
+    let heard = home.ask(
+        &keyed()
+            .env("STANDIN_COMMENT", "forbidden")
+            .call("comment", json!({ "issue": CHANGED, "body": "x" })),
+    );
+    assert_eq!(
+        heard[0].message(),
+        "Linear did not post it: this key cannot comment"
+    );
+    // A key Linear does not take at all is `refused`, as for every call.
+    let home = Home::new();
+    let heard = home.ask(
+        &keyed()
+            .env("STANDIN_MODE", "refused")
+            .call("comment", json!({ "issue": CHANGED, "body": "x" })),
+    );
+    assert!(heard[0].failed("refused"), "{:?}", heard[0]);
+}
+
+#[test]
+fn comment_reads_its_params_before_it_sends_anything() {
+    let home = Home::new();
+    let long = "x".repeat(10_001);
+    let heard = home.ask(
+        &keyed()
+            .call("comment", json!({ "issue": CHANGED, "body": "" }))
+            .call("comment", json!({ "issue": CHANGED, "body": "  \n " }))
+            .call("comment", json!({ "issue": CHANGED, "body": long }))
+            .call("comment", json!({ "issue": "has a space", "body": "x" }))
+            .call("comment", json!({ "body": "x" }))
+            // Neither a reply under another comment nor a name to write as is taken.
+            .call(
+                "comment",
+                json!({ "issue": CHANGED, "body": "x", "parentId": "c-1" }),
+            )
+            .call(
+                "comment",
+                json!({ "issue": CHANGED, "body": "x", "createAsUser": "Ada" }),
+            ),
+    );
+    for (n, answer) in heard.iter().enumerate() {
+        assert!(answer.failed("bad-params"), "{n}: {answer:?}");
+    }
+    assert!(
+        asked_of(&home, "CommentCreate").is_empty(),
+        "nothing was sent"
+    );
+    // And a key is needed.
+    let home = Home::new();
+    let heard = home.ask(&Script::new().call("comment", json!({ "issue": CHANGED, "body": "x" })));
+    assert!(heard[0].failed("no-key"), "{:?}", heard[0]);
+}
