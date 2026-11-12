@@ -72,7 +72,9 @@
   issue with the rows (`branchName` and `url`).
 - **Linear's keys.** `r` renames, `o` opens the issue (Enter's twin), `Shift O` opens it in Linear,
   `Cmd R` asks Linear again, `i` assigns the issue to you and `g` goes to a list. Keys that were
-  `e` (rename), `o` (open in Linear) and `r` (ask again) are not those any more.
+  `e` (rename), `o` (open in Linear) and `r` (ask again) are not those any more. With an issue open,
+  `r`, the copies and `Shift O` are that issue's whatever is selected (they were nobody's with
+  several selected, and another issue's with one); the keys that change a value stay with the selection.
 
 - **linearpen opens in a bateri pane as a list of your issues.** My issues and All issues, each
   with its count, grouped by state with the backlog folded; the arrow keys and `j` and `k` move,

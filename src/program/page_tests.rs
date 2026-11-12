@@ -4063,6 +4063,121 @@ fn in_a_narrow_pane_a_change_is_of_the_issue_read_and_not_of_the_ones_selected()
     );
 }
 
+const LINK_405: &str =
+    "https://linear.app/acme/issue/ACM-405/webhook-retries-ignore-the-backoff-setting";
+const LINK_412: &str = "https://linear.app/acme/issue/ACM-412/add-rate-limiting-to-the-public-api";
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn with_an_issue_open_the_keys_of_one_issue_are_the_open_issues_whatever_is_selected() {
+    let (_linear, _session, mut page) = open_lists(WIDE);
+    // Three are selected (ACM-412, ACM-398 and ACM-405) and the cursor is on the last: its issue opens.
+    page.press("x").expect("x");
+    page.press("shift+down").expect("shift and down");
+    page.press("shift+down").expect("shift and down");
+    page.wait_for(WITHIN, |page| page.says("3 selected"))
+        .unwrap_or_else(|why| panic!("three are selected: {why:?}: {}", said(&page)));
+    open_the_issue_under_the_cursor(&mut page);
+    page.wait_for(WITHIN, |page| pressable(page, "panel-value:state"))
+        .unwrap_or_else(|why| panic!("its controls: {why:?}: {}", said(&page)));
+    // The button says its key, and the key does what the button does.
+    page.press("shift+o").expect("shift and o");
+    page.wait_for(WITHIN, |page| page.links().len() == 1)
+        .unwrap_or_else(|why| panic!("the key opens a link: {why:?}: {}", said(&page)));
+    assert_eq!(page.links()[0], LINK_405);
+    page.click("open-linear").expect("the button");
+    page.wait_for(WITHIN, |page| page.links().len() == 2)
+        .unwrap_or_else(|why| panic!("the button opens a link: {why:?}: {}", said(&page)));
+    assert_eq!(page.links()[1], LINK_405);
+    page.press("mod+shift+i").expect("the copy");
+    page.wait_for(WITHIN, |page| page.pasteboard() == Some("ACM-405"))
+        .unwrap_or_else(|why| panic!("the identifier: {why:?}: {:?}", page.pasteboard()));
+    page.press("mod+shift+.").expect("the copy of the branch");
+    page.wait_for(WITHIN, |page| {
+        page.pasteboard()
+            .is_some_and(|text| text.contains("acm-405"))
+    })
+    .unwrap_or_else(|why| panic!("the branch: {why:?}: {:?}", page.pasteboard()));
+    page.press("mod+shift+,").expect("the copy of the link");
+    page.wait_for(WITHIN, |page| page.pasteboard() == Some(LINK_405))
+        .unwrap_or_else(|why| panic!("the link: {why:?}: {:?}", page.pasteboard()));
+    // The palette runs the same commands on the same issue.
+    page.press("mod+k").expect("mod+k");
+    page.wait_for(WITHIN, |page| page.says("Do it"))
+        .unwrap_or_else(|why| panic!("the palette opens: {why:?}: {}", said(&page)));
+    page.type_text("open in linear").expect("the query");
+    page.press("enter").expect("enter");
+    page.wait_for(WITHIN, |page| page.links().len() == 3)
+        .unwrap_or_else(|why| panic!("the palette opens a link: {why:?}: {}", said(&page)));
+    assert_eq!(page.links()[2], LINK_405);
+    page.advance(0.6).expect("the palette is put away");
+    // The title is the open issue's too, and so is the comment: they are not left to the several.
+    page.press("r").expect("r");
+    page.wait_for(WITHIN, |page| {
+        page.field("panel-title/field") == Some("Webhook retries ignore the backoff setting")
+    })
+    .unwrap_or_else(|why| panic!("r renames the open issue: {why:?}: {}", said(&page)));
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| !has_field(page, "panel-title/field"))
+        .unwrap_or_else(|why| panic!("escape leaves the title: {why:?}: {}", said(&page)));
+    page.press("shift+m").expect("shift and m");
+    page.wait_for(WITHIN, |page| typing_in(page, &comment_editor("issue-405")))
+        .unwrap_or_else(|why| panic!("the comment is the open issue's: {why:?}: {}", said(&page)));
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| {
+        !typing_in(page, &comment_editor("issue-405"))
+    })
+    .unwrap_or_else(|why| panic!("escape leaves the comment: {why:?}: {}", said(&page)));
+    // The values stay with the selection: a status is the three issues'.
+    assert!(page.says("3 selected"), "{}", said(&page));
+    let entries = menu_after(&mut page, "s");
+    assert!(
+        entries.iter().any(|(title, _)| title.contains("3 issues")),
+        "the values are the selection's: {entries:?}"
+    );
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn with_one_selected_and_another_open_the_keys_of_one_issue_are_the_open_ones_and_with_none_open_the_selected()
+ {
+    let (_linear, _session, mut page) = open_lists(WIDE);
+    // ACM-412 is the one selected; the cursor goes on to ACM-405, which is opened.
+    page.press("x").expect("x");
+    page.press("down").expect("down");
+    page.press("down").expect("down");
+    page.wait_for(WITHIN, |page| page.says("1 selected"))
+        .unwrap_or_else(|why| panic!("one is selected: {why:?}: {}", said(&page)));
+    cursor_on(&mut page, "ACM-405");
+    // Nothing open: the keys are the one selected's, as they were.
+    page.press("shift+o").expect("shift and o");
+    page.wait_for(WITHIN, |page| page.links().len() == 1)
+        .unwrap_or_else(|why| panic!("the selected one's link: {why:?}: {}", said(&page)));
+    assert_eq!(page.links()[0], LINK_412);
+    page.press("mod+shift+i").expect("the copy");
+    page.wait_for(WITHIN, |page| page.pasteboard() == Some("ACM-412"))
+        .unwrap_or_else(|why| panic!("the identifier: {why:?}: {:?}", page.pasteboard()));
+    // An issue open: they are its, though the one selected is another.
+    open_the_issue_under_the_cursor(&mut page);
+    page.wait_for(WITHIN, |page| pressable(page, "panel-value:state"))
+        .unwrap_or_else(|why| panic!("its controls: {why:?}: {}", said(&page)));
+    page.press("shift+o").expect("shift and o");
+    page.wait_for(WITHIN, |page| page.links().len() == 2)
+        .unwrap_or_else(|why| panic!("the open issue's link: {why:?}: {}", said(&page)));
+    assert_eq!(page.links()[1], LINK_405);
+    page.press("mod+shift+i").expect("the copy");
+    page.wait_for(WITHIN, |page| page.pasteboard() == Some("ACM-405"))
+        .unwrap_or_else(|why| panic!("the identifier: {why:?}: {:?}", page.pasteboard()));
+    // Closed, they are the selected one's again.
+    page.press("escape").expect("escape closes the issue");
+    page.wait_for(WITHIN, |page| page.bounds("panel-close").is_none())
+        .unwrap_or_else(|why| panic!("the issue closes: {why:?}: {}", said(&page)));
+    page.press("shift+o").expect("shift and o");
+    page.wait_for(WITHIN, |page| page.links().len() == 3)
+        .unwrap_or_else(|why| panic!("the selected one's link again: {why:?}: {}", said(&page)));
+    assert_eq!(page.links()[2], LINK_412);
+}
+
 /// Opens the issue under the cursor with Enter, whichever it is.
 fn open_the_issue_under_the_cursor(page: &mut Page) {
     page.press("enter").expect("enter");

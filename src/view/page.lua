@@ -68,8 +68,9 @@ end
 commands.when.headed = function()
 	return commands.when.list()
 end
--- The one issue the copies and Open in Linear are of: the issue read, the one selected or the one under
--- the cursor, where none of several is. (The copies are chords and a field does not take them.)
+-- The one issue the copies, Open in Linear, the title and the comment are of: the issue read where one is
+-- open, else the one selected or the one under the cursor, where none of several is. (The copies are
+-- chords and a field does not take them.)
 commands.when.single = function()
 	return commands.when.list() and context.single() ~= nil
 end
@@ -97,9 +98,9 @@ end
 commands.when.estimable = function()
 	return commands.when.changeable() and change.offers("estimate", change.targets())
 end
--- The title is of one issue, and needs none either.
+-- The title is of one issue (the one read, where one is), and needs none either.
 commands.when.titleable = function()
-	return commands.when.plain_change() and #change.targets() == 1
+	return commands.when.idle() and change.single_can()
 end
 -- The parent and the other neighbours are the open issue's, as it tells them (they are not offered
 -- where it has none).

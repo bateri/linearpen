@@ -139,6 +139,26 @@ function change.targets()
 	return ids
 end
 
+-- The one issue the keys of one issue are for (the title, the copies, Open in Linear): the issue open,
+-- where there is one (its panel has the buttons of these keys, and a key does what its button does,
+-- whatever is selected), else the one selected or the one under the cursor, where it is one and not
+-- several. nil where there is none. The keys that change a value are not these: they are the targets'.
+function change.single()
+	local open = act.panel_id()
+	if open ~= nil then
+		return open
+	end
+	local ids = change.targets()
+	return #ids == 1 and ids[1] or nil
+end
+
+-- Whether the title of `change.single()` can be changed now: its line is known, and no change of it
+-- is on its way.
+function change.single_can()
+	local id = change.single()
+	return id ~= nil and not C.busy[id] and row_of(id) ~= nil
+end
+
 -- Whether `id` has a change on its way.
 function change.busy(id)
 	return C.busy[id] == true

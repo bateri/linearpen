@@ -65,10 +65,10 @@ function context.copy(kind, id)
 	return { copy = text }
 end
 
--- The one issue the keys are for (the issue read, the one selected, the one under the cursor), or nil.
+-- The one issue the keys of one issue are for (the issue read, else the one selected, else the one under
+-- the cursor), or nil.
 function context.single()
-	local ids = change.targets()
-	return #ids == 1 and ids[1] or nil
+	return change.single()
 end
 
 -- Opens the issue in Linear, in the person's browser. The reply, or nil.

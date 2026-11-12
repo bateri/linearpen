@@ -190,13 +190,14 @@ function panel.rename_issue(id)
 	return panel.rename()
 end
 
--- The title of the issue the command `r` is for (the one target) is made a field.
+-- The title of the issue the command `r` is for (the one issue the keys of one issue are for) is made
+-- a field.
 function panel.rename_target()
-	local ids = change.targets()
-	if #ids ~= 1 then
+	local id = change.single()
+	if id == nil then
 		return true
 	end
-	return panel.rename_issue(ids[1])
+	return panel.rename_issue(id)
 end
 
 -- Whether the title of the issue open is being written.
