@@ -532,6 +532,18 @@ fn a_pane_that_has_written_nothing_for_a_while_is_told_as_one_whose_agent_has_st
     std::fs::remove_file(&hold).unwrap();
 }
 
+// A pane on a server: `ssh` carries the pane's address as `LC_BATERI_TAB_URL`, and the server's
+// shell has no `BATERI_TAB_URL`. An agent is started there as it is here.
+#[test]
+fn an_agent_is_started_from_a_pane_on_a_server_too() {
+    let home = Home::new();
+    let on_a_server = keyed().env("LC_BATERI_TAB_URL", "bateri://tab/NOT-A-REAL-PANE");
+    let heard = home.ask(&on_a_server.call("start", hand(&["issue-412"], "")));
+    assert_eq!(heard[0].result()["pane"], "p41", "{:?}", heard[0]);
+    let calls = home.bateri_calls();
+    assert_eq!(&calls[0][..2], ["split", "--right"], "{calls:?}");
+}
+
 #[test]
 fn nothing_is_started_outside_bateri_and_nothing_is_asked_for_it() {
     let home = Home::new();

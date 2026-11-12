@@ -31,11 +31,18 @@ use runner::Runner;
 pub struct Setup {
     /// The directories of the `PATH`.
     pub path: Vec<PathBuf>,
-    /// The pen runs in a pane of bateri (`BATERI_TAB_URL` is set), which is where a pane can be made.
+    /// The pen runs in a pane of bateri, which is where a pane can be made: one of `PANE_ADDRESS` is
+    /// set.
     pub in_bateri: bool,
     /// The folder the pen was started in.
     pub folder: Option<PathBuf>,
 }
+
+/// The variables that hold the address of the pane the pen runs in: the first is in the shells
+/// bateri holds on its own machine, the second is what `ssh` carries to a server, whose shells have
+/// no other. bateri's own command takes either to know whose pane asks, so a pane on a server is
+/// one too.
+const PANE_ADDRESS: [&str; 2] = ["BATERI_TAB_URL", "LC_BATERI_TAB_URL"];
 
 impl Setup {
     /// The setup of an environment, given the way to look a variable up and the folder.
@@ -49,7 +56,9 @@ impl Setup {
             .unwrap_or_default();
         Self {
             path,
-            in_bateri: get("BATERI_TAB_URL").is_some_and(|url| !url.is_empty()),
+            in_bateri: PANE_ADDRESS
+                .iter()
+                .any(|name| get(name).is_some_and(|url| !url.is_empty())),
             folder,
         }
     }

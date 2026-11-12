@@ -133,7 +133,8 @@ why. Params: none. Nothing is started, and Linear is not asked.
 - `agents`: the agents found in the `PATH` (`claude`, `codex`, `cursor-agent`; ids `claude`, `codex`,
   `cursor`), in that order. None is listed that is not installed.
 - `unavailable`: null, or why nothing can be started now: the pen does not run in a bateri pane
-  (`BATERI_TAB_URL` is not set), `bateri` is not in the `PATH`, or there is no agent.
+  (neither `BATERI_TAB_URL` nor `LC_BATERI_TAB_URL`, which a pane on a server has, is set), `bateri`
+  is not in the `PATH`, or there is no agent.
 - `folder.name`: the name of the folder the pen was started in, which is where the agent starts.
 - `worktree`: whether "New worktree" can be chosen: the folder is in a git repository. Where it
   cannot, `reason` says why. The pen makes no worktree: where it is chosen, the agent is asked to

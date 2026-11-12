@@ -133,6 +133,17 @@ fn the_setup_is_read_from_the_environment_it_is_given() {
     assert!(!Setup::resolve(&empty, None).in_bateri);
 }
 
+// On a server the shell has the pane's address under the name `ssh` carries it by, and under no
+// other: bateri's own command takes either name, and so does the pen.
+#[test]
+fn a_pane_on_a_server_is_a_pane_of_bateri_too() {
+    let carried = |name: &str| (name == "LC_BATERI_TAB_URL").then(|| "bateri://tab/X".to_owned());
+    assert!(Setup::resolve(&carried, None).in_bateri);
+    let empty = |name: &str| (name == "LC_BATERI_TAB_URL").then(String::new);
+    assert!(!Setup::resolve(&empty, None).in_bateri);
+    assert!(!Setup::resolve(&|_| None, None).in_bateri);
+}
+
 #[test]
 fn an_agent_is_started_in_a_pane_with_a_prompt_that_names_the_file_and_never_holds_the_issue() {
     let bin = bin(&["bateri", "claude", "codex"]);
