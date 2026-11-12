@@ -105,11 +105,16 @@ local function filter_hints()
 	}
 end
 
--- What the keyboard does while words are typed in the field and some are there: all of Linear can be
--- searched for them (where the page says so in a button of its own, the key is on the button), and Esc
--- clears them, or leaves the search.
+-- What the keyboard does while words are typed in the field and some are there: the arrows and Enter
+-- work on the list (said first, as the list's keys are, where there is a line to move on and the list
+-- is not behind the issue), all of Linear can be searched for the words (where the page says so in a
+-- button of its own, the key is on the button), and Esc clears them, or leaves the search.
 local function typing_hints()
 	local start = {}
+	if list.count() > 0 and not S.alone then
+		start[#start + 1] = { key = "move", words = hint({ "up", "down" }, "move"), priority = 6 }
+		start[#start + 1] = { key = "open", words = hint({ "open" }, "open"), priority = 5 }
+	end
 	if not head.unmatched() then
 		start[#start + 1] = { key = "search", words = hint({ "search" }, "search all of Linear"), priority = 8, press = true }
 	end

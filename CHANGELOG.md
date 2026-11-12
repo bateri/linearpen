@@ -55,7 +55,9 @@
   `2`); the filter says how many it lets through (`4 of 14`) inside itself, and Refresh and New
   issue stay where they are whatever the page is doing: the cursor moving, issues selected, an issue
   open or shut. A page too narrow for Refresh (under 880 points) or for New issue (under 760) leaves
-  their buttons out and the filter takes a row of its own under 640; the keys still work.
+  their buttons out; the keys still work. Down to 540 points the head is one row, the list at the
+  left and the filter at the right, as wide as in a wide pane whatever the list is called (a long name
+  is cut in its button); under 540 the filter takes a row of its own.
 - **The bar of the selection.** With issues selected the line under the page is a bar: how many are
   selected, the values to change in them (Status, Assignee, and in a wider pane Priority, Labels and
   Project), `More` (`Cmd K`) and `Clear` (`Esc`); a press on a value opens its menu for all of them,

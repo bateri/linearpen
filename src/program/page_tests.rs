@@ -1196,15 +1196,85 @@ fn an_80_by_24_pane_keeps_the_list_and_the_filter_inside_it() {
             "{name}: {at:?}"
         );
     }
-    // No room for Refresh and New issue: their buttons are left out, New issue's key is on the line
-    // of keys (the line has no room left for Refresh's, which the card and the palette hold), and
-    // the filter has a row of its own.
+    // No room for Refresh and New issue: their buttons are left out and New issue's key is on the line
+    // of keys (the line has no room left for Refresh's, which the card and the palette hold).
     assert!(page.bounds("refresh").is_none(), "{}", said(&page));
     assert!(page.bounds("new").is_none(), "{}", said(&page));
     assert!(page.says("new issue"), "{}", said(&page));
-    let scope = page.bounds("lists").expect("the button is laid out");
-    let filter = page.bounds("filter-box").expect("the field is laid out");
-    assert!(filter.y >= scope.y + scope.h, "{scope:?} {filter:?}");
+}
+
+/// Whether `inner` is in the line of `outer` from the top to the bottom (the head's row).
+fn in_the_row_of(inner: pencere_view::Rect, outer: pencere_view::Rect) -> bool {
+    inner.y >= outer.y - 6.0 && inner.y + inner.h <= outer.y + outer.h + 6.0
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn in_an_80_by_24_pane_the_head_is_one_row_with_the_field_at_the_right_whatever_the_list_is_called()
+{
+    let (_linear, _session, mut page) = open_lists(PANE);
+    let button = page.bounds("lists").expect("the button");
+    let filter = page.bounds("filter-box").expect("the field");
+    // The field is in the button's row, at the right of the pane, of the width a wide pane's smaller
+    // field has.
+    assert!(in_the_row_of(filter, button), "{button:?} {filter:?}");
+    assert!(button.x + button.w < filter.x, "{button:?} {filter:?}");
+    assert!(
+        (PANE.0 - 16.0 - (filter.x + filter.w)).abs() < 0.6,
+        "{filter:?}"
+    );
+    assert!((filter.w - 200.0).abs() < 0.6, "{filter:?}");
+    // A list of a long name: the button is cut, the field stays where it was and as wide.
+    open_card_of_lists(&mut page);
+    page.type_text("mobile crash").expect("the words");
+    page.press("enter").expect("enter");
+    page.wait_for(WITHIN, |page| {
+        page.words_in("lists")
+            .iter()
+            .any(|word| word.starts_with("Mobile crash"))
+    })
+    .unwrap_or_else(|why| panic!("the list is gone to: {why:?}: {}", said(&page)));
+    let long = page.bounds("lists").expect("the button of the long name");
+    let again = page.bounds("filter-box").expect("the field");
+    assert!(
+        (again.x - filter.x).abs() < 0.6 && (again.w - filter.w).abs() < 0.6,
+        "{filter:?} {again:?}"
+    );
+    assert!(in_the_row_of(again, long), "{long:?} {again:?}");
+    assert!(long.x + long.w < again.x, "{long:?} {again:?}");
+    // The row of the filters is under the head's one row, and the list under it: where the field had
+    // a row of its own the list was one row lower.
+    page.press("f").expect("f");
+    page.wait_for(WITHIN, |page| page.bounds("filters:status").is_some())
+        .unwrap_or_else(|why| panic!("the row: {why:?}: {}", said(&page)));
+    let chip = page.bounds("filters:status").expect("a chip");
+    assert!(
+        chip.y >= long.y + long.h && chip.y < long.y + long.h + 24.0,
+        "{long:?} {chip:?}"
+    );
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_pane_too_narrow_for_the_list_and_the_field_in_one_row_keeps_two() {
+    // 480 points: the longest button and the field do not both fit in a row.
+    let (_linear, _session, mut page) = open_lists((480.0, 330.0));
+    open_card_of_lists(&mut page);
+    page.type_text("mobile crash").expect("the words");
+    page.press("enter").expect("enter");
+    page.wait_for(WITHIN, |page| {
+        page.words_in("lists")
+            .iter()
+            .any(|word| word.starts_with("Mobile crash"))
+    })
+    .unwrap_or_else(|why| panic!("the list is gone to: {why:?}: {}", said(&page)));
+    let button = page.bounds("lists").expect("the button");
+    let filter = page.bounds("filter-box").expect("the field");
+    assert!(filter.y >= button.y + button.h, "{button:?} {filter:?}");
+    assert!(
+        filter.x + filter.w <= 480.0 + 0.5 && button.x + button.w <= 480.0 + 0.5,
+        "{button:?} {filter:?}"
+    );
 }
 
 #[test]
@@ -4537,6 +4607,12 @@ fn a_long_name_of_a_list_is_cut_in_the_button_and_the_rest_of_the_head_stays_whe
             let apart = filter.y >= button.y + button.h || button.x + button.w <= filter.x;
             assert!(apart, "{size:?}: {button:?} {filter:?}");
         }
+        // (A pane's head is one row, the field at its right: the long name does not push it.)
+        let filter = page.bounds("filter-box").expect("the field");
+        assert!(
+            in_the_row_of(filter, button),
+            "{size:?}: {button:?} {filter:?}"
+        );
         for (name, was) in &before {
             if *name != "lists" {
                 head_is_as_it_was(
@@ -6119,6 +6195,20 @@ fn words_that_nothing_held_matches_offer_a_search_of_all_of_linear_and_command_e
     type_in_filter(&mut page, "bug");
     assert!(page.says("search all of Linear"), "{}", said(&page));
     assert!(page.says("clear"), "{}", said(&page));
+    // The arrows and Enter work on the list from the field, and the line says so first, as the
+    // keys of the list are said, then what is the field's.
+    let keys = page.words_in("status");
+    let at = |word: &str| keys.iter().position(|key| key == word);
+    let order = [
+        at("move"),
+        at("open"),
+        at("search all of Linear"),
+        at("clear"),
+    ];
+    assert!(
+        order.iter().all(Option::is_some) && order.windows(2).all(|pair| pair[0] < pair[1]),
+        "move, open, search all of Linear, clear: {keys:?}"
+    );
     page.press("escape").expect("escape clears the words");
     page.wait_for(WITHIN, |page| page.field("filter/field") == Some(""))
         .expect("the words are gone");

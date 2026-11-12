@@ -21,9 +21,11 @@ local SIZE = {
 	small = 13,
 	tiny = 12,
 	-- The page's width (the head is the page's, whatever stands beside the list) from which the head
-	-- holds Refresh, and below which the filter has a row of its own.
+	-- holds Refresh, and below which the filter has a row of its own: the room the longest name of a
+	-- list has in its button (a name is cut at 26 letters) and the filter beside it, so that the head is
+	-- one row from the width of the pane and not from what is in it.
 	wide = 880,
-	narrow = 640,
+	stacked = 540,
 	-- The filter's width: it is the same whatever it holds, and a little more where the page is wide.
 	filter = 200,
 	filter_wide = 260,

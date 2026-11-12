@@ -2,9 +2,11 @@
 -- that is shown (its name, its count, and the card of lists it opens), the filter (with how many it
 -- lets through inside it), Refresh and New issue. Each is where it is and as wide as it is whatever
 -- the page is doing: what is selected, what is under the cursor and the issue that is open change
--- nothing in it. Where the pane is narrow the filter has a row of its own and Refresh and New issue
--- leave for the line of keys. Under them, where there is something to say, the row of the filters of
--- the list (`filters.lua`).
+-- nothing in it. The head is one row, the list at the left and the filter at the right (the same width
+-- whatever the list is called: a long name is cut in its button); where the pane has no room for both
+-- the filter has a row of its own. Refresh and New issue leave for the line of keys as the pane
+-- narrows. Under them, where there is something to say, the row of the filters of the list
+-- (`filters.lua`).
 
 local kit = require("../lib/kit")
 local commands = require("./commands")
@@ -223,11 +225,11 @@ end
 
 function head.view()
 	local width = S.width
-	local narrow = width < SIZE.narrow
+	local stacked = width < SIZE.stacked
 	local bar = b.div():row():items_center():gap(10):pt(SIZE.head_top):pb(SIZE.head_bottom):px(SIZE.pad):no_shrink()
 	bar:child(lists_button())
 	bar:child(b.spacer())
-	if not narrow then
+	if not stacked then
 		bar:child(filter_box(width >= SIZE.wide and SIZE.filter_wide or SIZE.filter))
 	end
 	if width >= SIZE.wide then
@@ -237,7 +239,7 @@ function head.view()
 		bar:child(new_button())
 	end
 	local box = b.div():col():no_shrink():child(bar)
-	if narrow then
+	if stacked then
 		box:child(b.div():px(SIZE.pad):pb(8):child(filter_box(nil)))
 	end
 	local row = filters.view()
