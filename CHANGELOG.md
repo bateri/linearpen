@@ -5,8 +5,8 @@
 ### Added
 
 - **Lists.** The card of lists (`g`, or the list button) goes to more than My issues and All issues:
-  what you starred in Linear (the keys `3` to `9` for the first seven), each team's open issues and
-  its cycle that runs, saved views of issues and projects, each line saying which it is. Typing finds
+  what you starred in Linear (the keys `3` to `9` for the first seven), the open issues and the running
+  cycle of the teams you are in (in the order of your own list of teams), saved views of issues and projects, each line saying which it is. Typing finds
   a list by name. The list button says the list and how many issues it has (`500+` where Linear has
   more than the 500 that changed last, which a line at the end of the list says too). Only the list shown
   and My issues are asked for, so All issues waits until it is shown, and the names of the lists are

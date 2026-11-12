@@ -6,7 +6,6 @@
 -- cannot draw the heads of its sections.
 
 local kit = require("../lib/kit")
-local values = require("./values")
 
 local u, S, act = kit.u, kit.S, kit.act
 
@@ -26,8 +25,7 @@ local KINDS = { view = "View", project = "Project", team = "Team", label = "Labe
 
 local function hint_of(item)
 	if item.kind == "cycle" and item.cycle ~= nil then
-		local ends = values.day_words(string.sub(item.cycle.endsAt or "", 1, 10))
-		return string.format("Cycle %d, ends %s", item.cycle.number, ends)
+		return string.format("Cycle %d, ends %s", item.cycle.number, item.cycle.ends)
 	end
 	local words = KINDS[item.kind] or item.kind
 	if item.kind == "view" and item.team ~= nil then

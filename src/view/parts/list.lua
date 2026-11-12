@@ -25,6 +25,9 @@ list.state = L
 -- The height of the line at the end of a list that Linear has more of than the program takes.
 local NOTE = 44
 
+-- The room under the last line of the list (what `virtual` is told: `trail`).
+local TRAIL = 6
+
 -- Whether the list shown has that line (it is whole: the lines have come and are the 500 that changed last).
 local function cut()
 	return S.issues ~= nil and S.issues.listing == "ready" and S.issues.counts.shownCut == true
@@ -211,7 +214,8 @@ local function put(key)
 	virtual.reveal(ID, index, #L.items, SIZE.row, 0, L.tops)
 	if index == #L.items and cut() then
 		-- The last line is the cursor's: the line that says the list was cut is under it, and is shown.
-		kit.scroll_to(ID, L.tops[#L.tops] + NOTE + 8)
+		local view = virtual.views[ID] or 480
+		kit.scroll_to(ID, math.max(L.tops[#L.tops] + NOTE + TRAIL - view, 0))
 	end
 	return true
 end
@@ -400,7 +404,7 @@ end
 -- The line at the end of a list of `shown` issues that Linear has more of.
 function list.note(shown)
 	local words = string.format("The %d issues changed last. Filter them, or go to a list, for the others.", shown)
-	return b.div():id("list-cut"):h(NOTE):row():items_center():px(16):child(
+	return b.div():id("list-cut"):h(NOTE):no_shrink():row():items_center():px(19):child(
 		b.text(words):text_size(SIZE.small):color("dim"):wrap():min_w(0):grow(1)
 	)
 end
@@ -440,7 +444,7 @@ function list.view(room, panel_open)
 			return row.group(item, look, L.late[item.group.key] == true)
 		end
 		return row.issue(item, look, o)
-	end, { tops = tops, px = 0, trail = 6 })
+	end, { tops = tops, px = 0, trail = TRAIL })
 end
 
 -- The room the list has to scroll in, as laid out: what `reveal` needs.

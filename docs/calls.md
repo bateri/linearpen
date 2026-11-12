@@ -446,7 +446,7 @@ the lists came, asking failed). The same value `view` answers with.
       { "key": "view:view-bugs", "kind": "view", "id": "view-bugs", "title": "Bugs to triage",
         "section": "favorite", "team": null, "cycle": null },
       { "key": "cycle:c-24", "kind": "cycle", "id": "c-24", "title": "ACM \u00b7 Current cycle",
-        "section": "team", "team": "ACM", "cycle": { "number": 24, "endsAt": "2026-11-15T00:00:00.000Z" } }
+        "section": "team", "team": "ACM", "cycle": { "number": 24, "endsAt": "2026-11-15T00:00:00.000Z", "ends": "Nov 15" } }
     ]
   },
   "groups": [
@@ -484,8 +484,10 @@ the lists came, asking failed). The same value `view` answers with.
   before stay). Each `item` has `key` (`kind:id`, what the page keeps it by), `kind` and `id` (what
   `view`'s `list` takes), `title` (named as the card shows it: a team by its key, `ACM \u00b7 Active
   issues` and, where it has a cycle running, `ACM \u00b7 Current cycle`), `section` (`favorite`, in
-  the order Linear's sidebar has them; `team`; `view`; `project`, the last three by name), `team` (the
-  key of the team a view is of, or null) and, for a `cycle`, its `number` and when it `endsAt`. A
+  the order Linear's sidebar has them; `team`, the teams the person is a member of in the order of
+  their own list of teams; `view` and `project`, by name), `team` (the
+  key of the team a view is of, or null) and, for a `cycle`, its `number`, when it `endsAt` and the day it
+  `ends` as the dates of the lists are written (`Nov 15`). A
   favorite that is a folder, or a view Linear defines itself, is not an item. At most 200 of each
   kind are asked for.
 - `matched`: how many issues of the list shown the filter lets through.

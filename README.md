@@ -45,8 +45,8 @@ used first, and kept nowhere. A key file that other users can read is still read
 The head of the page has the list button, the filter, Refresh and New issue, each in its own place
 whatever the page is doing. The list is **My issues** (what is assigned to you) or any other list
 you go to: **All issues** (the open issues of the workspace, each saying whose it is), what you
-starred in Linear, a team's open issues or its cycle that runs, a saved view, a project. Each is
-grouped by state with the backlog folded, and asked of Linear again every five minutes. The list
+starred in Linear, the open issues or the running cycle of a team you are in (in the order of your own
+list of teams), a saved view, a project. Each is grouped by state with the backlog folded, and asked of Linear again every five minutes. The list
 button says which it is and how many it has, and opens the card of lists (`g`): My issues is `1`, All
 issues `2`, your first seven favorites `3` to `9`; the card is the palette, so typing finds a list by
 its name, and each line says what it is (`View`, `Project`, `Team`, `Cycle 24, ends Nov 15`). Only

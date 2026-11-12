@@ -4162,6 +4162,8 @@ fn open_card_of_lists(page: &mut Page) {
         page.says("Assigned to you") && page.says("Bug bash, November")
     })
     .unwrap_or_else(|why| panic!("the card of lists with the names: {why:?}: {}", said(page)));
+    // (A card put away in the frame it came in loses the next key, which is the kit's; it is at rest.)
+    page.advance(0.3).expect("the card comes to rest");
 }
 
 /// Waits until the button of the lists says `name`.
@@ -4197,10 +4199,11 @@ fn the_card_of_lists_has_mine_all_the_favorites_the_teams_the_views_and_the_proj
         "Agent-ready|View \u{b7} ACM|5",
         "ACM \u{b7} Current cycle|Cycle 24, ends Nov 15",
         "ACM \u{b7} Active issues|Team",
+        "WEB \u{b7} Current cycle|Cycle 11, ends Nov 18",
+        "WEB \u{b7} Active issues|Team",
         "MOB \u{b7} Current cycle|Cycle 7, ends Nov 15",
         "MOB \u{b7} Active issues|Team",
         "OPS \u{b7} Active issues|Team",
-        "WEB \u{b7} Current cycle|Cycle 11, ends Nov 18",
         "Bugs by customer, last 30 days|View",
         "Stale in review|View \u{b7} ACM",
         "Unlabelled bugs nobody owns yet|View \u{b7} MOB",
@@ -4253,7 +4256,6 @@ fn the_keys_three_to_nine_go_to_the_favorites_and_one_comes_back_to_my_issues() 
     page.press("escape").expect("escape");
     page.wait_for(WITHIN, |page| !page.says("Assigned to you"))
         .unwrap_or_else(|why| panic!("the card closes: {why:?}: {}", said(&page)));
-    page.advance(0.3).expect("a moment");
     page.press("3").expect("3");
     list_button_says(&mut page, "Bugs to triage");
     page.wait_for(WITHIN, |page| page.says("ACM-398") && page.says("ACM-420"))
@@ -4551,6 +4553,92 @@ fn a_list_linear_could_not_tell_says_so_in_its_place_and_try_again_and_my_issues
         page.says("ACM-398") && !page.says("Try again")
     })
     .unwrap_or_else(|why| panic!("Try again asks for the list: {why:?}: {}", said(&page)));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_line_of_keys_stays_where_it_is_in_a_list_that_was_cut_at_its_end_and_in_a_short_one() {
+    for size in [WIDE, PANE] {
+        let (linear, _session, mut page) = open_lists(size);
+        let keys = page.bounds("status").expect("the line of keys");
+        let rest = page.bounds("lists").expect("the list button");
+        open_card_of_lists(&mut page);
+        linear.set_big_team();
+        page.type_text("OPS").expect("the words");
+        page.press("enter").expect("enter");
+        page.wait_for(WITHIN, |page| {
+            page.words_in("lists").iter().any(|word| word == "500+")
+        })
+        .unwrap_or_else(|why| panic!("{size:?}: the count is cut: {why:?}"));
+        for step in ["at its top", "at its end"] {
+            if step == "at its end" {
+                page.press("end").expect("end");
+                page.wait_for(WITHIN, |page| page.says("changed last"))
+                    .unwrap_or_else(|why| panic!("{size:?}: the line comes: {why:?}"));
+                page.advance(0.6).expect("a moment");
+            }
+            if step == "at its end" {
+                // The line that says it was cut stands whole under the last line, a half line apart
+                // from it, inside the list.
+                let note = page.bounds("list-cut").expect("the line of the cut");
+                let list = page.bounds("list").expect("the list");
+                assert!(
+                    (note.h - 44.0).abs() < 0.6 && note.y + note.h <= list.y + list.h + 0.5,
+                    "{size:?}: {note:?} in {list:?}"
+                );
+            }
+            let now = page.bounds("status").expect("the line of keys");
+            assert!(
+                (now.x - keys.x).abs() < 0.6
+                    && (now.y - keys.y).abs() < 0.6
+                    && (now.w - keys.w).abs() < 0.6
+                    && (now.h - keys.h).abs() < 0.6,
+                "{size:?} {step}: the line of keys was {keys:?}, is {now:?}"
+            );
+            assert!(
+                now.y + now.h <= size.1 + 0.5,
+                "{size:?} {step}: the line of keys is inside the pane: {now:?}"
+            );
+            // (The button is as wide as the name of the list it says.)
+            let button = page.bounds("lists").expect("the list button");
+            assert!(
+                (button.x - rest.x).abs() < 0.6 && (button.y - rest.y).abs() < 0.6,
+                "{size:?} {step}: {rest:?} {button:?}"
+            );
+        }
+    }
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_key_pressed_right_after_escape_leaves_a_card_of_the_palette_is_the_pages() {
+    // (A card that is put away in the very frame it came in loses the next key: the kit's, see
+    // plan.md; a person cannot press that fast. The card is at rest here.)
+    for (name, open, shown) in [
+        ("the card of lists", "g", "Assigned to you"),
+        ("the palette", "mod+k", "Do it"),
+    ] {
+        let (_linear, _session, mut page) = open_lists(WIDE);
+        let before = cursor(&page);
+        page.press(open).expect("open");
+        page.wait_for(WITHIN, |page| page.says(shown))
+            .unwrap_or_else(|why| panic!("{name} opens: {why:?}: {}", said(&page)));
+        page.advance(0.3).expect("a moment");
+        page.press("escape").expect("escape");
+        page.press("j").expect("j");
+        page.advance(0.3).expect("a moment");
+        assert!(!page.says(shown), "{name} is put away: {}", said(&page));
+        assert_ne!(
+            cursor(&page),
+            before,
+            "{name}: j moves the cursor down at once"
+        );
+        assert!(
+            cursor(&page).contains("ACM-398"),
+            "{name}: {:?}",
+            cursor(&page)
+        );
+    }
 }
 
 // --- The bar of the selection ----------------------------------------------------------------------------

@@ -120,6 +120,13 @@ struct WireFavorite {
 }
 
 #[derive(Deserialize)]
+struct WireMembership {
+    #[serde(default, rename = "sortOrder")]
+    sort_order: f64,
+    team: WireTeam,
+}
+
+#[derive(Deserialize)]
 struct WireTeam {
     id: String,
     key: String,
@@ -134,7 +141,13 @@ struct FavoritesData {
 
 #[derive(Deserialize)]
 struct TeamsData {
-    teams: Nodes<WireTeam>,
+    viewer: Memberships,
+}
+
+#[derive(Deserialize)]
+struct Memberships {
+    #[serde(rename = "teamMemberships")]
+    team_memberships: Nodes<WireMembership>,
 }
 
 #[derive(Deserialize)]
@@ -285,7 +298,8 @@ fn favorite_entry(favorite: WireFavorite) -> Option<Entry> {
 }
 
 /// The lists the person can go to, in the order of the card: the favorites by their sort order, the
-/// teams by key (each with the cycle that runs and its open issues), the views and the projects by
+/// teams the person is a member of, in the order of their own list of teams (each with the cycle that
+/// runs and its open issues), the views and the projects by
 /// name. A list is in the card once: the first place it has is its place.
 pub fn names(transport: &dyn Transport, key: &Key) -> Result<Vec<Entry>, Error> {
     let mut favorites = pages(
@@ -300,7 +314,7 @@ pub fn names(transport: &dyn Transport, key: &Key) -> Result<Vec<Entry>, Error> 
         key,
         &query::LIST_TEAMS,
         None,
-        |data: TeamsData| data.teams,
+        |data: TeamsData| data.viewer.team_memberships,
     )?;
     let views = pages(
         transport,
@@ -317,9 +331,10 @@ pub fn names(transport: &dyn Transport, key: &Key) -> Result<Vec<Entry>, Error> 
         |data: ProjectsData| data.projects,
     )?;
     favorites.sort_by(|a, b| a.sort_order.total_cmp(&b.sort_order));
-    teams.sort_by(|a, b| a.key.cmp(&b.key));
+    // The teams in the order of the person's own list of teams (the sidebar of Linear).
+    teams.sort_by(|a, b| a.sort_order.total_cmp(&b.sort_order));
     let mut found: Vec<Entry> = favorites.into_iter().filter_map(favorite_entry).collect();
-    for team in teams {
+    for team in teams.into_iter().map(|membership| membership.team) {
         let key = plain(&team.key);
         if let Some(cycle) = team.active_cycle {
             let title = format!("{key} \u{b7} Current cycle");

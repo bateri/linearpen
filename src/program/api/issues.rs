@@ -120,8 +120,10 @@ pub struct Counts {
 #[serde(rename_all = "camelCase")]
 pub struct CycleMessage {
     pub number: u32,
-    /// When it ends, as Linear says it: the page says the day.
+    /// When it ends, as Linear says it.
     pub ends_at: String,
+    /// The day it ends, as the dates of the lists are written (`Nov 15`): the same way, once.
+    pub ends: String,
 }
 
 /// A list a person can go to: what to ask for it by (`kind` and `id`), what it is called, and what
@@ -170,6 +172,7 @@ fn item(entry: &Entry) -> ItemMessage {
         cycle: entry.cycle.as_ref().map(|cycle| CycleMessage {
             number: cycle.number,
             ends_at: cycle.ends_at.clone(),
+            ends: short_date(&cycle.ends_at),
         }),
     }
 }

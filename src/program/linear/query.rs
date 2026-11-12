@@ -150,12 +150,14 @@ pub const LIST_FAVORITES: Operation = Operation {
            pageInfo { hasNextPage endCursor } } }",
 };
 
-/// The teams, each with the cycle that runs now.
+/// The teams the person is a member of (the active memberships), in the order of their own list of
+/// teams, each with the cycle that runs now.
 pub const LIST_TEAMS: Operation = Operation {
     name: "ListTeams",
     text: "query ListTeams($first: Int!, $after: String) { \
-           teams(first: $first, after: $after) { nodes { id key name \
-           activeCycle { id number name endsAt } } pageInfo { hasNextPage endCursor } } }",
+           viewer { teamMemberships(first: $first, after: $after, includeArchived: false) { \
+           nodes { sortOrder team { id key name activeCycle { id number name endsAt } } } \
+           pageInfo { hasNextPage endCursor } } } }",
 };
 
 /// The saved views (of issues and of other things: the program keeps those of issues).

@@ -1,50 +1,64 @@
 {
   "data": {
-    "teams": {
-      "nodes": [
-        {
-          "id": "team-acm",
-          "key": "ACM",
-          "name": "Acme",
-          "activeCycle": {
-            "id": "c-24",
-            "number": 24.0,
-            "name": null,
-            "endsAt": "2026-11-15T00:00:00.000Z"
+    "viewer": {
+      "teamMemberships": {
+        "nodes": [
+          {
+            "sortOrder": 1.0,
+            "team": {
+              "id": "team-acm",
+              "key": "ACM",
+              "name": "Acme",
+              "activeCycle": {
+                "id": "c-24",
+                "number": 24.0,
+                "name": null,
+                "endsAt": "2026-11-15T00:00:00.000Z"
+              }
+            }
+          },
+          {
+            "sortOrder": 2.0,
+            "team": {
+              "id": "team-web",
+              "key": "WEB",
+              "name": "web",
+              "activeCycle": {
+                "id": "c-11",
+                "number": 11.0,
+                "name": null,
+                "endsAt": "2026-11-18T00:00:00.000Z"
+              }
+            }
+          },
+          {
+            "sortOrder": 3.0,
+            "team": {
+              "id": "team-mob",
+              "key": "MOB",
+              "name": "Mobile",
+              "activeCycle": {
+                "id": "c-7",
+                "number": 7.0,
+                "name": null,
+                "endsAt": "2026-11-15T00:00:00.000Z"
+              }
+            }
+          },
+          {
+            "sortOrder": 4.0,
+            "team": {
+              "id": "team-ops",
+              "key": "OPS",
+              "name": "Operations",
+              "activeCycle": null
+            }
           }
-        },
-        {
-          "id": "team-web",
-          "key": "WEB",
-          "name": "web",
-          "activeCycle": {
-            "id": "c-11",
-            "number": 11.0,
-            "name": null,
-            "endsAt": "2026-11-18T00:00:00.000Z"
-          }
-        },
-        {
-          "id": "team-mob",
-          "key": "MOB",
-          "name": "Mobile",
-          "activeCycle": {
-            "id": "c-7",
-            "number": 7.0,
-            "name": null,
-            "endsAt": "2026-11-15T00:00:00.000Z"
-          }
-        },
-        {
-          "id": "team-ops",
-          "key": "OPS",
-          "name": "Operations",
-          "activeCycle": null
+        ],
+        "pageInfo": {
+          "hasNextPage": false,
+          "endCursor": null
         }
-      ],
-      "pageInfo": {
-        "hasNextPage": false,
-        "endCursor": null
       }
     }
   }

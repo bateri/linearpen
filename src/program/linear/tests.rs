@@ -1123,11 +1123,11 @@ fn the_names_of_the_lists_come_from_four_questions_and_are_in_the_order_of_the_c
             ],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}"#,
         )),
         Ok(reply(
-            r#"{"data":{"teams":{"nodes":[
-                {"id":"t-web","key":"WEB","name":"Web","activeCycle":{"id":"c-11","number":11.0,"name":"Spring","endsAt":"2026-11-18T00:00:00.000Z"}},
-                {"id":"t-acm","key":"ACM","name":"Acme","activeCycle":{"id":"c-24","number":24.0,"name":null,"endsAt":"2026-11-15T00:00:00.000Z"}},
-                {"id":"t-ops","key":"OPS","name":"Ops","activeCycle":null}
-            ],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}"#,
+            r#"{"data":{"viewer":{"teamMemberships":{"nodes":[
+                {"sortOrder":3.0,"team":{"id":"t-ops","key":"OPS","name":"Ops","activeCycle":null}},
+                {"sortOrder":1.0,"team":{"id":"t-web","key":"WEB","name":"Web","activeCycle":{"id":"c-11","number":11.0,"name":"Spring","endsAt":"2026-11-18T00:00:00.000Z"}}},
+                {"sortOrder":2.0,"team":{"id":"t-acm","key":"ACM","name":"Acme","activeCycle":{"id":"c-24","number":24.0,"name":null,"endsAt":"2026-11-15T00:00:00.000Z"}}}
+            ],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}}"#,
         )),
         Ok(reply(
             r#"{"data":{"customViews":{"nodes":[
@@ -1164,12 +1164,13 @@ fn the_names_of_the_lists_come_from_four_questions_and_are_in_the_order_of_the_c
             ("view", "favorite", "Agent-ready"),
             ("cycle", "favorite", "ACM \u{b7} Cycle 24"),
             ("label", "favorite", "perf"),
-            // The teams by key, each with its running cycle (a cycle that is a favorite is not said
-            // twice, nor is a team without one) and its open issues.
-            ("team", "team", "ACM \u{b7} Active issues"),
-            ("team", "team", "OPS \u{b7} Active issues"),
+            // The teams the person is a member of, in the order of their own list of teams (their
+            // sort order, not the keys), each with its running cycle (a cycle that is a favorite is
+            // not said twice, nor is a team without one) and its open issues.
             ("cycle", "team", "WEB \u{b7} Current cycle"),
             ("team", "team", "WEB \u{b7} Active issues"),
+            ("team", "team", "ACM \u{b7} Active issues"),
+            ("team", "team", "OPS \u{b7} Active issues"),
             // The views that are not favorites, by name, of issues only; then the projects.
             ("view", "view", "Bugs by customer"),
             ("view", "view", "Stale in review"),
@@ -1193,6 +1194,9 @@ fn the_names_of_the_lists_come_from_four_questions_and_are_in_the_order_of_the_c
     for body in &sent {
         assert!(!body.to_lowercase().contains("mutation"), "{body}");
     }
+    // The teams asked for are the person's memberships, the active ones.
+    assert!(sent[1].contains("viewer { teamMemberships("), "{}", sent[1]);
+    assert!(sent[1].contains("includeArchived: false"), "{}", sent[1]);
     // The projects asked for are the open ones.
     assert!(
         sent[3].contains(r#""completedAt":{"null":true}"#),
@@ -1238,7 +1242,9 @@ fn the_names_are_taken_a_page_at_a_time_up_to_a_ceiling_and_a_failure_is_said() 
     };
     let transport = Scripted::new(vec![
         Ok(empty("favorites")),
-        Ok(empty("teams")),
+        Ok(reply(
+            r#"{"data":{"viewer":{"teamMemberships":{"nodes":[],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}}"#,
+        )),
         Ok(page(0, true)),
         Ok(page(100, true)),
         Ok(empty("projects")),

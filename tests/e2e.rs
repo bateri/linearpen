@@ -118,11 +118,11 @@ fn the_issues_topic_tells_the_lists_that_curl_brought_and_the_key_never_leaves_i
             "view:view-ready",
             "cycle:c-24",
             "team:team-acm",
+            "cycle:c-11",
+            "team:team-web",
             "cycle:c-7",
             "team:team-mob",
             "team:team-ops",
-            "cycle:c-11",
-            "team:team-web",
             "view:view-cust",
             "view:view-mobile",
             "view:view-stale",
@@ -137,6 +137,8 @@ fn the_issues_topic_tells_the_lists_that_curl_brought_and_the_key_never_leaves_i
     assert_eq!(items[3]["title"], "ACM \u{b7} Current cycle");
     assert_eq!(items[3]["cycle"]["number"], 24);
     assert_eq!(items[3]["cycle"]["endsAt"], "2026-11-15T00:00:00.000Z");
+    // The day it ends is written as the dates of the lists are (the program's own way, once).
+    assert_eq!(items[3]["cycle"]["ends"], "Nov 15");
     assert_eq!(items[3]["section"], "team");
     assert_eq!(items[4]["title"], "ACM \u{b7} Active issues");
 }
