@@ -104,6 +104,15 @@ impl Lists {
     }
 }
 
+/// A pane that is watched: the agent in it, the issues it was given, and the file of them it reads.
+#[derive(Debug)]
+struct Held {
+    pane: String,
+    agent: &'static str,
+    ids: Vec<String>,
+    context: PathBuf,
+}
+
 #[derive(Debug)]
 pub struct State {
     pub key: Option<Key>,
@@ -127,10 +136,10 @@ pub struct State {
     view_seen: [u64; 4],
     /// The issues an agent was started on whose pane has not ended, by Linear's id.
     pub working: HashMap<String, Working>,
-    /// The panes that are watched and the file of issues each one's agent reads from, which is not
-    /// put away while the pane is on. Apart from `working`, which has one entry for each issue: an
-    /// issue given to another agent while the first is on has two panes.
-    held: Vec<(String, PathBuf)>,
+    /// The panes that are watched, each with what its agent was given and the file it reads from,
+    /// which is not put away while the pane is on. Apart from `working`, which has one entry for each
+    /// issue: an issue given to another agent while the first is on has two panes.
+    held: Vec<Held>,
     /// Issues opened, as Linear told them (with their description and comments), by id: they are
     /// kept for the run, so that an issue seen again is not asked for again.
     details: HashMap<String, Issue>,
@@ -156,6 +165,35 @@ pub struct State {
 }
 
 impl State {
+    /// The pane `pane` has ended: its file may be put away, and each issue whose mark was its own
+    /// takes the mark of another pane that is still on and was given it too, or loses its mark. (The
+    /// mark of an issue is the last pane it was given to; when that one ends first, the issue is not
+    /// left without one while the other agent still works on it.)
+    fn pane_ended(&mut self, pane: &str) {
+        self.held.retain(|held| held.pane != pane);
+        let marked: Vec<String> = self
+            .working
+            .iter()
+            .filter(|(_, working)| working.pane == pane)
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in marked {
+            match self.held.iter().rev().find(|held| held.ids.contains(&id)) {
+                Some(other) => {
+                    let working = Working {
+                        agent: other.agent,
+                        pane: other.pane.clone(),
+                        idle: false,
+                    };
+                    self.working.insert(id, working);
+                }
+                None => {
+                    self.working.remove(&id);
+                }
+            }
+        }
+    }
+
     /// Tells that an issue of the lists was changed: where the lists are on their way, they were
     /// asked for before it, so what comes is let go and they are asked for once more.
     fn note_change(&mut self) {
@@ -556,7 +594,12 @@ impl Session {
                     },
                 );
             }
-            state.held.push((pane.to_owned(), context.to_path_buf()));
+            state.held.push(Held {
+                pane: pane.to_owned(),
+                agent,
+                ids: ids.to_vec(),
+                context: context.to_path_buf(),
+            });
             self.shared.changed(&mut state);
         }
         self.poll();
@@ -569,15 +612,13 @@ impl Session {
             .spawn(move || {
                 bateri::wait(runner.as_ref(), &waited);
                 let mut state = shared.lock();
-                state.working.retain(|_, working| working.pane != waited);
-                state.held.retain(|(held, _)| *held != waited);
+                state.pane_ended(&waited);
                 shared.changed(&mut state);
             });
         if started.is_err() {
             // Nothing will say when it ends: no mark is better than one that stays.
             let mut state = self.shared.lock();
-            state.working.retain(|_, working| working.pane != pane);
-            state.held.retain(|(held, _)| *held != pane);
+            state.pane_ended(&pane);
             self.shared.changed(&mut state);
         }
     }
@@ -593,7 +634,7 @@ impl Session {
             .lock()
             .held
             .iter()
-            .map(|(_, context)| context.clone())
+            .map(|held| held.context.clone())
             .collect();
         handoff::prune(state, now_seconds(), &in_use)
     }
@@ -1016,6 +1057,50 @@ mod tests {
             None,
             Duration::from_secs(3600),
         )
+    }
+
+    /// The state as `watch` leaves it when the issue `issue-412` was given to the agent of `p9` and
+    /// then to the agent of `p10`: one mark, the later pane's, and both panes held.
+    fn given_twice(session: &Session) {
+        let mut state = session.shared.lock();
+        for (pane, agent) in [("p9", "Claude"), ("p10", "Codex")] {
+            let working = Working {
+                agent,
+                pane: pane.to_owned(),
+                idle: false,
+            };
+            state.working.insert("issue-412".to_owned(), working);
+            state.held.push(Held {
+                pane: pane.to_owned(),
+                agent,
+                ids: vec!["issue-412".to_owned()],
+                context: PathBuf::from(format!("/runs/{pane}/issues.md")),
+            });
+        }
+    }
+
+    #[test]
+    fn an_issue_given_to_two_agents_keeps_a_mark_until_both_their_panes_have_ended() {
+        // The later pane ends first: the mark goes to the pane that is still on.
+        let later_first = session();
+        given_twice(&later_first);
+        let mut state = later_first.shared.lock();
+        state.pane_ended("p10");
+        let working = &state.working["issue-412"];
+        assert_eq!((working.pane.as_str(), working.agent), ("p9", "Claude"));
+        assert_eq!(state.held.len(), 1);
+        state.pane_ended("p9");
+        assert!(state.working.is_empty() && state.held.is_empty());
+        drop(state);
+        // The earlier pane ends first: the mark stays the later pane's.
+        let earlier_first = session();
+        given_twice(&earlier_first);
+        let mut state = earlier_first.shared.lock();
+        state.pane_ended("p9");
+        let working = &state.working["issue-412"];
+        assert_eq!((working.pane.as_str(), working.agent), ("p10", "Codex"));
+        state.pane_ended("p10");
+        assert!(state.working.is_empty() && state.held.is_empty());
     }
 
     use std::collections::VecDeque;

@@ -172,3 +172,5 @@
 
 - The identifier of an issue with a four-digit number (`ACM-1099`) was cut in the list; its column is
   wider.
+- An issue given to a second agent while the first was still on lost its mark when the second pane
+  ended first; the mark now stays with the pane that is still on until both have ended.
