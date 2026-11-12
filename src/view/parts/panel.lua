@@ -7,6 +7,7 @@ local markdown = require("@pencere/markdown")
 local kit = require("../lib/kit")
 local change = require("./change")
 local commands = require("./commands")
+local icons = require("./icons")
 local list = require("./list")
 local values = require("./values")
 
@@ -18,8 +19,9 @@ local panel = {}
 -- state }`: all it says where the list has the issue no more and the program has not told yet), and
 -- what the program told of it, by id: `{ status = "loading" | "ready" | "failed", issue, error }`.
 -- `pin` is set while a change of the issue is on its way or has just been made: the issue stays open
--- (it may have left the list) until the cursor is moved by the person (`{ id, moves }`).
-local P = { open = nil, kept = {}, pin = nil }
+-- (it may have left the list) until the cursor is moved by the person (`{ id, moves }`). `near` is
+-- the id of an issue the person came to from the one that was open, which the list does not hold.
+local P = { open = nil, kept = {}, pin = nil, near = nil }
 panel.state = P
 
 -- The box that scrolls: the description and the comments.
@@ -87,6 +89,7 @@ function panel.show(item)
 	end
 	local row = item.row
 	P.pin = nil
+	P.near = nil
 	if P.open ~= nil and P.open.id ~= row.id then
 		-- Another issue is read from its top, not from where the one before was left.
 		kit.scroll_to(SCROLL, 0)
@@ -110,6 +113,7 @@ end
 function panel.close()
 	P.open = nil
 	P.pin = nil
+	P.near = nil
 end
 
 -- --- Staying on an issue the person changed ----------------------------------------------------------
@@ -126,6 +130,16 @@ function panel.hold(ids)
 			P.pin = { id = id, moves = list.moves() }
 		end
 	end
+end
+
+-- The id of the issue open where the person came to it from another and the list does not hold it, and
+-- the cursor has not been moved since: the keys are its then, as its buttons are, and not those of the
+-- line the cursor was left on. Else nil.
+function panel.foreign()
+	if P.open ~= nil and P.near == P.open.id and panel.held() then
+		return P.open.id
+	end
+	return nil
 end
 
 -- Whether the issue open is held: it is what the person changed and the cursor has not been moved since.
@@ -160,9 +174,10 @@ end
 -- not, and the cursor goes to it. The reply that gives the field the keyboard.
 function panel.rename_issue(id)
 	-- The issue open follows the cursor: the cursor goes to the issue first, where it is another (one
-	-- selected is the target, not the one under the cursor).
+	-- selected is the target, not the one under the cursor). An issue the list does not hold, that was
+	-- come to from another, is read where it is.
 	local current = list.current()
-	if current == nil or current.kind ~= "issue" or current.row.id ~= id then
+	if panel.foreign() ~= id and (current == nil or current.kind ~= "issue" or current.row.id ~= id) then
 		if list.reveal_issue(id) == nil then
 			return true
 		end
@@ -189,6 +204,7 @@ end
 
 -- What the change part asks of the issue open (it does not require this part).
 act.panel_id = panel.id
+act.panel_foreign = panel.foreign
 act.panel_hold = panel.hold
 act.panel_reask = panel.reask
 act.panel_forget = panel.forget
@@ -251,7 +267,8 @@ end
 
 -- The issue open as it is now: from the list's line where the list has it, else from what the program
 -- told of it (the issue left the list: done, given to someone else), else as it was when opened.
--- Its values and the ids of what they are (`teamId`, `stateId`, `assigneeId`, `projectId`).
+-- Its values and the ids of what they are (`teamId`, `stateId`, `assigneeId`, `projectId`, `cycleId`,
+-- and the `estimate` and the `dueDate`).
 function panel.info()
 	local id = P.open.id
 	local item = list.item(id)
@@ -267,6 +284,9 @@ function panel.info()
 			teamId = row.teamId,
 			assigneeId = row.assigneeId,
 			projectId = row.projectId,
+			cycleId = row.cycleId,
+			estimate = row.estimate,
+			dueDate = row.dueDate,
 		}
 	end
 	local detail = panel.detail()
@@ -281,6 +301,9 @@ function panel.info()
 			teamId = detail.teamId,
 			assigneeId = detail.assigneeId,
 			projectId = detail.projectId,
+			cycleId = detail.cycleId,
+			estimate = detail.estimate,
+			dueDate = detail.dueDate,
 		}
 	end
 	return {
@@ -318,12 +341,36 @@ local function shown_of(info, detail, data)
 			project = { id = info.projectId, name = "Project" }
 		end
 	end
+	local cycle = nil
+	if info.cycleId ~= nil then
+		local known = data ~= nil and values.find(data.cycles, info.cycleId) or nil
+		if known ~= nil then
+			cycle = { id = known.id, label = known.label }
+		elseif detail ~= nil and detail.cycleId == info.cycleId and detail.cycle ~= nil then
+			cycle = { id = info.cycleId, label = detail.cycle }
+		else
+			cycle = { id = info.cycleId, label = "Cycle" }
+		end
+	end
+	-- The points are told in the words of the team's scale (a t-shirt size), else as the number.
+	local estimate = nil
+	if info.estimate ~= nil then
+		estimate = { label = tostring(info.estimate) }
+		for _, known in data ~= nil and data.estimates or {} do
+			if known.value == info.estimate then
+				estimate.label = known.label
+			end
+		end
+	end
 	return {
 		state = info.state,
 		priority = info.priority,
 		assignee = assignee,
 		labels = info.labels,
 		project = project,
+		cycle = cycle,
+		estimate = estimate,
+		due = info.dueDate,
 	}
 end
 
@@ -338,16 +385,6 @@ local function pressable(info)
 	return change.ready(info.teamId) and idle(info)
 end
 
--- What stands after the controls, plain: the cycle.
-local function cycle(detail)
-	if detail ~= nil and detail.cycle ~= nil then
-		return b.div():h(SIZE.control):row():items_center():no_shrink():child(
-			b.text("Cycle " .. detail.cycle):text_size(SIZE.small):color("dim"):no_shrink()
-		)
-	end
-	return nil
-end
-
 local function controls(info, detail)
 	local data = change.options(info.teamId)
 	return values.chips(shown_of(info, detail, data), {
@@ -357,7 +394,11 @@ local function controls(info, detail)
 		busy = change.busy(info.id),
 		labels = data == nil or #data.labels > 0 or #info.labels > 0,
 		projects = data == nil or #data.projects > 0 or info.projectId ~= nil,
-		tail = cycle(detail),
+		-- (A team with no cycles, or that does not estimate, has no such chip, whatever the issue
+		-- carries: the choices tell.)
+		cycles = data == nil or data.cyclesEnabled == true,
+		estimates = data == nil or #data.estimates > 0,
+		due = true,
 	})
 end
 
@@ -391,6 +432,96 @@ local function comments(detail)
 	return box
 end
 
+-- The issues round the open one, each with how it is tied: the parent, the parts, then what blocks it,
+-- what it blocks and so on. A way is said once, on the first line of its run.
+local function near_of(detail)
+	local out = {}
+	if detail.parent ~= nil then
+		out[#out + 1] = { label = "Parent", issue = detail.parent }
+	end
+	for index, child in detail.children or {} do
+		out[#out + 1] = { label = index == 1 and "Sub-issues" or "", issue = child, part = true }
+	end
+	local last = nil
+	for _, tie in detail.ties or {} do
+		out[#out + 1] = { label = tie.label ~= last and tie.label or "", issue = tie.issue }
+		last = tie.label
+	end
+	return out
+end
+
+-- One of them: its way, its identifier and its title, which a press opens. A part of the issue has the
+-- picture of its state before its identifier; where there are parts, every line has the place for it, so
+-- that the identifiers stand under one another.
+local function near_row(entry, slot)
+	local t = u.theme
+	local issue = entry.issue
+	local name = "near:" .. issue.id
+	kit.buttons[name] = true
+	local over = u:hovered(name)
+	local row = b.div()
+		:row()
+		:items_center()
+		:gap(10)
+		:h(24)
+		:no_shrink()
+		:rounded(t.radius.control)
+		:bg(over and t.control_hover or t.clear)
+		:border(1, u:focus_visible(name) and t.ring or t.clear)
+		:press(name)
+		:focusable()
+		:role("button")
+		:label(entry.label .. " " .. issue.identifier .. ", " .. issue.title)
+		:child(b.div():w(84):no_shrink():child(b.text(entry.label):text_size(SIZE.small):color("dim"):truncate()))
+	if slot then
+		row:child(b.div():w(14):no_shrink():child(entry.part and icons.state(issue.state.kind) or b.div()))
+	end
+	return row
+		:child(b.text(issue.identifier):text_size(SIZE.small):color("dim"):no_shrink())
+		:child(b.text(issue.title):text_size(13):grow(1):min_w(0):truncate())
+end
+
+-- The issue `id` that the open one is tied to, or nil.
+local function near_issue(detail, id)
+	for _, entry in near_of(detail) do
+		if entry.issue.id == id then
+			return entry.issue
+		end
+	end
+	return nil
+end
+
+-- Opens the issue `id` that the open one is tied to. Where the list holds it the cursor goes to it and
+-- the issue open follows the cursor; else it is read as it is beside the list, and stays until the
+-- cursor is moved by the person. The reply.
+function panel.open_near(id)
+	local detail = panel.detail()
+	local found = detail ~= nil and near_issue(detail, id) or nil
+	if found == nil then
+		return true
+	end
+	if list.reveal_issue(id) ~= nil then
+		return true
+	end
+	kit.scroll_to(SCROLL, 0)
+	P.open = {
+		id = id,
+		identifier = found.identifier,
+		title = found.title,
+		priority = "none",
+		labels = {},
+		state = { name = found.state.name, kind = found.state.kind },
+		late = false,
+	}
+	local entry = P.kept[id]
+	if entry == nil or entry.status == "failed" then
+		ask(id)
+	end
+	P.pin = { id = id, moves = list.moves() }
+	P.near = id
+	return true
+end
+
 -- What stands under the facts: the description and the comments, or why they are not there.
 local function body(entry)
 	if entry == nil or entry.status == "loading" then
@@ -404,6 +535,15 @@ local function body(entry)
 	end
 	local detail = entry.issue
 	local box = b.div():col():text_size(13.5)
+	local near = near_of(detail)
+	if #near > 0 then
+		local rows = b.div():col():gap(2):mb(16)
+		local slot = detail.children ~= nil and #detail.children > 0
+		for _, one in near do
+			rows:child(near_row(one, slot))
+		end
+		box:child(rows)
+	end
 	if detail.description ~= nil and detail.description ~= "" then
 		box:child(words(detail.description, "description"))
 	else

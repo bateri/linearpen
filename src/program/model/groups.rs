@@ -101,9 +101,15 @@ pub mod tests {
             team: None,
             cycle: None,
             project: None,
+            estimate: None,
+            due_date: None,
             assignee: None,
             description: None,
             comments: None,
+            parent: None,
+            children: Vec::new(),
+            relations: Vec::new(),
+            inverse_relations: Vec::new(),
         }
     }
 

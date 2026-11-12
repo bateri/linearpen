@@ -94,6 +94,7 @@ local VALUES = {
 	{ "assignee", "assignee", "Assignee" },
 	{ "labels", "labels", "Labels" },
 	{ "project", "project", "Project" },
+	{ "cycle", "cycle", "Cycle" },
 }
 
 -- Which of them the pane has room for: all of them, the first four, or the status and the assignee.
@@ -127,7 +128,8 @@ function status.bar()
 		bar:child(kit.button("bar:" .. value[1], value[3], {
 			bar = true,
 			suffix = commands.label(value[2]),
-			disabled = not change.can(value[1] == "priority"),
+			disabled = not change.can(value[1] == "priority")
+				or (value[1] == "cycle" and not change.offers("cycle", change.targets())),
 			tip = "Change the " .. string.lower(value[3]) .. " of the issues selected",
 		}))
 	end

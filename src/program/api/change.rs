@@ -37,6 +37,15 @@ struct Edit {
     /// The id of a project, or `null` for none.
     #[serde(default, deserialize_with = "present")]
     project: Option<Option<String>>,
+    /// The id of a cycle, or `null` for none.
+    #[serde(default, deserialize_with = "present")]
+    cycle: Option<Option<String>>,
+    /// Points, or `null` for none.
+    #[serde(default, deserialize_with = "present")]
+    estimate: Option<Option<f64>>,
+    /// A day, `2026-11-15`, or `null` for none.
+    #[serde(default, deserialize_with = "present")]
+    due_date: Option<Option<String>>,
     title: Option<String>,
 }
 
@@ -52,6 +61,16 @@ struct ChangeMessage {
     issues: Vec<ChangedMessage>,
 }
 
+/// The most points an estimate can be: Linear's scales end far below it.
+const POINTS_MOST: u32 = 1_000;
+
+/// `points` as a whole number of points, from 0 to `POINTS_MOST`, or nothing.
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+fn whole_points(points: f64) -> Option<u32> {
+    (points.fract() == 0.0 && (0.0..=f64::from(POINTS_MOST)).contains(&points))
+        .then_some(points as u32)
+}
+
 /// The change the params name, and the issues, or why they are not one.
 fn read(params: Edit) -> Result<(Vec<String>, Change), Failure> {
     let Edit {
@@ -62,6 +81,9 @@ fn read(params: Edit) -> Result<(Vec<String>, Change), Failure> {
         add_label,
         remove_label,
         project,
+        cycle,
+        estimate,
+        due_date,
         title,
     } = params;
     let named = [
@@ -71,6 +93,9 @@ fn read(params: Edit) -> Result<(Vec<String>, Change), Failure> {
         add_label.is_some(),
         remove_label.is_some(),
         project.is_some(),
+        cycle.is_some(),
+        estimate.is_some(),
+        due_date.is_some(),
         title.is_some(),
     ]
     .into_iter()
@@ -78,7 +103,7 @@ fn read(params: Edit) -> Result<(Vec<String>, Change), Failure> {
     .count();
     if named != 1 {
         return Err(Failure::BadParams(
-            "one of status, priority, assignee, addLabel, removeLabel, project and title is changed at a time"
+            "one of status, priority, assignee, addLabel, removeLabel, project, cycle, estimate, dueDate and title is changed at a time"
                 .to_owned(),
         ));
     }
@@ -117,6 +142,27 @@ fn read(params: Edit) -> Result<(Vec<String>, Change), Failure> {
             check_ref("project", id)?;
         }
         Change::Project(project)
+    } else if let Some(cycle) = cycle {
+        if let Some(id) = &cycle {
+            check_ref("cycle", id)?;
+        }
+        Change::Cycle(cycle)
+    } else if let Some(points) = estimate {
+        Change::Estimate(match points {
+            None => None,
+            Some(points) => Some(whole_points(points).ok_or_else(|| {
+                Failure::BadParams(format!(
+                    "estimate is a whole number of points from 0 to {POINTS_MOST}, or null"
+                ))
+            })?),
+        })
+    } else if let Some(day) = due_date {
+        match day {
+            None => Change::DueDate(None),
+            Some(day) => Change::due_date(&day).ok_or_else(|| {
+                Failure::BadParams("dueDate is a day written 2026-11-15, or null".to_owned())
+            })?,
+        }
     } else {
         let text = title.unwrap_or_default();
         match Change::title(&text) {
@@ -219,6 +265,32 @@ mod tests {
             ),
             (json!({"ids": ids, "project": null}), Change::Project(None)),
             (
+                json!({"ids": ids, "cycle": "c-24"}),
+                Change::Cycle(Some("c-24".into())),
+            ),
+            (json!({"ids": ids, "cycle": null}), Change::Cycle(None)),
+            (
+                json!({"ids": ids, "estimate": 5}),
+                Change::Estimate(Some(5)),
+            ),
+            (
+                json!({"ids": ids, "estimate": 5.0}),
+                Change::Estimate(Some(5)),
+            ),
+            (
+                json!({"ids": ids, "estimate": 0}),
+                Change::Estimate(Some(0)),
+            ),
+            (
+                json!({"ids": ids, "estimate": null}),
+                Change::Estimate(None),
+            ),
+            (
+                json!({"ids": ids, "dueDate": "2026-11-15"}),
+                Change::DueDate(Some("2026-11-15".into())),
+            ),
+            (json!({"ids": ids, "dueDate": null}), Change::DueDate(None)),
+            (
                 json!({"ids": ids, "title": "  A new\ntitle "}),
                 Change::Title("A new title".into()),
             ),
@@ -248,6 +320,16 @@ mod tests {
             json!({"ids": ["i"], "status": ""}),
             json!({"ids": ["i"], "priority": "huge"}),
             json!({"ids": ["i"], "assignee": "x y"}),
+            json!({"ids": ["i"], "cycle": "x y"}),
+            json!({"ids": ["i"], "cycle": ""}),
+            json!({"ids": ["i"], "estimate": -1}),
+            json!({"ids": ["i"], "estimate": 2.5}),
+            json!({"ids": ["i"], "estimate": 100_000}),
+            json!({"ids": ["i"], "estimate": "5"}),
+            json!({"ids": ["i"], "dueDate": "tomorrow"}),
+            json!({"ids": ["i"], "dueDate": "2026-02-30"}),
+            json!({"ids": ["i"], "dueDate": ""}),
+            json!({"ids": ["i"], "cycle": "c", "estimate": 3}),
             json!({"ids": ["i"], "title": " \n "}),
             json!({"ids": ["i"], "title": "x".repeat(256)}),
             // What the call does not take: a description and a team are not changed.

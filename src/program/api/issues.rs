@@ -24,7 +24,8 @@ pub struct LabelMessage {
 }
 
 /// Linear's ids of what an issue is of and in, which the page names in a change and by which a menu
-/// marks what the issue has: the team, the state, the person and the project.
+/// marks what the issue has: the team, the state, the person, the project and the cycle, with its
+/// estimate and its due date.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Ids {
@@ -32,6 +33,11 @@ pub struct Ids {
     pub state_id: String,
     pub assignee_id: Option<String>,
     pub project_id: Option<String>,
+    pub cycle_id: Option<String>,
+    /// Points, where the team estimates and the issue has some.
+    pub estimate: Option<u32>,
+    /// `2026-11-15`.
+    pub due_date: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -59,6 +65,9 @@ pub fn ids(issue: &Issue) -> Ids {
         state_id: issue.state.id.clone(),
         assignee_id: issue.assignee.as_ref().map(|who| who.id.clone()),
         project_id: issue.project.as_ref().map(|project| project.id.clone()),
+        cycle_id: issue.cycle.as_ref().map(|cycle| cycle.id.clone()),
+        estimate: issue.estimate,
+        due_date: issue.due_date.clone(),
     }
 }
 

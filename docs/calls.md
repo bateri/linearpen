@@ -87,8 +87,9 @@ Answer: the **list** (below).
 
 ### `issue`
 
-One issue with what a row of the list does not carry: its description and its comments. Asked of
-Linear when the issue is opened, and kept for the run. Params: `{ "id": "issue-412" }`, Linear's id
+One issue with what a row of the list does not carry: its description, its comments, and the issues
+round it (its parent, its parts and what it is tied to). Asked of Linear when the issue is opened,
+and kept for the run. Params: `{ "id": "issue-412" }`, Linear's id
 of the issue (a row's `id`) or its identifier: up to 64 letters, digits and dashes.
 
 ```json
@@ -99,8 +100,16 @@ of the issue (a row's `id`) or its identifier: up to 64 letters, digits and dash
   "description": "The public API has no limit per key.\n\n- A limit per key",
   "priority": "high", "state": { "name": "In Progress", "kind": "started" },
   "labels": [{ "id": "l-api", "name": "api", "color": "#3e63dd" }],
-  "cycle": 12, "project": null, "assignee": "you",
+  "cycle": "Cycle 12", "project": null, "assignee": "you",
   "teamId": "team-acm", "stateId": "s-prog", "assigneeId": "u-ada", "projectId": null,
+  "cycleId": "c-12", "estimate": null, "dueDate": null,
+  "parent": { "id": "issue-400", "identifier": "ACM-400", "title": "Billing limits per plan",
+              "state": { "name": "Todo", "kind": "unstarted" } },
+  "children": [],
+  "ties": [{ "label": "Blocked by",
+             "issue": { "id": "issue-389", "identifier": "ACM-389",
+                        "title": "Cache the pricing table at the edge",
+                        "state": { "name": "In Review", "kind": "started" } } }],
   "comments": [{ "author": "Deniz", "at": "Nov 6", "body": "Redis is already there." }],
   "more": false
 }
@@ -111,11 +120,21 @@ character). `description` and each comment's `body` are markdown written by othe
 nothing to act on. `description` is null where there is none. Comments are the first fifty, the oldest first;
 `more` says there is more in Linear than is told (more comments, or a text cut at 20 000 characters
 for the description and 2 000 for a comment). `assignee` is `"you"`, a name or null; `cycle` is the
-cycle's number or null. `at` is the day as the list writes it. `teamId`, `stateId`, `assigneeId`,
-`projectId` and each label's `id` are Linear's ids of what the issue is of and in (null where there
-is none): what a menu marks as the issue's own and what `change` names. They are the same as in a
+words that tell the cycle, its name where it has one, else `Cycle 12` (null where it is in none).
+`at` is the day as the list writes it. `teamId`, `stateId`, `assigneeId`, `projectId`, `cycleId` and
+each label's `id` are Linear's ids of what the issue is of and in (null where there is none), `estimate`
+the points (a whole number, null where there are none) and `dueDate` the day it is due (`2026-11-15`,
+or null): what a menu marks as the issue's own and what `change` names. They are the same as in a
 row of the list, and a `change` writes the new value into what is kept, so the next `issue` of the
-same issue tells it. Errors: `bad-params`, `no-key`,
+same issue tells it.
+
+The issues round it are read only: `parent` (null where it has none), `children` (its sub-issues) and
+`ties`, the issues it is tied to, each with its `label` as the open issue is seen: `Blocks`, `Blocked
+by`, `Related`, `Duplicate of` or `Duplicated by`, in that order (a tie of another kind, `similar`,
+is not told). Each is `{ id, identifier, title, state: { name, kind } }`, which is enough to name it
+and to ask for it with `issue`; its title is cut at 300 characters. At most fifty of each are told
+(Linear is asked for the first fifty of each kind), and `more` says there are more where a list
+reached fifty. A `change` leaves them as they were: no change touches them. Errors: `bad-params`, `no-key`,
 `refused`, `unreachable`, `failed` (also where Linear has no such issue).
 
 ### `work_options`
@@ -226,7 +245,13 @@ digits and dashes.
                 { "id": "s-done", "name": "Done", "kind": "completed" }],
   "labels": [{ "id": "l-api", "name": "api", "color": "#3e63dd" }],
   "projects": [{ "id": "p-1", "name": "Billing" }],
-  "members": [{ "id": "u-ada", "name": "Ada", "me": true }]
+  "members": [{ "id": "u-ada", "name": "Ada", "me": true }],
+  "cyclesEnabled": true,
+  "cycles": [{ "id": "c-12", "label": "Cycle 12", "active": true },
+             { "id": "c-13", "label": "Cycle 13", "active": false }],
+  "estimates": [{ "value": 1, "label": "XS" }, { "value": 2, "label": "S" },
+                { "value": 3, "label": "M" }, { "value": 5, "label": "L" },
+                { "value": 8, "label": "XL" }]
 }
 ```
 
@@ -247,6 +272,16 @@ digits and dashes.
 - `projects`: the team's projects that are not finished or canceled, by name (at most 50).
 - `members`: the team's people who are active, by name (at most 100); `me` marks the person whose
   key it is.
+- `cyclesEnabled`: whether the team has cycles. `cycles`: what an issue of it can be put in (what
+  `change` takes as `cycle`): the cycle that runs (`active`), then the next ones by number, at most
+  six (Linear is asked for the first fifty upcoming ones, newest first, and they are sorted here);
+  `label` is the cycle's name where it has one, else `Cycle 12`. It is empty where the team has no
+  cycles.
+- `estimates`: the scale the team estimates by, smallest first (what `change` takes as `estimate`):
+  `exponential` 1 2 4 8 16 (and 32 64 where the team has the extended scale), `fibonacci` 1 2 3 5 8
+  (13 21), `linear` 1 2 3 4 5 (6 7), `tShirt` XS S M L XL (XXL XXXL), whose `value`s are the Fibonacci
+  numbers Linear takes them as (1 2 3 5 8, 13 21), each with its `label`; a `0` comes first where the
+  team allows an estimate of 0. It is empty where the team does not estimate.
 
 The teams and what each offers are asked of Linear when first needed and kept for the run; they are
 let go whenever the program asks for the lists again (`refresh`, and every five minutes). Errors:
@@ -306,8 +341,10 @@ Changes one field of one issue or of several, in Linear. Params:
   `status` (the id of a state, from `new_options`' `allStates`), `priority` (`none`, `urgent`,
   `high`, `medium` or `low`), `assignee` (the id of a person, or `null` for no one), `addLabel` and
   `removeLabel` (the id of one label the issues get or lose), `project` (the id of a project, or
-  `null` for none), `title` (one to 255 characters; it is made one line, with no white space at
-  its ends).
+  `null` for none), `cycle` (the id of a cycle, from `new_options`' `cycles`, or `null` for none),
+  `estimate` (a whole number of points from 0 to 1 000, as `new_options`' `estimates` say, or `null`
+  for none), `dueDate` (a day written `2026-11-15` that is on the calendar, or `null` for none),
+  `title` (one to 255 characters; it is made one line, with no white space at its ends).
 
 ```json
 { "issues": [{ "id": "issue-412", "listed": false }, { "id": "issue-405", "listed": true }] }
@@ -363,7 +400,8 @@ the lists came, asking failed). The same value `view` answers with.
           "branchName": "ada/acm-412-add-rate-limiting",
           "priority": "high", "updated": "Nov 9",
           "labels": [{ "id": "l-api", "name": "api", "color": "#3e63dd" }], "assignee": null,
-          "teamId": "team-acm", "stateId": "s-prog", "assigneeId": "u-ada", "projectId": null }
+          "teamId": "team-acm", "stateId": "s-prog", "assigneeId": "u-ada", "projectId": null,
+          "cycleId": "c-12", "estimate": null, "dueDate": null }
       ] }
   ],
   "updated": 1762870000, "organization": "Acme", "person": "Ada",
@@ -388,10 +426,11 @@ the lists came, asking failed). The same value `view` answers with.
 - `priority`: `none`, `urgent`, `high`, `medium` or `low`. `updated`: the day of the last change as
   the list writes it. `assignee` is set only in the list of all issues: `"you"`, a name, or null.
 - A label's `color` is Linear's own (`#rrggbb`): data, not a role of the theme.
-- `teamId`, `stateId`, `assigneeId` (null where unassigned) and `projectId` (null where in none) are
-  Linear's ids of what the issue is of and in, and each label has its `id`: a menu marks what the
-  issue has by them, and a change names them (`change`). Whether several issues are of one team is
-  told by their `teamId`s.
+- `teamId`, `stateId`, `assigneeId` (null where unassigned), `projectId` (null where in none) and
+  `cycleId` (null where in no cycle) are Linear's ids of what the issue is of and in, and each label
+  has its `id`: a menu marks what the issue has by them, and a change names them (`change`).
+  `estimate` is its points (a whole number, null where it has none) and `dueDate` the day it is due
+  (`2026-11-15`, or null). Whether several issues are of one team is told by their `teamId`s.
 - `updated`: when the lists came, seconds since the epoch; `organization` and `person` are the
   workspace's name and the person's. Both are null before the first answer.
 - `working`: the issues an agent was started on and whose pane has not ended, by Linear's id, with

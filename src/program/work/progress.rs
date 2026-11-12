@@ -145,6 +145,9 @@ mod tests {
             labels: vec![],
             projects: vec![],
             members: vec![],
+            cycles_enabled: false,
+            cycles: vec![],
+            estimates: vec![],
         }
     }
 

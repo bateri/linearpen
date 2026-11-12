@@ -1,4 +1,5 @@
--- The value controls of an issue (its status, priority, assignee, labels and project), once: the form of
+-- The value controls of an issue (its status, priority, assignee, labels, project, cycle, estimate and
+-- due date), once: the form of
 -- a new issue and the issue open beside the list draw the same chips and open the same menus. What
 -- each part adds is its own: the form keeps a draft, the issue is changed in Linear (change.lua).
 --
@@ -54,6 +55,58 @@ function values.priority_name(id)
 	return id
 end
 
+-- --- Days --------------------------------------------------------------------------------------------
+
+local MONTHS = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" }
+
+-- The civil date (year, month, day) of a count of days since 1970-01-01, as Howard Hinnant's
+-- algorithm gives it.
+local function civil(days)
+	local z = days + 719468
+	local era = math.floor(z / 146097)
+	local day_of_era = z - era * 146097
+	local year_of_era = math.floor(
+		(day_of_era - math.floor(day_of_era / 1460) + math.floor(day_of_era / 36524) - math.floor(day_of_era / 146096)) / 365
+	)
+	local day_of_year = day_of_era - (365 * year_of_era + math.floor(year_of_era / 4) - math.floor(year_of_era / 100))
+	local shifted = math.floor((5 * day_of_year + 2) / 153)
+	local day = day_of_year - math.floor((153 * shifted + 2) / 5) + 1
+	local month = shifted < 10 and shifted + 3 or shifted - 9
+	local year = year_of_era + era * 400 + (month <= 2 and 1 or 0)
+	return year, month, day
+end
+
+-- The days the menu of a due date offers, from the person's today: the words and how many days.
+values.DAYS = {
+	{ "Today", 0 },
+	{ "Tomorrow", 1 },
+	{ "In 3 days", 3 },
+	{ "In a week", 7 },
+	{ "In 2 weeks", 14 },
+}
+
+-- The day `ahead` days from the person's today (the host's time of day, at the offset the person's
+-- clock has), written `2026-11-15` as Linear takes it; nil where the host tells no time of day. (The
+-- page tells the day, not the program: the person's day is the host's clock at the person's offset, and
+-- the program has no clock of the person's, only the system's seconds.)
+function values.day_ahead(ahead)
+	local seconds, offset = b.time.wall()
+	if seconds == nil then
+		return nil
+	end
+	local year, month, day = civil(math.floor((seconds + (offset or 0)) / 86400) + ahead)
+	return string.format("%04d-%02d-%02d", year, month, day)
+end
+
+-- A day written `2026-11-15` as a chip says it: `Nov 15`.
+function values.day_words(day)
+	local month, of = string.match(day or "", "^%d%d%d%d%-(%d%d)%-(%d%d)$")
+	if month == nil or MONTHS[tonumber(month)] == nil then
+		return day or ""
+	end
+	return MONTHS[tonumber(month)] .. " " .. tonumber(of)
+end
+
 -- A title with the mark of what is chosen.
 function values.mark(on, words)
 	return (on and "\u{2713} " or "") .. words
@@ -63,9 +116,11 @@ end
 local CHOICE = { labels = "label" }
 
 -- The choices of the menu of a value, each `{ kind, id, title, on }`: `kind` says which value (`team`,
--- `state`, `priority`, `assignee`, `label`, `project`) and `id` which choice, `none` for no one and
--- no project. `current` is what is marked: `team`, `state`, `priority`, `labels` (a set of ids),
--- and `assignee` and `project` (an id, `none` where there is none, nil where it is not one thing).
+-- `state`, `priority`, `assignee`, `label`, `project`, `cycle`, `estimate`, `due`) and `id` which
+-- choice, `none` for no one, no project, no cycle, no estimate and no due date. `current` is what is
+-- marked: `team`, `state`, `priority`, `labels` (a set of ids), and `assignee`, `project`, `cycle`,
+-- `estimate` (the number of points as words) and `due` (the day written `2026-11-15`), each an id or
+-- the words, `none` where there is none, nil where it is not one thing.
 -- `states` are the states offered (the form's open ones, or all of them).
 function values.choices(kind, data, current, states)
 	local out = {}
@@ -105,6 +160,25 @@ function values.choices(kind, data, current, states)
 		for _, project in data.projects do
 			add(project.id, project.name, project.id == current.project)
 		end
+	elseif kind == "cycle" then
+		for _, cycle in data.cycles do
+			add(cycle.id, cycle.label, cycle.id == current.cycle)
+		end
+		add("none", "No cycle", current.cycle == "none")
+	elseif kind == "estimate" then
+		for _, estimate in data.estimates do
+			local id = tostring(estimate.value)
+			add(id, estimate.label, id == current.estimate)
+		end
+		add("none", "No estimate", current.estimate == "none")
+	elseif kind == "due" then
+		for _, day in values.DAYS do
+			local written = values.day_ahead(day[2])
+			if written ~= nil then
+				add(written, day[1], written == current.due)
+			end
+		end
+		add("none", "No due date", current.due == "none")
 	end
 	return out
 end
@@ -207,6 +281,24 @@ function values.chips(shown, o)
 			icons.cube(),
 			words(shown.project ~= nil and shown.project.name or "Project", shown.project == nil),
 		}, "Project"))
+	end
+	if o.cycles then
+		row:child(chip("cycle", {
+			icons.cycle(),
+			words(shown.cycle ~= nil and shown.cycle.label or "Cycle", shown.cycle == nil),
+		}, "Cycle"))
+	end
+	if o.estimates then
+		row:child(chip("estimate", {
+			icons.estimate(),
+			words(shown.estimate ~= nil and shown.estimate.label or "Estimate", shown.estimate == nil),
+		}, "Estimate"))
+	end
+	if o.due then
+		row:child(chip("due", {
+			icons.date(),
+			words(shown.due ~= nil and values.day_words(shown.due) or "Due date", shown.due == nil),
+		}, "Due date"))
 	end
 	if o.busy then
 		row:child(b.div():h(SIZE.control):row():items_center():child(kit.spinner(13, "dim")))

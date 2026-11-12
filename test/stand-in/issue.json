@@ -28,9 +28,47 @@
     "key": "ACM"
    },
    "cycle": {
+    "id": "c-12",
     "number": 12
    },
    "project": null,
+   "estimate": null,
+   "dueDate": null,
+   "parent": {
+    "id": "issue-400",
+    "identifier": "ACM-400",
+    "title": "Billing limits per plan",
+    "state": {
+     "id": "s-todo",
+     "name": "Todo",
+     "type": "unstarted",
+     "position": 1.0
+    }
+   },
+   "children": {
+    "nodes": []
+   },
+   "relations": {
+    "nodes": []
+   },
+   "inverseRelations": {
+    "nodes": [
+     {
+      "type": "blocks",
+      "issue": {
+       "id": "issue-389",
+       "identifier": "ACM-389",
+       "title": "Cache the pricing table at the edge",
+       "state": {
+        "id": "s-review",
+        "name": "In Review",
+        "type": "started",
+        "position": 3.0
+       }
+      }
+     }
+    ]
+   },
    "assignee": {
     "id": "u-ada",
     "displayName": "Ada",

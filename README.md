@@ -49,8 +49,9 @@ asked of Linear again every five minutes; the list button says which it is and h
 opens the card of lists (`g`, or `1` and `2` for the two). `/` filters the list by title, identifier or
 label, and the field says how many it lets through (`4 of 14`) inside itself. Enter or `o` opens an
 issue beside the list (from the filter too), with its description, its comments, its cycle, its
-project and who has it; Space scrolls it, and `Open in Linear` (`⇧O`, from the list too) puts it in
-your browser. In a pane too narrow for both, the issue takes the pane: there the arrows scroll it, and
+project and who has it, and the issues round it: its parent, its sub-issues and what it is tied to
+(blocks, blocked by, related, duplicate of), each a line that a press opens; Space scrolls it, and
+`Open in Linear` (`⇧O`, from the list too) puts it in your browser. In a pane too narrow for both, the issue takes the pane: there the arrows scroll it, and
 `j` and `k` go to the issue after and the one before. A pane with too little room for Refresh and New
 issue leaves their buttons out; `⌘R` and `c` do what they say all the same.
 
@@ -78,8 +79,12 @@ Create issues permission is told so in the form.
 <img src="docs/edit.png" width="720" alt="linearpen: an issue open beside the list, with its status, priority, assignee, labels and project as buttons">
 
 The status, priority, assignee, labels and project of the issue that is open are buttons, the same
-ones the form of a new issue has: each says what it is now and opens a menu of the others, the status
-with every state of the team (Done and Canceled too). The title is changed in place: `r`, or a press
+ones the form of a new issue has, and so are its cycle, its estimate and its due date: each says what
+it is now (or its name, dim, where it has none) and opens a menu of the others, the status with every
+state of the team (Done and Canceled too). The cycle menu has the cycle that runs and the next ones,
+and the estimate menu the scale the team uses (t-shirt sizes are sent as the numbers Linear takes
+them as): a team with no cycles, or that does not estimate, has neither button. The due date menu has
+Today, Tomorrow, In 3 days, In a week and In 2 weeks, by your own day. The title is changed in place: `r`, or a press
 on it, makes it a field with the words selected; `Enter` saves it, and so does a press anywhere else
 or `Tab` (what you typed is not lost), and `Esc` leaves the old one. A
 change is sent when you choose it, with no question; the control is busy until Linear has answered,
@@ -91,15 +96,16 @@ list, with its new value, until you move the cursor again.
 <img src="docs/edit-done.png" width="720" alt="linearpen: the issue that was made Done, gone from the list and still open beside it">
 
 From the list the keys do the same: `s` the status, `p` the priority, `a` the assignee, `i` assigns
-it to you, `l` the labels, `Shift P` the project and `r` the title (which opens the issue, to write in
+it to you, `l` the labels, `Shift P` the project, `Shift C` the cycle, `Shift E` the estimate,
+`Shift D` the due date and `r` the title (which opens the issue, to write in
 its title) of the issue under the cursor, or of **all the issues you selected**, up to fifty at once,
 in one request to Linear (`r` is for one). A label that every one of them has is taken off and one
 that not every one has is put on all of them. Issues of more than one team can only change their
-priority, and the menu says so.
+priority and due date, and the menu says so.
 
 `x` selects an issue, Shift with the arrows selects more, `⌘A` selects what is shown. With issues
 selected the line under the page is the bar of the selection: how many are selected, the values to
-change in them (Status, Assignee, and in a wider pane Priority, Labels and Project), `More` (`⌘K`, with
+change in them (Status, Assignee, and in a wider pane Priority, Labels, Project and Cycle), `More` (`⌘K`, with
 every change) and `Clear` (`Esc`). A press on a value opens its menu for all of them, and `Esc` takes
 the selection off and gives the line of keys back.
 
@@ -184,6 +190,7 @@ or `Space` then presses.
 | `Space`, `⇧ Space`    | scroll the open issue down, up                                       |
 | `x`, `Shift ↑↓`, `⌘A` | select the issue, select more, select all                            |
 | `s` `p` `a` `l` `⇧P`  | change the status, priority, assignee, labels, project               |
+| `⇧C` `⇧E` `⇧D`        | change the cycle, the estimate, the due date                         |
 | `i`                   | assign it to you                                                     |
 | `r`                   | change the title                                                     |
 | `⌘⇧I` `⌘⇧.` `⌘⇧,`     | copy the identifier, the branch name, the link                       |
@@ -200,11 +207,11 @@ or `Space` then presses.
 
 linearpen tells Linear a new issue and a change to the issues you have, and nothing else. It has two
 mutations, `IssueCreate` (sent when you press Create in the form) and `IssueBatchUpdate` (sent when you
-choose a status, a priority, an assignee, a label, a project or a title, for one issue or for those you
+choose a status, a priority, an assignee, a label, a project, a cycle, an estimate, a due date or a title, for one issue or for those you
 selected; and sent once more, only for the status, when you start an agent with `Status` set to move
 the issues that have not begun), and the list of mutations it may send is one place in the program that a test checks every
 query against, refusing any other before it is sent. What a change can be is a type of its own with
-those six fields in it: the description and the team of an issue cannot be written by it, and a
+those fields in it: the description and the team of an issue cannot be written by it, and a
 test looks for them in what is sent. A comment, an archive or a deletion changed from here would be a
 decision of its own. It does not send anything twice by itself: a new issue has an identity the draft
 was given, and an issue whose answer was lost is asked for by it; a change whose answer was lost is

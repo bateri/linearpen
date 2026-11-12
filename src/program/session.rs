@@ -164,11 +164,17 @@ impl State {
         }
         // What is kept is by the id it was asked for by, which may be the identifier.
         for kept in self.details.values_mut().filter(|kept| kept.id == issue.id) {
-            let (description, comments) = (kept.description.take(), kept.comments.take());
+            let held = kept.clone();
             *kept = issue.clone();
-            if issue.description.is_none() {
-                kept.description = description;
-                kept.comments = comments;
+            // What a change answers is a row: the issue it is of keeps what only the issue asked for
+            // alone has, its text and the issues around it, which no change touches.
+            if issue.comments.is_none() {
+                kept.description = held.description;
+                kept.comments = held.comments;
+                kept.parent = held.parent;
+                kept.children = held.children;
+                kept.relations = held.relations;
+                kept.inverse_relations = held.inverse_relations;
             }
         }
         match self.view.scope {

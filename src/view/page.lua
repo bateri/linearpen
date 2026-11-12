@@ -84,9 +84,16 @@ end
 commands.when.changeable = function()
 	return commands.when.idle() and change.can()
 end
--- The priority needs no choices of the team.
+-- The priority and the due date need no choices of the team.
 commands.when.plain_change = function()
 	return commands.when.idle() and change.can(true)
+end
+-- The cycle and the estimate need the team to have them: not for the issues of one that has none.
+commands.when.cyclable = function()
+	return commands.when.changeable() and change.offers("cycle", change.targets())
+end
+commands.when.estimable = function()
+	return commands.when.changeable() and change.offers("estimate", change.targets())
 end
 -- The title is of one issue, and needs none either.
 commands.when.titleable = function()
@@ -274,6 +281,12 @@ local function command(id)
 		return change.run("labels")
 	elseif id == "project" then
 		return change.run("project")
+	elseif id == "cycle" then
+		return change.run("cycle")
+	elseif id == "estimate" then
+		return change.run("estimate")
+	elseif id == "due" then
+		return change.run("due")
 	elseif id == "assign_me" then
 		local ids = change.targets()
 		return change.assign_me(ids)
@@ -341,6 +354,8 @@ local function press(id)
 		panel.close()
 	elseif id == "panel-title-edit" then
 		return panel.rename()
+	elseif string.sub(id, 1, 5) == "near:" then
+		return panel.open_near(string.sub(id, 6))
 	elseif id == "issue-retry" then
 		panel.retry()
 	elseif id == "clear-selection" then

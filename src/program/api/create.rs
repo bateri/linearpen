@@ -76,6 +76,12 @@ struct OptionsMessage {
     labels: Vec<LabelMessage>,
     projects: Vec<ProjectMessage>,
     members: Vec<MemberMessage>,
+    /// Whether the team has cycles: where it has not, an issue of it is put in none.
+    cycles_enabled: bool,
+    /// The cycle that is running, then the next ones.
+    cycles: Vec<CycleMessage>,
+    /// The scale the team estimates by, smallest first; none where it does not estimate.
+    estimates: Vec<EstimateMessage>,
 }
 
 /// Whether `text` is an id or a key of Linear: letters, digits, dashes and underscores.
@@ -102,6 +108,22 @@ fn team_of<'a>(teams: &'a [Team], named: Option<&str>) -> Option<&'a Team> {
                 .find(|team| team.id == named || team.key.eq_ignore_ascii_case(named))
         })
         .or_else(|| teams.first())
+}
+
+#[derive(Debug, Serialize)]
+struct CycleMessage {
+    id: String,
+    /// Its name, or `Cycle 24` where it has none.
+    label: String,
+    /// The cycle that is running now.
+    active: bool,
+}
+
+/// A number of points the team estimates by, and what it calls it.
+#[derive(Debug, Serialize)]
+struct EstimateMessage {
+    value: u32,
+    label: String,
 }
 
 fn state_message(state: &StateChoice) -> StateMessage {
@@ -167,6 +189,24 @@ fn new_options(session: &Session, params: Which) -> Result<OptionsMessage, Failu
                 id: member.id,
                 name: member.name,
                 me: member.me,
+            })
+            .collect(),
+        cycles_enabled: options.cycles_enabled,
+        cycles: options
+            .cycles
+            .into_iter()
+            .map(|cycle| CycleMessage {
+                label: crate::linear::types::cycle_label(cycle.number, cycle.name.as_deref()),
+                id: cycle.id,
+                active: cycle.active,
+            })
+            .collect(),
+        estimates: options
+            .estimates
+            .into_iter()
+            .map(|estimate| EstimateMessage {
+                value: estimate.value,
+                label: estimate.label,
             })
             .collect(),
     })

@@ -143,6 +143,43 @@ function icons.cube()
 	}):no_shrink()
 end
 
+-- A clock, for the cycle.
+function icons.cycle()
+	local color = b.alpha("foreground", 0.75)
+	return canvas({
+		b.path():circle(7, 7, 5):stroke(1.3, color),
+		b.path():move_to(7, 2):line_to(7, 7):line_to(10, 9):stroke(1.3, color),
+	}):no_shrink()
+end
+
+-- Steps that rise, for the estimate.
+function icons.estimate()
+	local color = b.alpha("foreground", 0.75)
+	return canvas({
+		b.path():move_to(2, 11):line_to(5, 11):line_to(5, 8):line_to(8, 8):line_to(8, 5):line_to(12, 5):stroke(1.3, color),
+	}):no_shrink()
+end
+
+-- A calendar, for the due date.
+function icons.date()
+	local color = b.alpha("foreground", 0.75)
+	return canvas({
+		b.path()
+			:move_to(4, 3)
+			:line_to(10, 3)
+			:quad_to(12, 3, 12, 5)
+			:line_to(12, 10)
+			:quad_to(12, 12, 10, 12)
+			:line_to(4, 12)
+			:quad_to(2, 12, 2, 10)
+			:line_to(2, 5)
+			:quad_to(2, 3, 4, 3)
+			:close()
+			:stroke(1.3, color),
+		b.path():move_to(2, 6):line_to(12, 6):move_to(5, 1.8):line_to(5, 4.2):move_to(9, 1.8):line_to(9, 4.2):stroke(1.3, color),
+	}):no_shrink()
+end
+
 -- A tag, for the labels.
 function icons.tag()
 	local color = b.alpha("foreground", 0.75)

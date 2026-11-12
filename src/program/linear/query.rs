@@ -55,14 +55,14 @@ impl Operation {
 }
 
 /// The issue fields of a row of the list, with the ids of what a change names (the team, the state,
-/// the labels, the project, the person). The description and the comments wait for the issue to be
-/// opened.
+/// the labels, the project, the cycle, the person). The description, the comments and the issues
+/// around wait for the issue to be opened.
 macro_rules! issue_fields {
     () => {
         "id identifier title priority updatedAt url branchName \
          state { id name type position } \
          labels(first: 10) { nodes { id name color } } \
-         team { id key } cycle { number } project { id name } \
+         team { id key } cycle { id number name } project { id name } estimate dueDate \
          assignee { id displayName isMe }"
     };
 }
@@ -105,13 +105,29 @@ pub const ALL_ISSUES: Operation = Operation {
     ),
 };
 
-/// One issue with what a row does not carry: its description and its first comments.
+/// An issue another issue is tied to, as much as names it and opens it.
+macro_rules! neighbor_fields {
+    () => {
+        "id identifier title state { id name type position }"
+    };
+}
+
+/// One issue with what a row does not carry: its description, its first comments, and the issues
+/// around it (its parent, its parts and what it is tied to, the first fifty of each; read only).
 pub const ISSUE: Operation = Operation {
     name: "Issue",
     text: concat!(
         "query Issue($id: String!) { issue(id: $id) { ",
         issue_fields!(),
-        " description comments(first: 50) { nodes { body createdAt user { displayName } } \
+        " description parent { ",
+        neighbor_fields!(),
+        " } children(first: 50) { nodes { ",
+        neighbor_fields!(),
+        " } } relations(first: 50) { nodes { type relatedIssue { ",
+        neighbor_fields!(),
+        " } } } inverseRelations(first: 50) { nodes { type issue { ",
+        neighbor_fields!(),
+        " } } } comments(first: 50) { nodes { body createdAt user { displayName } } \
          pageInfo { hasNextPage endCursor } } } }"
     ),
 };
@@ -123,14 +139,19 @@ pub const NEW_ISSUE_TEAMS: Operation = Operation {
 };
 
 /// What a new issue of one team can be given: its states, labels, projects and members, and the
-/// labels of the whole workspace (they belong to no team).
+/// labels of the whole workspace (they belong to no team); and what an issue of it can be moved to:
+/// its cycles (the one running, and the upcoming ones: Linear gives the newest first, so as many are
+/// asked for as it makes ahead) and the scale it estimates by.
 pub const NEW_ISSUE_OPTIONS: Operation = Operation {
     name: "NewIssueOptions",
     text: "query NewIssueOptions($team: String!) { team(id: $team) { id defaultIssueState { id } \
          states(first: 50) { nodes { id name type position } } \
          labels(first: 100) { nodes { id name color isGroup } } \
          projects(first: 50) { nodes { id name completedAt canceledAt } } \
-         members(first: 100) { nodes { id displayName isMe active } } } \
+         members(first: 100) { nodes { id displayName isMe active } } \
+         cyclesEnabled issueEstimationType issueEstimationAllowZero issueEstimationExtended \
+         activeCycle { id number name } \
+         cycles(first: 50, filter: { isFuture: { eq: true } }) { nodes { id number name } } } \
          issueLabels(first: 100, filter: { team: { null: true } }) { nodes { id name color isGroup } } }",
 };
 

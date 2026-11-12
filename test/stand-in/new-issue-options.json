@@ -32,6 +32,18 @@
           { "id": "u-gone", "displayName": "Gone", "isMe": false, "active": false },
           { "id": "u-ada", "displayName": "Ada", "isMe": true, "active": true }
         ]
+      },
+      "cyclesEnabled": true,
+      "issueEstimationType": "tShirt",
+      "issueEstimationAllowZero": false,
+      "issueEstimationExtended": false,
+      "activeCycle": { "id": "c-12", "number": 12, "name": null },
+      "cycles": {
+        "nodes": [
+          { "id": "c-14", "number": 14, "name": null },
+          { "id": "c-13", "number": 13, "name": null },
+          { "id": "c-15", "number": 15, "name": null }
+        ]
       }
     },
     "issueLabels": {

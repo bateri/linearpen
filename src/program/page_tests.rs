@@ -90,6 +90,10 @@ pub(crate) struct Canned {
     /// Where each `IssueBatchUpdate` is written down as it comes, with what `Hands` is asked to run,
     /// where a test wants to know which came first.
     ledger: Mutex<Option<Ledger>>,
+    /// What `Issue` tells of an issue besides the fixture's, by id (members of the issue laid over it).
+    details: Mutex<std::collections::HashMap<String, serde_json::Value>>,
+    /// The ids `Issue` was asked for, in order.
+    issues_asked: Mutex<Vec<String>>,
 }
 
 /// What came, in the order it came: `Canned`'s writes (`linear IssueBatchUpdate <input>`) and what
@@ -123,7 +127,20 @@ impl Canned {
             edits: Mutex::new(std::collections::HashMap::new()),
             teams_of: Mutex::new(std::collections::HashMap::new()),
             ledger: Mutex::new(None),
+            details: Mutex::new(std::collections::HashMap::new()),
+            issues_asked: Mutex::new(Vec::new()),
         })
+    }
+
+    /// From now on `Issue` tells the issue `id` with `extra` (the members of an object) over what the
+    /// fixture says: its parent, its parts, what it is tied to.
+    pub(crate) fn set_detail(&self, id: &str, extra: serde_json::Value) {
+        self.details.lock().unwrap().insert(id.to_owned(), extra);
+    }
+
+    /// The ids `Issue` was asked for, in order.
+    pub(crate) fn issues_asked(&self) -> Vec<String> {
+        self.issues_asked.lock().unwrap().clone()
     }
 
     /// From now on each `IssueBatchUpdate` is written in `ledger` as it comes.
@@ -224,6 +241,11 @@ impl Canned {
             value["data"]["issueLabels"]["nodes"] = serde_json::json!([]);
         }
         if web {
+            // The team of the web has no cycles and does not estimate.
+            value["data"]["team"]["cyclesEnabled"] = serde_json::json!(false);
+            value["data"]["team"]["issueEstimationType"] = serde_json::json!("notUsed");
+            value["data"]["team"]["activeCycle"] = serde_json::Value::Null;
+            value["data"]["team"]["cycles"] = serde_json::json!({ "nodes": [] });
             value["data"]["team"]["id"] = serde_json::json!(team);
             for state in value["data"]["team"]["states"]["nodes"]
                 .as_array_mut()
@@ -311,10 +333,34 @@ impl Canned {
                 "team",
                 "project",
                 "cycle",
+                "estimate",
+                "dueDate",
                 "url",
                 "branchName",
             ] {
                 value["data"]["issue"][key] = node[key].clone();
+            }
+        } else if id == "issue-400" {
+            // The parent the fixture names: an issue the lists do not hold.
+            let issue = &mut value["data"]["issue"];
+            issue["id"] = serde_json::json!("issue-400");
+            issue["identifier"] = serde_json::json!("ACM-400");
+            issue["title"] = serde_json::json!("Billing limits per plan");
+            issue["url"] =
+                serde_json::json!("https://linear.app/acme/issue/ACM-400/billing-limits-per-plan");
+            issue["branchName"] = serde_json::Value::Null;
+            issue["state"] = option_of("states", "s-todo").unwrap();
+            issue["description"] = serde_json::json!("Everything about the limits of a plan.");
+            issue["comments"]["nodes"] = serde_json::json!([]);
+            issue["cycle"] = serde_json::Value::Null;
+            // Not the person's, as a parent seldom is: a change to it leaves My issues as it was.
+            issue["assignee"] = serde_json::Value::Null;
+            issue["parent"] = serde_json::Value::Null;
+            issue["inverseRelations"] = serde_json::json!({ "nodes": [] });
+        }
+        if let Some(extra) = self.details.lock().unwrap().get(id) {
+            for (key, member) in extra.as_object().into_iter().flatten() {
+                value["data"]["issue"][key] = member.clone();
             }
         }
         value.to_string()
@@ -365,6 +411,14 @@ impl Canned {
 /// of an issue has it. (`kind` is `states`, `labels`, `projects` or `members`.)
 fn option_of(kind: &str, id: &str) -> Option<serde_json::Value> {
     let options: serde_json::Value = serde_json::from_str(NEW_ISSUE_OPTIONS).unwrap();
+    if kind == "cycles" {
+        // The cycle that runs and the ones that come next, as a node of an issue has one.
+        let team = &options["data"]["team"];
+        return std::iter::once(&team["activeCycle"])
+            .chain(team["cycles"]["nodes"].as_array()?.iter())
+            .find(|cycle| cycle["id"] == id)
+            .cloned();
+    }
     let found = options["data"]["team"][kind]["nodes"]
         .as_array()?
         .iter()
@@ -407,6 +461,18 @@ fn edit_node(node: &mut serde_json::Value, input: &serde_json::Value) {
             .as_str()
             .and_then(|id| option_of("projects", id))
             .unwrap_or(serde_json::Value::Null);
+    }
+    if let Some(cycle) = input.get("cycleId") {
+        node["cycle"] = cycle
+            .as_str()
+            .and_then(|id| option_of("cycles", id))
+            .unwrap_or(serde_json::Value::Null);
+    }
+    if let Some(points) = input.get("estimate") {
+        node["estimate"] = points.clone();
+    }
+    if let Some(day) = input.get("dueDate") {
+        node["dueDate"] = day.clone();
     }
     let mut labels: Vec<serde_json::Value> = node["labels"]["nodes"]
         .as_array()
@@ -466,6 +532,7 @@ impl Transport for Canned {
                 "Issue" => {
                     let asked: serde_json::Value = serde_json::from_str(body).unwrap();
                     let id = asked["variables"]["id"].as_str().unwrap_or_default();
+                    self.issues_asked.lock().unwrap().push(id.to_owned());
                     match self.made_detail() {
                         Some(value) if value["data"]["issue"]["id"] == id => {
                             reply(200, &value.to_string())
@@ -4065,6 +4132,427 @@ fn the_bar_holds_fewer_values_in_a_narrower_pane_and_is_not_there_where_the_issu
     assert!(page.bounds("bar:state").is_none(), "{}", said(&page));
 }
 
+// --- Cycle, estimate, due date, and the issues round an issue ----------------------------------------------
+
+/// The day `days` from now, written `2026-11-15`: the day of the page's clock, which a test holds at no
+/// offset from UTC.
+fn day_in(days: u64) -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| since.as_secs());
+    let stamp = crate::work::handoff::stamp(now + days * 86_400);
+    format!("{}-{}-{}", &stamp[..4], &stamp[4..6], &stamp[6..8])
+}
+
+/// A day written `2026-11-15` as the chip of the issue says it: `Nov 15`.
+fn short(day: &str) -> String {
+    crate::model::time::short_date(&format!("{day}T00:00:00Z"))
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_issue_has_chips_for_its_cycle_estimate_and_due_date_and_each_menu_writes_its_one_field() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    open_the_controls(&mut page);
+    // The cycle it is in says its own; what it has not is a name, dim.
+    for (name, words) in [
+        ("panel-value:cycle", "Cycle 12"),
+        ("panel-value:estimate", "Estimate"),
+        ("panel-value:due", "Due date"),
+    ] {
+        assert!(
+            page.words_in(name).contains(&words.to_owned()),
+            "{name}: {}",
+            said(&page)
+        );
+    }
+    // The cycle: the one that runs, the next ones, and none; the cycle it is in is marked.
+    page.click("panel-value:cycle").expect("cycle");
+    assert_eq!(
+        menu_titles(&page),
+        [
+            "\u{2713} Cycle 12",
+            "Cycle 13",
+            "Cycle 14",
+            "Cycle 15",
+            "No cycle"
+        ]
+    );
+    page.pick_titled("Cycle 13").expect("Cycle 13");
+    changed(&linear, &mut page, 1);
+    assert_eq!(
+        linear.changed()[0],
+        serde_json::json!({ "ids": ["issue-412"], "input": { "cycleId": "c-13" } })
+    );
+    page.wait_for(WITHIN, |page| {
+        page.words_in("panel-value:cycle")
+            .contains(&"Cycle 13".to_owned())
+    })
+    .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    // The estimate (this team estimates in t-shirt sizes, which Linear is told as numbers), by its key.
+    let entries = menu_after(&mut page, "shift+e");
+    assert_eq!(
+        titles(&entries),
+        ["XS", "S", "M", "L", "XL", "\u{2713} No estimate"]
+    );
+    page.pick_titled("L").expect("L");
+    changed(&linear, &mut page, 2);
+    assert_eq!(
+        linear.changed()[1],
+        serde_json::json!({ "ids": ["issue-412"], "input": { "estimate": 5 } })
+    );
+    page.wait_for(WITHIN, |page| {
+        page.words_in("panel-value:estimate")
+            .contains(&"L".to_owned())
+    })
+    .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    // The due date, by its key: days from the person's today, sent as the day.
+    let entries = menu_after(&mut page, "shift+d");
+    assert_eq!(
+        titles(&entries),
+        [
+            "Today",
+            "Tomorrow",
+            "In 3 days",
+            "In a week",
+            "In 2 weeks",
+            "\u{2713} No due date"
+        ]
+    );
+    let before = day_in(7);
+    page.pick_titled("In a week").expect("In a week");
+    changed(&linear, &mut page, 3);
+    let after = day_in(7);
+    let sent = linear.changed()[2]["input"]["dueDate"]
+        .as_str()
+        .expect("a day")
+        .to_owned();
+    assert!(sent == before || sent == after, "{sent} is not {before}");
+    assert_eq!(linear.changed()[2]["ids"], serde_json::json!(["issue-412"]));
+    page.wait_for(WITHIN, |page| {
+        page.words_in("panel-value:due").contains(&short(&sent))
+    })
+    .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    // The day it is due is marked, and none takes it away.
+    let entries = menu_after(&mut page, "shift+d");
+    assert!(
+        titles(&entries).contains(&"\u{2713} In a week"),
+        "{entries:?}"
+    );
+    page.pick_titled("No due date").expect("No due date");
+    changed(&linear, &mut page, 4);
+    assert_eq!(
+        linear.changed()[3],
+        serde_json::json!({ "ids": ["issue-412"], "input": { "dueDate": null } })
+    );
+    page.wait_for(WITHIN, |page| {
+        page.words_in("panel-value:due")
+            .contains(&"Due date".to_owned())
+    })
+    .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    // No other field was sent with any of them.
+    for sent in linear.changed() {
+        assert_eq!(sent["input"].as_object().map(|input| input.len()), Some(1));
+    }
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_team_with_no_cycles_and_no_estimates_has_no_chip_no_menu_item_and_no_key_for_them() {
+    let linear = Canned::new(Mode::Fine);
+    linear.set_team_of("issue-412", "team-web", "WEB");
+    let session = session_over(&linear, Some("lin_api_test"), None);
+    let mut page = open(&session, WIDE, None, "ACM-412").expect("the page opens");
+    open_the_controls(&mut page);
+    for name in ["panel-value:cycle", "panel-value:estimate"] {
+        assert!(page.bounds(name).is_none(), "{name}: {}", said(&page));
+    }
+    // The due date needs nothing of the team.
+    assert!(page.bounds("panel-value:due").is_some(), "{}", said(&page));
+    page.right_click("row:i:issue-412").expect("a right press");
+    page.wait_for(WITHIN, |page| page.menu().is_some())
+        .unwrap_or_else(|why| panic!("the menu: {why:?}: {}", said(&page)));
+    let titles = open_menu_titles(&page);
+    assert!(titles.iter().any(|title| title == "Due date"), "{titles:?}");
+    assert!(titles.iter().any(|title| title == "Project"), "{titles:?}");
+    for words in ["Cycle", "Estimate"] {
+        assert!(
+            !titles.iter().any(|title| title == words),
+            "{words}: {titles:?}"
+        );
+    }
+    page.press("escape").expect("escape");
+    // The keys of what there is not do nothing.
+    for key in ["shift+c", "shift+e"] {
+        page.press(key).expect("the key");
+        page.advance(0.4).expect("a moment");
+        assert!(
+            page.menu().is_none(),
+            "{key} opened a menu: {}",
+            said(&page)
+        );
+    }
+    // The bar keeps its Cycle where it is, and it cannot be pressed for this team.
+    page.press("escape").expect("escape");
+    page.press("x").expect("x");
+    page.wait_for(WITHIN, |page| page.says("1 selected"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    // (A button that cannot be pressed has no node of its own: the bar's words say it is there.)
+    assert!(
+        page.words_in("selection-bar").contains(&"Cycle".to_owned()),
+        "{}",
+        said(&page)
+    );
+    assert!(!pressable(&page, "bar:cycle"), "{}", said(&page));
+    assert!(pressable(&page, "bar:state"), "{}", said(&page));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn issues_of_two_teams_say_why_the_cycle_cannot_change_and_the_due_date_can() {
+    let linear = Canned::new(Mode::Fine);
+    linear.set_team_of("issue-398", "team-web", "WEB");
+    let session = session_over(&linear, Some("lin_api_test"), None);
+    let mut page = open(&session, WIDE, None, "ACM-412").expect("the page opens");
+    page.press("shift+down").expect("shift+down");
+    page.wait_for(WITHIN, |page| page.says("2 selected"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    for (key, head) in [
+        ("shift+c", "Cycle of 2 issues"),
+        ("shift+e", "Estimate of 2 issues"),
+    ] {
+        let entries = menu_after(&mut page, key);
+        assert_eq!(
+            entries,
+            [
+                (head.to_owned(), false),
+                ("The issues are of more than one team".to_owned(), false)
+            ]
+        );
+        page.press("escape").expect("escape");
+    }
+    let entries = menu_after(&mut page, "shift+d");
+    assert_eq!(entries[0], ("Due date of 2 issues".to_owned(), false));
+    assert_eq!(entries.len(), 7, "{entries:?}");
+    let before = day_in(1);
+    page.pick_titled("Tomorrow").expect("Tomorrow");
+    changed(&linear, &mut page, 1);
+    let after = day_in(1);
+    let sent = linear.changed()[0].clone();
+    assert_eq!(sent["ids"], serde_json::json!(["issue-412", "issue-398"]));
+    let day = sent["input"]["dueDate"].as_str().expect("a day");
+    assert!(day == before || day == after, "{day} is not {before}");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_bar_has_cycle_as_its_sixth_value_where_the_page_is_wide() {
+    let (_linear, _session, mut page) = open_lists(WIDE);
+    page.press("x").expect("x");
+    page.wait_for(WITHIN, |page| page.says("1 selected"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    page.wait_for(WITHIN, |page| pressable(page, "bar:cycle"))
+        .unwrap_or_else(|why| panic!("the bar's Cycle: {why:?}: {}", said(&page)));
+    let order: Vec<f32> = [
+        "bar:state",
+        "bar:priority",
+        "bar:assignee",
+        "bar:labels",
+        "bar:project",
+        "bar:cycle",
+    ]
+    .iter()
+    .map(|name| {
+        page.bounds(name)
+            .unwrap_or_else(|| panic!("{name}: {}", said(&page)))
+            .x
+    })
+    .collect();
+    assert!(order.windows(2).all(|pair| pair[0] < pair[1]), "{order:?}");
+    // Its key is written on it, and it opens the menu of the cycles.
+    assert!(
+        page.words_in("bar:cycle")
+            .iter()
+            .any(|word| word.contains('C'))
+    );
+    page.click("bar:cycle").expect("cycle");
+    assert_eq!(menu_titles(&page)[0], "\u{2713} Cycle 12");
+    page.press("escape").expect("escape");
+    // A narrower pane has no room for it.
+    let (_linear, _session, mut page) = open_lists((900.0, 600.0));
+    page.press("x").expect("x");
+    page.wait_for(WITHIN, |page| page.says("1 selected"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    assert!(page.bounds("bar:cycle").is_none(), "{}", said(&page));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_detail_tells_the_parent_and_what_blocks_the_issue_and_a_press_opens_that_issue() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    open_the_controls(&mut page);
+    for words in [
+        "Parent",
+        "ACM-400",
+        "Billing limits per plan",
+        "Blocked by",
+        "ACM-389",
+        "Cache the pricing table at the edge",
+    ] {
+        assert!(page.says(words), "{words}: {}", said(&page));
+    }
+    // A press on the parent, which the lists do not hold, opens it as it is, and Work on stays one.
+    page.click("near:issue-400").expect("the parent");
+    page.wait_for(WITHIN, |page| {
+        page.says("Everything about the limits of a plan.")
+    })
+    .unwrap_or_else(|why| panic!("the parent comes: {why:?}: {}", said(&page)));
+    assert!(linear.issues_asked().contains(&"issue-400".to_owned()));
+    assert_eq!(work_buttons(&page), 1, "{}", said(&page));
+    // The cursor is where it was, and the issue stays open until the cursor moves.
+    cursor_on(&mut page, "ACM-412");
+    page.advance(0.4).expect("a moment");
+    assert!(
+        page.says("Everything about the limits of a plan."),
+        "{}",
+        said(&page)
+    );
+    // What the keys do is of the issue that is open, as its buttons are, and not of the one the cursor
+    // was left on: the link, the copy and a change all are the parent's.
+    page.wait_for(WITHIN, |page| pressable(page, "panel-value:state"))
+        .unwrap_or_else(|why| panic!("its controls: {why:?}: {}", said(&page)));
+    let url = "https://linear.app/acme/issue/ACM-400/billing-limits-per-plan";
+    page.press("shift+o").expect("shift and o");
+    page.wait_for(WITHIN, |page| page.links().len() == 1)
+        .unwrap_or_else(|why| panic!("the key opens a link: {why:?}: {}", said(&page)));
+    assert_eq!(page.links()[0], url);
+    page.click("open-linear").expect("the button");
+    page.wait_for(WITHIN, |page| page.links().len() == 2)
+        .unwrap_or_else(|why| panic!("the button opens a link: {why:?}: {}", said(&page)));
+    assert_eq!(page.links()[1], url);
+    page.press("mod+shift+i").expect("the copy");
+    page.wait_for(WITHIN, |page| page.pasteboard() == Some("ACM-400"))
+        .unwrap_or_else(|why| panic!("the identifier: {why:?}: {:?}", page.pasteboard()));
+    menu_after(&mut page, "shift+d");
+    page.pick_titled("Tomorrow").expect("Tomorrow");
+    changed(&linear, &mut page, 1);
+    assert_eq!(linear.changed()[0]["ids"], serde_json::json!(["issue-400"]));
+    // What came back for an issue the list never held does not put it in the list.
+    assert!(page.bounds("row:i:issue-400").is_none(), "{}", said(&page));
+    let button = page.words_in("lists");
+    assert!(button.iter().any(|word| word == "14"), "{button:?}");
+    cursor_on(&mut page, "ACM-412");
+    page.press("down").expect("down");
+    page.wait_for(WITHIN, |page| {
+        !page.says("Everything about the limits of a plan.")
+    })
+    .unwrap_or_else(|why| panic!("the cursor's issue is back: {why:?}: {}", said(&page)));
+    // A press on one the list holds is the cursor going to it, and the issue open follows.
+    page.press("up").expect("up");
+    cursor_on(&mut page, "ACM-412");
+    page.wait_for(WITHIN, |page| page.bounds("near:issue-389").is_some())
+        .unwrap_or_else(|why| panic!("the surroundings: {why:?}: {}", said(&page)));
+    page.click("near:issue-389").expect("what blocks it");
+    cursor_on(&mut page, "ACM-389");
+    page.wait_for(WITHIN, |page| {
+        page.words_in("panel-value:state")
+            .contains(&"In Review".to_owned())
+    })
+    .unwrap_or_else(|why| panic!("the issue opens: {why:?}: {}", said(&page)));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn tab_brings_the_keyboard_to_a_neighbour_and_enter_opens_it() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    open_the_controls(&mut page);
+    // Tab goes by the order the page is written in, from nowhere to the first: as many presses as the
+    // place of the parent's line in that order.
+    let name = pencere_view::Id::named("near:issue-400");
+    let place = page
+        .laid()
+        .expect("laid out")
+        .focus_order()
+        .iter()
+        .position(|id| *id == name)
+        .unwrap_or_else(|| panic!("the line is not one the keyboard reaches: {}", said(&page)));
+    for _ in 0..=place {
+        page.press("tab").expect("tab");
+    }
+    page.press("enter").expect("enter");
+    page.wait_for(WITHIN, |page| {
+        page.says("Everything about the limits of a plan.")
+    })
+    .unwrap_or_else(|why| panic!("Enter on the line opens it: {why:?}: {}", said(&page)));
+    assert!(linear.issues_asked().contains(&"issue-400".to_owned()));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_detail_tells_sub_issues_and_each_tie_under_its_words_said_once() {
+    let linear = Canned::new(Mode::Fine);
+    let neighbor = |n: u32, title: &str, state: &str, kind: &str| {
+        serde_json::json!({
+            "id": format!("issue-{n}"), "identifier": format!("ACM-{n}"), "title": title,
+            "state": { "id": "s", "name": state, "type": kind, "position": 1.0 }
+        })
+    };
+    linear.set_detail(
+        "issue-412",
+        serde_json::json!({
+            "children": { "nodes": [
+                neighbor(413, "Write the limiter", "Done", "completed"),
+                neighbor(414, "Show the limit on the usage page", "Todo", "unstarted"),
+            ] },
+            "relations": { "nodes": [
+                { "type": "blocks", "relatedIssue": neighbor(405, "Webhook retries", "In Progress", "started") },
+                { "type": "related", "relatedIssue": neighbor(377, "The 3.0 migration guide", "Todo", "unstarted") },
+                { "type": "related", "relatedIssue": neighbor(371, "The usage page", "In Review", "started") },
+                { "type": "duplicate", "relatedIssue": neighbor(350, "Limit the API", "Canceled", "canceled") },
+                { "type": "similar", "relatedIssue": neighbor(349, "Not told", "Todo", "unstarted") },
+            ] },
+        }),
+    );
+    let session = session_over(&linear, Some("lin_api_test"), None);
+    let mut page = open(&session, WIDE, None, "ACM-412").expect("the page opens");
+    open_the_controls(&mut page);
+    page.wait_for(WITHIN, |page| page.says("Write the limiter"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    let count =
+        |page: &Page, label: &str| page.words().iter().filter(|word| **word == label).count();
+    assert_eq!(count(&page, "Sub-issues"), 1, "{}", said(&page));
+    assert_eq!(count(&page, "Related"), 1, "{}", said(&page));
+    for label in ["Blocks", "Blocked by", "Duplicate of", "Parent"] {
+        assert_eq!(count(&page, label), 1, "{label}: {}", said(&page));
+    }
+    for words in [
+        "ACM-413", "ACM-414", "ACM-405", "ACM-377", "ACM-371", "ACM-350", "ACM-389",
+    ] {
+        assert!(page.says(words), "{words}: {}", said(&page));
+    }
+    assert!(!page.says("ACM-349"), "{}", said(&page));
+    // In the order the page tells them: the parent, the parts, then blocks, blocked by, related,
+    // duplicate of.
+    let order: Vec<f32> = [
+        "near:issue-400",
+        "near:issue-413",
+        "near:issue-414",
+        "near:issue-405",
+        "near:issue-389",
+        "near:issue-377",
+        "near:issue-371",
+        "near:issue-350",
+    ]
+    .iter()
+    .map(|name| {
+        page.bounds(name)
+            .unwrap_or_else(|| panic!("{name}: {}", said(&page)))
+            .y
+    })
+    .collect();
+    assert!(order.windows(2).all(|pair| pair[0] < pair[1]), "{order:?}");
+}
+
 // --- The right button and the copies ---------------------------------------------------------------------
 
 /// The titles of the entries of the host's menu that is open.
@@ -4098,6 +4586,9 @@ fn a_right_press_on_a_line_opens_the_menu_of_that_issue_and_one_in_the_selection
         "Assign to me",
         "Labels",
         "Project",
+        "Cycle",
+        "Estimate",
+        "Due date",
         "Rename",
         "Copy ID",
         "Copy branch name",

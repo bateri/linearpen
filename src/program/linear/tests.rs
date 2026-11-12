@@ -454,6 +454,111 @@ fn the_choices_are_the_open_states_in_order_the_labels_without_groups_the_projec
     assert_eq!(got.default_state.as_deref(), Some("s-todo"));
 }
 
+/// The options of a team that has the given extra members of the wire (`"cyclesEnabled":true`, ...).
+fn options_with(extra: &str) -> Options {
+    let body = format!(
+        r#"{{"data":{{"team":{{"id":"team-acm","defaultIssueState":null,"states":{{"nodes":[]}},
+        "labels":{{"nodes":[]}},"projects":{{"nodes":[]}},"members":{{"nodes":[]}}{extra}}},
+        "issueLabels":{{"nodes":[]}}}}}}"#
+    );
+    asked_options(&body)
+}
+
+#[test]
+fn a_team_with_cycles_offers_the_active_one_then_the_next_six_and_a_team_without_offers_none() {
+    let cycle = |id: &str, number: u32, name: &str| {
+        format!(r#"{{"id":"{id}","number":{number}.0,"name":{name}}}"#)
+    };
+    let future: Vec<String> = [30, 26, 25, 27, 28, 29, 31, 32]
+        .into_iter()
+        .map(|n| cycle(&format!("c-{n}"), n, "null"))
+        .collect();
+    let on = options_with(&format!(
+        r#","cyclesEnabled":true,"activeCycle":{},"cycles":{{"nodes":[{},{}]}}"#,
+        cycle("c-24", 24, r#""Spring""#),
+        cycle("c-24", 24, r#""Spring""#),
+        future.join(",")
+    ));
+    assert!(on.cycles_enabled);
+    let told: Vec<(u32, bool)> = on.cycles.iter().map(|c| (c.number, c.active)).collect();
+    // The active one first (once), then by number; no more than six that are next.
+    assert_eq!(
+        told,
+        [
+            (24, true),
+            (25, false),
+            (26, false),
+            (27, false),
+            (28, false),
+            (29, false),
+            (30, false)
+        ]
+    );
+    assert_eq!(on.cycles[0].name.as_deref(), Some("Spring"));
+    assert_eq!(on.cycles[1].id, "c-25");
+
+    let off = options_with(
+        r#","cyclesEnabled":false,"activeCycle":{"id":"c-1","number":1,"name":null},"cycles":{"nodes":[]}"#,
+    );
+    assert!(!off.cycles_enabled && off.cycles.is_empty());
+    // A team the wire says nothing of has none.
+    let silent = asked_options(OPTIONS);
+    assert!(!silent.cycles_enabled && silent.cycles.is_empty() && silent.estimates.is_empty());
+}
+
+#[test]
+fn the_estimates_of_a_team_are_its_scale_with_t_shirts_sent_as_numbers_and_zero_only_where_allowed()
+{
+    let scale = |kind: &str, zero: bool, extended: bool| -> Vec<(u32, String)> {
+        options_with(&format!(
+            r#","issueEstimationType":"{kind}","issueEstimationAllowZero":{zero},"issueEstimationExtended":{extended}"#
+        ))
+        .estimates
+        .into_iter()
+        .map(|e| (e.value, e.label))
+        .collect()
+    };
+    let plain = |values: &[u32]| -> Vec<(u32, String)> {
+        values.iter().map(|v| (*v, v.to_string())).collect()
+    };
+    assert_eq!(scale("exponential", false, false), plain(&[1, 2, 4, 8, 16]));
+    assert_eq!(
+        scale("exponential", false, true),
+        plain(&[1, 2, 4, 8, 16, 32, 64])
+    );
+    assert_eq!(scale("fibonacci", false, false), plain(&[1, 2, 3, 5, 8]));
+    assert_eq!(
+        scale("fibonacci", false, true),
+        plain(&[1, 2, 3, 5, 8, 13, 21])
+    );
+    assert_eq!(scale("linear", false, false), plain(&[1, 2, 3, 4, 5]));
+    assert_eq!(scale("linear", false, true), plain(&[1, 2, 3, 4, 5, 6, 7]));
+    assert_eq!(scale("fibonacci", true, false), plain(&[0, 1, 2, 3, 5, 8]));
+    // A t-shirt size is written as the Fibonacci number it stands for.
+    let shirts = |values: &[(u32, &str)]| -> Vec<(u32, String)> {
+        values.iter().map(|(v, l)| (*v, (*l).to_owned())).collect()
+    };
+    assert_eq!(
+        scale("tShirt", false, false),
+        shirts(&[(1, "XS"), (2, "S"), (3, "M"), (5, "L"), (8, "XL")])
+    );
+    assert_eq!(
+        scale("tShirt", false, true),
+        shirts(&[
+            (1, "XS"),
+            (2, "S"),
+            (3, "M"),
+            (5, "L"),
+            (8, "XL"),
+            (13, "XXL"),
+            (21, "XXXL")
+        ])
+    );
+    // Not estimating, and a way of estimating that is not known: no estimates, so no control.
+    assert!(scale("notUsed", true, true).is_empty());
+    assert!(scale("by-the-moon", false, false).is_empty());
+}
+
 #[test]
 fn the_state_a_new_issue_begins_in_is_the_teams_default_else_the_first_unstarted_else_the_first_backlog()
  {

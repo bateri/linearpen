@@ -4,6 +4,19 @@
 
 ### Added
 
+- **Cycle, estimate and due date.** The issue open has a button for each (`Cycle 12`, `M`, `Nov 15`,
+  or their names, dim, where it has none), and the keys `Shift C`, `Shift E` and `Shift D` change
+  them for the issue under the cursor or for all that are selected; the bar of the selection has
+  Cycle as its sixth value in a wide pane, and a right press lists all three. The cycle menu has the
+  cycle that runs, the next six and `No cycle`; the estimate menu is the scale of the team (exponential,
+  Fibonacci, linear or t-shirt sizes, which are sent as Fibonacci numbers; 0 only where the team
+  allows it) and `No estimate`; the due date menu is Today, Tomorrow, In 3 days, In a week, In 2
+  weeks and `No due date`, by your own day. A team with no cycles, or that does not estimate, has no
+  such button or menu item. `change` takes `cycle`, `estimate` and `dueDate`, each alone.
+- **The issues round an issue.** Under its values the issue open lists its parent, its sub-issues and
+  what it is tied to (`Blocks`, `Blocked by`, `Related`, `Duplicate of`, `Duplicated by`), each a line
+  that opens that issue (beside the list, as it is, where the list does not hold it); the file Work
+  on writes for the agent tells them too, under the same frame. They are read only.
 - **The head of the page has fixed places.** The list button (the list, how many it has and a
   chevron) opens a card of lists, which for now holds My issues and All issues (`g`, or `1` and
   `2`); the filter says how many it lets through (`4 of 14`) inside itself, and Refresh and New

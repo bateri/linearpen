@@ -1,0 +1,168 @@
+{
+ "data": {
+  "issue": {
+   "id": "issue-412",
+   "identifier": "ACM-412",
+   "title": "Add rate limiting to the public API",
+   "priority": 2.0,
+   "updatedAt": "2026-11-09T14:20:00.000Z",
+   "url": "https://linear.app/acme/issue/ACM-412/add-rate-limiting-to-the-public-api",
+   "branchName": "ada/acm-412-add-rate-limiting-to-the-public-api",
+   "state": {
+    "id": "s-prog",
+    "name": "In Progress",
+    "type": "started",
+    "position": 2.0
+   },
+   "labels": {
+    "nodes": [
+     {
+      "id": "l-api",
+      "name": "api",
+      "color": "#3e63dd"
+     }
+    ]
+   },
+   "team": {
+    "id": "team-acm",
+    "key": "ACM"
+   },
+   "cycle": {
+    "id": "c-12",
+    "number": 12
+   },
+   "project": null,
+   "estimate": null,
+   "dueDate": null,
+   "parent": {
+    "id": "issue-400",
+    "identifier": "ACM-400",
+    "title": "Billing limits per plan",
+    "state": {
+     "id": "s-todo",
+     "name": "Todo",
+     "type": "unstarted",
+     "position": 1.0
+    }
+   },
+   "children": {
+    "nodes": [
+     {
+      "id": "issue-413",
+      "identifier": "ACM-413",
+      "title": "Write the limiter",
+      "state": {
+       "id": "s-x",
+       "name": "Done",
+       "type": "completed",
+       "position": 4.0
+      }
+     },
+     {
+      "id": "issue-414",
+      "identifier": "ACM-414",
+      "title": "Show the limit on the usage page",
+      "state": {
+       "id": "s-x",
+       "name": "Todo",
+       "type": "unstarted",
+       "position": 1.0
+      }
+     }
+    ]
+   },
+   "relations": {
+    "nodes": [
+     {
+      "type": "blocks",
+      "relatedIssue": {
+       "id": "issue-405",
+       "identifier": "ACM-405",
+       "title": "Webhook retries ignore the backoff setting",
+       "state": {
+        "id": "s-x",
+        "name": "In Progress",
+        "type": "started",
+        "position": 2.0
+       }
+      }
+     },
+     {
+      "type": "related",
+      "relatedIssue": {
+       "id": "issue-377",
+       "identifier": "ACM-377",
+       "title": "Write the 3.0 migration guide",
+       "state": {
+        "id": "s-x",
+        "name": "Todo",
+        "type": "unstarted",
+        "position": 1.0
+       }
+      }
+     },
+     {
+      "type": "similar",
+      "relatedIssue": {
+       "id": "issue-349",
+       "identifier": "ACM-349",
+       "title": "Not told",
+       "state": {
+        "id": "s-x",
+        "name": "Todo",
+        "type": "unstarted",
+        "position": 1.0
+       }
+      }
+     }
+    ]
+   },
+   "inverseRelations": {
+    "nodes": [
+     {
+      "type": "blocks",
+      "issue": {
+       "id": "issue-389",
+       "identifier": "ACM-389",
+       "title": "Cache the pricing table at the edge",
+       "state": {
+        "id": "s-review",
+        "name": "In Review",
+        "type": "started",
+        "position": 3.0
+       }
+      }
+     }
+    ]
+   },
+   "assignee": {
+    "id": "u-ada",
+    "displayName": "Ada",
+    "isMe": true
+   },
+   "description": "The public API has no limit per key. On Nov 3 one customer\u2019s import script took the read replicas down.\n\n**What we want**\n\n- A limit per API key, 600 requests a minute unless the plan says more\n- `429` with a `Retry-After` header\n- The limit shown on the usage page (ACM-371)\n",
+   "comments": {
+    "nodes": [
+     {
+      "body": "Redis is already there for the sessions. A sliding window in a Lua script would do.",
+      "createdAt": "2026-11-06T09:12:00.000Z",
+      "user": {
+       "displayName": "Deniz"
+      }
+     },
+     {
+      "body": "Keep a fallback for when Redis is down. We cannot fail closed on reads.",
+      "createdAt": "2026-11-08T16:40:00.000Z",
+      "user": {
+       "displayName": "Mert"
+      }
+     }
+    ],
+    "pageInfo": {
+     "hasNextPage": false,
+     "endCursor": null
+    }
+   }
+  }
+ }
+}

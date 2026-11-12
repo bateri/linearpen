@@ -7,8 +7,8 @@ use serde::Serialize;
 
 use super::types::Priority;
 
-/// One field of an issue, given a new value. Linear's ids are what name a state, a person, a label
-/// or a project.
+/// One field of an issue, given a new value. Linear's ids are what name a state, a person, a label,
+/// a project or a cycle.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Change {
     /// The workflow state, by id.
@@ -22,6 +22,13 @@ pub enum Change {
     RemoveLabel(String),
     /// Put in the project with this id, or in none.
     Project(Option<String>),
+    /// Put in the cycle with this id, or in none.
+    Cycle(Option<String>),
+    /// The estimate in points (what the team's scale sends: a t-shirt size is its Fibonacci number),
+    /// or none.
+    Estimate(Option<u32>),
+    /// The day it is due, written `2026-11-15`, or none.
+    DueDate(Option<String>),
     Title(String),
 }
 
@@ -39,6 +46,30 @@ impl Change {
         (!one_line.is_empty()).then_some(Self::Title(one_line))
     }
 
+    /// The due date `text` is: a day written as year, month and day (`2026-11-15`) that is on the
+    /// calendar, or nothing where it is not one.
+    #[must_use]
+    pub fn due_date(text: &str) -> Option<Self> {
+        let mut parts = text.split('-');
+        let (year, month, day) = (parts.next()?, parts.next()?, parts.next()?);
+        let whole = |part: &str, width: usize| {
+            (part.len() == width && part.bytes().all(|b| b.is_ascii_digit()))
+                .then(|| part.parse::<u32>().ok())
+                .flatten()
+        };
+        let (year, month, day) = (whole(year, 4)?, whole(month, 2)?, whole(day, 2)?);
+        let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+        let last = match month {
+            1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+            4 | 6 | 9 | 11 => 30,
+            2 if leap => 29,
+            2 => 28,
+            _ => return None,
+        };
+        ((1..=last).contains(&day) && parts.next().is_none())
+            .then(|| Self::DueDate(Some(text.to_owned())))
+    }
+
     /// What is sent of the change: its one field.
     #[must_use]
     pub fn input(&self) -> Input<'_> {
@@ -50,6 +81,9 @@ impl Change {
             Self::AddLabel(id) => input.added_label_ids = vec![id],
             Self::RemoveLabel(id) => input.removed_label_ids = vec![id],
             Self::Project(project) => input.project_id = Some(project.as_deref()),
+            Self::Cycle(cycle) => input.cycle_id = Some(cycle.as_deref()),
+            Self::Estimate(points) => input.estimate = Some(*points),
+            Self::DueDate(day) => input.due_date = Some(day.as_deref()),
             Self::Title(title) => input.title = Some(title),
         }
         input
@@ -57,7 +91,8 @@ impl Change {
 }
 
 /// The `input` of `IssueBatchUpdate`. Only a `Change` makes one (its members are not public), and
-/// what is not changed is not in it; a person given to no one, or a project left, is a `null`.
+/// what is not changed is not in it; a person given to no one, or a project, a cycle, an estimate or a
+/// due date taken away, is a `null`.
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Input<'a> {
@@ -73,6 +108,12 @@ pub struct Input<'a> {
     removed_label_ids: Vec<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     project_id: Option<Option<&'a str>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cycle_id: Option<Option<&'a str>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    estimate: Option<Option<u32>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    due_date: Option<Option<&'a str>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     title: Option<&'a str>,
 }
@@ -110,6 +151,19 @@ mod tests {
                 json!({"projectId": "p-1"}),
             ),
             (Change::Project(None), json!({"projectId": null})),
+            (
+                Change::Cycle(Some("c-24".into())),
+                json!({"cycleId": "c-24"}),
+            ),
+            (Change::Cycle(None), json!({"cycleId": null})),
+            (Change::Estimate(Some(5)), json!({"estimate": 5})),
+            (Change::Estimate(Some(0)), json!({"estimate": 0})),
+            (Change::Estimate(None), json!({"estimate": null})),
+            (
+                Change::DueDate(Some("2026-11-15".into())),
+                json!({"dueDate": "2026-11-15"}),
+            ),
+            (Change::DueDate(None), json!({"dueDate": null})),
             (Change::Title("New".into()), json!({"title": "New"})),
         ]
     }
@@ -143,6 +197,34 @@ mod tests {
         let code = code.to_ascii_lowercase();
         for word in ["description:", "team_id", "teamid"] {
             assert!(!code.contains(word), "change.rs has {word}");
+        }
+    }
+
+    #[test]
+    fn a_due_date_is_a_day_of_the_calendar_written_as_year_month_day() {
+        assert_eq!(
+            Change::due_date("2026-11-15"),
+            Some(Change::DueDate(Some("2026-11-15".into())))
+        );
+        assert!(Change::due_date("2028-02-29").is_some());
+        for bad in [
+            "",
+            "tomorrow",
+            "2026-11",
+            "2026-11-15-1",
+            "2026-13-01",
+            "2026-00-10",
+            "2026-11-31",
+            "2027-02-29",
+            "2026-11-00",
+            "26-11-15",
+            "2026/11/15",
+            "2026-1-5",
+            "2026-11-15T00:00",
+            "+026-11-15",
+            " 2026-11-15",
+        ] {
+            assert_eq!(Change::due_date(bad), None, "{bad:?}");
         }
     }
 

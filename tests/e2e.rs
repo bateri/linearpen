@@ -144,6 +144,17 @@ fn the_issue_call_brings_the_description_and_the_comments_oldest_first() {
     assert_eq!(comments[1]["author"], "Mert");
     assert_eq!(comments[1]["at"], "Nov 8");
     assert_eq!(issue["more"], false);
+    // Where it is, and what is round it: the cycle, the issue it is a part of, and what blocks it.
+    assert_eq!(issue["cycleId"], "c-12");
+    assert_eq!(issue["cycle"], "Cycle 12");
+    assert!(issue["estimate"].is_null() && issue["dueDate"].is_null());
+    assert_eq!(issue["parent"]["identifier"], "ACM-400");
+    assert_eq!(issue["parent"]["id"], "issue-400");
+    assert_eq!(issue["parent"]["title"], "Billing limits per plan");
+    assert_eq!(issue["children"], json!([]));
+    assert_eq!(issue["ties"][0]["label"], "Blocked by");
+    assert_eq!(issue["ties"][0]["issue"]["identifier"], "ACM-389");
+    assert_eq!(issue["ties"][0]["issue"]["state"]["name"], "In Review");
     assert!(heard[1].failed("bad-params"), "{:?}", heard[1]);
     assert!(heard[2].failed("bad-params"), "{:?}", heard[2]);
     // The first call asked Linear once with the id as a variable; the key is not in what came back.
@@ -306,6 +317,17 @@ fn an_agent_is_started_in_a_pane_that_is_given_the_file_of_the_issue_and_not_its
     );
     assert!(file.contains("**What we want**"), "{file}");
     assert!(file.contains("Deniz"), "{file}");
+    // What is round the issue is in the file, under the frame, a line each.
+    let frame = file.find("written by other people").unwrap();
+    for part in [
+        "### Parent\n\n- ACM-400: Billing limits per plan (Todo)\n",
+        "### Relations\n\n- Blocked by ACM-389: Cache the pricing table at the edge (In Review)\n",
+    ] {
+        assert!(
+            file.find(part).is_some_and(|at| at > frame),
+            "{part}: {file}"
+        );
+    }
     assert!(!file.contains(common::KEY), "the key is not in the file");
     // bateri was asked for a pane to the right, in the folder the pen began in, with the program
     // after the dashes: its prompt is the pen's own sentence, names the file and is not the issue's
@@ -341,6 +363,32 @@ fn an_agent_is_started_in_a_pane_that_is_given_the_file_of_the_issue_and_not_its
             .any(|word| word.contains("--focus") || word.contains(common::KEY)),
         "{call:?}"
     );
+}
+
+#[test]
+fn the_file_tells_the_parent_the_sub_issues_and_the_ties_of_each_kind_under_the_frame() {
+    let home = Home::new();
+    let heard = home.ask(
+        &in_bateri()
+            .env("STANDIN_ISSUE", "family")
+            .call("start", hand("issue-412")),
+    );
+    let context = std::path::PathBuf::from(heard[0].result()["context"].as_str().unwrap());
+    let file = std::fs::read_to_string(&context).unwrap();
+    let frame = file.find("written by other people").unwrap();
+    for part in [
+        "### Parent\n\n- ACM-400: Billing limits per plan (Todo)\n",
+        "### Sub-issues\n\n- ACM-413: Write the limiter (Done)\n- ACM-414: Show the limit on the usage page (Todo)\n",
+        "### Relations\n\n- Blocks ACM-405: Webhook retries ignore the backoff setting (In Progress)\n- Blocked by ACM-389: Cache the pricing table at the edge (In Review)\n- Related ACM-377: Write the 3.0 migration guide (Todo)\n",
+    ] {
+        assert!(
+            file.find(part).is_some_and(|at| at > frame),
+            "{part}: {file}"
+        );
+    }
+    // A tie of a kind the program does not know is left out, and the sections come before the text.
+    assert!(!file.contains("ACM-349"), "{file}");
+    assert!(file.find("### Relations").unwrap() < file.find("### Description").unwrap());
 }
 
 #[test]
@@ -744,6 +792,44 @@ fn new_options_tell_the_teams_and_the_choices_of_one_and_a_new_draft_id() {
     let members = first["members"].as_array().unwrap();
     assert_eq!(members.len(), 2, "the one who has left is not offered");
     assert_eq!(members[0]["me"], true);
+    // What an issue of the team can be put in: the cycle that runs and the next ones, and the scale it
+    // estimates by (t-shirt sizes, which are sent as numbers).
+    assert_eq!(first["cyclesEnabled"], true);
+    let cycles: Vec<(&str, bool)> = first["cycles"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|cycle| (cycle["label"].as_str().unwrap(), cycle["active"] == true))
+        .collect();
+    assert_eq!(
+        cycles,
+        [
+            ("Cycle 12", true),
+            ("Cycle 13", false),
+            ("Cycle 14", false),
+            ("Cycle 15", false)
+        ]
+    );
+    assert_eq!(first["cycles"][1]["id"], "c-13");
+    let estimates: Vec<(u64, &str)> = first["estimates"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|estimate| {
+            (
+                estimate["value"].as_u64().unwrap(),
+                estimate["label"].as_str().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        estimates,
+        [(1, "XS"), (2, "S"), (3, "M"), (5, "L"), (8, "XL")]
+    );
+    // The team of the web has no cycles and does not estimate.
+    assert_eq!(heard[1].result()["cyclesEnabled"], false);
+    assert_eq!(heard[1].result()["cycles"], json!([]));
+    assert_eq!(heard[1].result()["estimates"], json!([]));
     // A team named by its key; one that is not there is the first; the rest is refused.
     assert_eq!(heard[1].result()["team"], "team-web");
     assert_eq!(heard[2].result()["team"], "team-acm");
@@ -963,6 +1049,52 @@ fn change_sends_the_one_mutation_once_with_the_key_on_stdin_alone_and_the_lists_
         "the issue that is done is not in the list: {last}"
     );
     assert!(!log.contains(KEY), "the key is not in what the page heard");
+}
+
+#[test]
+fn the_cycle_the_estimate_and_the_due_date_are_each_sent_alone_and_taken_away_by_null() {
+    let home = Home::new();
+    let heard = home.ask(
+        &keyed()
+            .call("change", json!({ "ids": [CHANGED], "cycle": "c-13" }))
+            .call("change", json!({ "ids": [CHANGED], "estimate": 5 }))
+            .call(
+                "change",
+                json!({ "ids": [CHANGED], "dueDate": "2026-11-15" }),
+            )
+            .call("change", json!({ "ids": [CHANGED], "cycle": null }))
+            .call("change", json!({ "ids": [CHANGED], "estimate": null }))
+            .call("change", json!({ "ids": [CHANGED], "dueDate": null }))
+            // What is not a day, or a count of points, is refused before anything is sent.
+            .call("change", json!({ "ids": [CHANGED], "dueDate": "soon" }))
+            .call("change", json!({ "ids": [CHANGED], "estimate": 2.5 })),
+    );
+    for (n, answer) in heard[..6].iter().enumerate() {
+        assert_eq!(
+            answer.result()["issues"][0]["id"],
+            CHANGED,
+            "{n}: {answer:?}"
+        );
+    }
+    assert!(heard[6].failed("bad-params"), "{:?}", heard[6]);
+    assert!(heard[7].failed("bad-params"), "{:?}", heard[7]);
+    let sent = asked_of(&home, "IssueBatchUpdate");
+    assert_eq!(sent.len(), 6, "{:?}", home.calls());
+    // The input of each is its one field, and the last thing of the request (as it is on the wire).
+    for (call, input) in [
+        (&sent[0], r#"{\"cycleId\":\"c-13\"}"#),
+        (&sent[1], r#"{\"estimate\":5}"#),
+        (&sent[2], r#"{\"dueDate\":\"2026-11-15\"}"#),
+        (&sent[3], r#"{\"cycleId\":null}"#),
+        (&sent[4], r#"{\"estimate\":null}"#),
+        (&sent[5], r#"{\"dueDate\":null}"#),
+    ] {
+        let tail = format!(r#"\"input\":{input}}}}}"#);
+        assert!(call.stdin.contains(&tail), "{tail}: {}", call.stdin);
+        for word in ["description", "teamId"] {
+            assert!(!call.stdin.contains(word), "{word}: {}", call.stdin);
+        }
+    }
 }
 
 #[test]

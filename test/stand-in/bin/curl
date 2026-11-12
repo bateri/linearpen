@@ -18,6 +18,8 @@
 #   STANDIN_CHANGE=lost       Linear makes the change and the answer never comes: curl times out
 #   STANDIN_ISSUE=todo        `Issue` tells the issue it answers with (issue.json) as one in Todo, which
 #                             has not begun, where it is In Progress
+#   STANDIN_ISSUE=family      `Issue` tells it with sub-issues and ties of each kind (issue-family.json),
+#                             where issue.json has a parent and one issue that blocks it
 #
 # Each call is recorded with how many calls the stand-in `bateri` (STANDIN_BATERI_LOG) had had by
 # then, so that a test can say which came first: Linear or the pane.
@@ -31,7 +33,8 @@
 # the state of an issue as it was last changed to, and leave out one that is done or canceled. The
 # answer is each issue as the fixtures hold it with its changes, the state and the labels apart: the
 # state is the one it was changed to (else In Progress), the person the one it was given to (else
-# Ada), the labels those that were added and not removed since. Nothing else of a list changes.
+# Ada), the labels those that were added and not removed since, the cycle, the estimate and the due
+# date those it was given (else none). Nothing else of a list changes.
 here=$(cd "$(dirname "$0")/.." && pwd)
 config=$(cat)
 
@@ -285,8 +288,23 @@ changed_node() {
 	u-*) cwho="{\"id\":\"$cwho\",\"displayName\":\"Someone\",\"isMe\":false}" ;;
 	*) cwho='{"id":"u-ada","displayName":"Ada","isMe":true}' ;;
 	esac
-	printf '{"id":"%s","identifier":%s,"title":%s,"priority":%s,"updatedAt":"2026-11-11T09:30:00.000Z","url":"https://linear.app/acme/issue/%s","branchName":null,"state":%s,"labels":{"nodes":%s},"team":{"id":"team-acm","key":"ACM"},"cycle":null,"project":null,"assignee":%s}' \
-		"$cid" "${cident:-\"ACM-0\"}" "${ctitle:-\"An issue\"}" "${cpriority:-2.0}" "$cid" "$cstate" "$(labels_of "$cid")" "$cwho"
+	ccycle=$(latest "$cid" cycle)
+	case "$ccycle" in
+	c-[0-9]*) ccycle="{\"id\":\"$ccycle\",\"number\":${ccycle#c-},\"name\":null}" ;;
+	*) ccycle=null ;;
+	esac
+	cpoints=$(latest "$cid" estimate)
+	case "$cpoints" in
+	[0-9]*) ;;
+	*) cpoints=null ;;
+	esac
+	cdue=$(latest "$cid" due)
+	case "$cdue" in
+	[0-9]*) cdue="\"$cdue\"" ;;
+	*) cdue=null ;;
+	esac
+	printf '{"id":"%s","identifier":%s,"title":%s,"priority":%s,"updatedAt":"2026-11-11T09:30:00.000Z","url":"https://linear.app/acme/issue/%s","branchName":null,"state":%s,"labels":{"nodes":%s},"team":{"id":"team-acm","key":"ACM"},"cycle":%s,"project":null,"estimate":%s,"dueDate":%s,"assignee":%s}' \
+		"$cid" "${cident:-\"ACM-0\"}" "${ctitle:-\"An issue\"}" "${cpriority:-2.0}" "$cid" "$cstate" "$(labels_of "$cid")" "$ccycle" "$cpoints" "$cdue" "$cwho"
 }
 
 if is IssueBatchUpdate; then
@@ -302,6 +320,12 @@ if is IssueBatchUpdate; then
 		case "$input" in *'"assigneeId":null'*) new_who=none ;; esac
 		added=$(printf '%s' "$input" | sed -n 's/.*"addedLabelIds":\["\([^"]*\)"\].*/\1/p')
 		removed=$(printf '%s' "$input" | sed -n 's/.*"removedLabelIds":\["\([^"]*\)"\].*/\1/p')
+		new_cycle=$(field cycleId)
+		case "$input" in *'"cycleId":null'*) new_cycle=none ;; esac
+		new_points=$(printf '%s' "$input" | sed -n 's/.*"estimate":\([0-9][0-9]*\).*/\1/p')
+		case "$input" in *'"estimate":null'*) new_points=none ;; esac
+		new_due=$(field dueDate)
+		case "$input" in *'"dueDate":null'*) new_due=none ;; esac
 		for each in $ids; do
 			[ -n "$value" ] && printf '%s\tstate\t%s\n' "$each" "$value" >>"$changed"
 			[ -n "$new_title" ] && printf '%s\ttitle\t%s\n' "$each" "$new_title" >>"$changed"
@@ -309,6 +333,9 @@ if is IssueBatchUpdate; then
 			[ -n "$new_who" ] && printf '%s\tassignee\t%s\n' "$each" "$new_who" >>"$changed"
 			[ -n "$added" ] && printf '%s\taddLabel\t%s\n' "$each" "$added" >>"$changed"
 			[ -n "$removed" ] && printf '%s\tremoveLabel\t%s\n' "$each" "$removed" >>"$changed"
+			[ -n "$new_cycle" ] && printf '%s\tcycle\t%s\n' "$each" "$new_cycle" >>"$changed"
+			[ -n "$new_points" ] && printf '%s\testimate\t%s\n' "$each" "$new_points" >>"$changed"
+			[ -n "$new_due" ] && printf '%s\tdue\t%s\n' "$each" "$new_due" >>"$changed"
 		done
 		return 0
 	}
@@ -355,6 +382,7 @@ if is Issue; then
 		sed -e 's/"id": "s-prog"/"id": "s-todo"/' -e 's/"name": "In Progress"/"name": "Todo"/' \
 			-e 's/"type": "started"/"type": "unstarted"/' "$here/issue.json"
 		;;
+	family) cat "$here/issue-family.json" ;;
 	*) cat "$here/issue.json" ;;
 	esac
 	printf '\n200'
@@ -368,7 +396,17 @@ fi
 if is AllIssues; then listing all-issues.json; exit 0; fi
 if is Verify; then cat "$here/verify.json"; printf '\n200'; exit 0; fi
 if is NewIssueTeams; then cat "$here/teams.json"; printf '\n200'; exit 0; fi
-if is NewIssueOptions; then cat "$here/new-issue-options.json"; printf '\n200'; exit 0; fi
+if is NewIssueOptions; then
+	# The team of the web has no cycles and does not estimate; any other team is Acme.
+	team=$(printf '%s' "$plain" | sed -n 's/.*"variables":{"team":"\([^"]*\)".*/\1/p')
+	if [ -f "$here/new-issue-options-$team.json" ]; then
+		cat "$here/new-issue-options-$team.json"
+	else
+		cat "$here/new-issue-options.json"
+	fi
+	printf '\n200'
+	exit 0
+fi
 
 echo "stand-in curl: a query it does not know" >&2
 exit 2

@@ -96,6 +96,14 @@ local function entries(ids)
 		entry("labels", "Labels", "l"),
 		entry("project", "Project", "shift+p"),
 	}
+	-- A team that has no cycles, or does not estimate, has none of them to change.
+	if change.offers("cycle", ids) then
+		list_[#list_ + 1] = entry("cycle", "Cycle", "shift+c")
+	end
+	if change.offers("estimate", ids) then
+		list_[#list_ + 1] = entry("estimate", "Estimate", "shift+e")
+	end
+	list_[#list_ + 1] = entry("due", "Due date", "shift+d")
 	if #ids ~= 1 then
 		return list_
 	end
@@ -141,7 +149,16 @@ function context.action(action)
 		return true
 	end
 	local ids, id = X.ids, X.ids[1]
-	if key == "state" or key == "priority" or key == "assignee" or key == "labels" or key == "project" then
+	if
+		key == "state"
+		or key == "priority"
+		or key == "assignee"
+		or key == "labels"
+		or key == "project"
+		or key == "cycle"
+		or key == "estimate"
+		or key == "due"
+	then
 		return change.open(key, ids, nil, X.at)
 	elseif key == "assign_me" then
 		return change.assign_me(ids)

@@ -3,7 +3,8 @@
 -- names its own); the choices are the team's
 -- (`new_options`, kept for each team); a choice is sent when it is made, with no question, and
 -- the issue is busy until the answer comes. What is written is only what the menus offer: the
--- status, priority, assignee, labels and project, and the title. Nothing is sent again by the page.
+-- status, priority, assignee, labels, project, cycle, estimate and due date, and the title. Nothing is
+-- sent again by the page.
 
 local kit = require("../lib/kit")
 local list = require("./list")
@@ -21,10 +22,34 @@ local TITLE_FIELD = u:name(TITLE, "field")
 local MOST = 50
 
 -- The menus' names for what they change.
-local TITLES = { state = "Status", priority = "Priority", assignee = "Assignee", labels = "Labels", project = "Project" }
+local TITLES = {
+	state = "Status",
+	priority = "Priority",
+	assignee = "Assignee",
+	labels = "Labels",
+	project = "Project",
+	cycle = "Cycle",
+	estimate = "Estimate",
+	due = "Due date",
+}
 
 -- The field each kind of choice writes (`change`'s params).
-local FIELDS = { state = "status", priority = "priority", assignee = "assignee", project = "project" }
+local FIELDS = {
+	state = "status",
+	priority = "priority",
+	assignee = "assignee",
+	project = "project",
+	cycle = "cycle",
+	estimate = "estimate",
+	due = "dueDate",
+}
+
+-- The kinds whose choices need nothing of the team (a priority, a day): they open at once, for issues
+-- of any teams, and their controls are pressable before the team's choices come.
+local PLAIN = { priority = true, due = true }
+
+-- The fields a choice of `none` takes the value away from (it is sent as `null`).
+local CLEARS = { assignee = true, project = true, cycle = true, estimate = true, dueDate = true }
 
 -- What the page holds: the numbered menu that is open (a pick of an older one is not one), the
 -- menu waited for until the choices come, the choices by team, the issues a change is on its way
@@ -90,7 +115,8 @@ end
 -- The line of the issue `id`, for what asks what an issue is (its identifier, its link, its branch).
 change.row = row_of
 
--- The ids of what a command changes: the issues selected, else the one under the cursor. Where the
+-- The ids of what a command changes: the issues selected, else the one under the cursor (or the one
+-- read, where it is one come to from another that the list does not hold). Where the
 -- issue has the whole pane the list is not on the page, and what is selected in it is not seen: the
 -- change is of the issue that is read.
 function change.targets()
@@ -100,8 +126,13 @@ function change.targets()
 	end
 	local ids = list.marked_ids()
 	if #ids == 0 then
+		-- An issue come to from the open one, which the list does not hold, is the one read: the keys are
+		-- its, as its buttons are, until the cursor is moved.
+		local foreign = act.panel_foreign()
 		local item = list.current()
-		if item ~= nil and item.kind == "issue" then
+		if foreign ~= nil then
+			ids = { foreign }
+		elseif item ~= nil and item.kind == "issue" then
 			ids = { item.row.id }
 		end
 	end
@@ -142,8 +173,29 @@ local function target_rows(ids)
 	return rows
 end
 
+-- Whether the issues `ids` are offered the value `kind` (`cycle`, `estimate`): not where their team has
+-- no cycles, or does not estimate. Where the team's choices are not here yet, or the issues are of
+-- several teams (their menu says why it has none), it is offered.
+function change.offers(kind, ids)
+	local rows = target_rows(ids)
+	if rows == nil then
+		return false
+	end
+	local team = team_of(rows)
+	local data = team ~= nil and team ~= "mixed" and change.options(team) or nil
+	if data == nil then
+		return true
+	end
+	if kind == "cycle" then
+		return data.cyclesEnabled == true
+	elseif kind == "estimate" then
+		return #data.estimates > 0
+	end
+	return true
+end
+
 -- Whether a command can change the targets now: there are some, none has a change on its way, and
--- (where `plain`: the priority and the title need no choices) the choices of their team are here
+-- (where `plain`: the priority, the due date and the title need no choices) the choices of their team are here
 -- (issues of several teams are offered what is the same for all, and need none).
 function change.can(plain)
 	local ids = change.targets()
@@ -187,6 +239,15 @@ local function current_of(rows)
 		end),
 		project = same(function(row)
 			return row.projectId or "none"
+		end),
+		cycle = same(function(row)
+			return row.cycleId or "none"
+		end),
+		estimate = same(function(row)
+			return row.estimate ~= nil and tostring(row.estimate) or "none"
+		end),
+		due = same(function(row)
+			return row.dueDate or "none"
 		end),
 		labels = {},
 	}
@@ -244,13 +305,20 @@ local function open_menu(request)
 	if #rows > MOST then
 		entries[#entries + 1] = reason("Up to " .. MOST .. " issues change at a time")
 		return show(request, entries)
-	elseif team == "mixed" and request.kind ~= "priority" then
+	elseif team == "mixed" and not PLAIN[request.kind] then
 		entries[#entries + 1] = reason("The issues are of more than one team")
 		return show(request, entries)
 	end
-	local data = request.kind == "priority" and {} or change.options(team)
+	local data = PLAIN[request.kind] and {} or change.options(team)
 	if data == nil then
 		return true
+	end
+	if request.kind == "cycle" and data.cyclesEnabled ~= true then
+		entries[#entries + 1] = reason("This team has no cycles")
+		return show(request, entries)
+	elseif request.kind == "estimate" and #data.estimates == 0 then
+		entries[#entries + 1] = reason("This team does not estimate")
+		return show(request, entries)
 	end
 	local choices = values.choices(request.kind, data, current_of(rows), data.allStates)
 	for _, entry in values.entries(choices, function(choice)
@@ -261,7 +329,8 @@ local function open_menu(request)
 	return show(request, entries)
 end
 
--- Opens the menu of `kind` (`state`, `priority`, `assignee`, `labels`, `project`) for the issues `ids`
+-- Opens the menu of `kind` (`state`, `priority`, `assignee`, `labels`, `project`, `cycle`, `estimate`,
+-- `due`) for the issues `ids`
 -- near the element named `near`, or at the place `at` (`{ x, y }`: where a press was). The reply.
 function change.open(kind, ids, near, at)
 	if #ids == 0 then
@@ -275,7 +344,7 @@ function change.open(kind, ids, near, at)
 	end
 	local team = team_of(rows)
 	request.team = team
-	if kind == "priority" or team == "mixed" or #rows > MOST then
+	if PLAIN[kind] or team == "mixed" or #rows > MOST then
 		return open_menu(request)
 	elseif team == nil then
 		return true
@@ -418,8 +487,10 @@ local function pick(entry)
 	end
 	C.menu = nil
 	local value = id
-	if id == "none" and (field == "assignee" or field == "project") then
+	if id == "none" and CLEARS[field] then
 		value = b.json.null
+	elseif field == "estimate" then
+		value = tonumber(id)
 	end
 	local state = nil
 	if field == "status" then

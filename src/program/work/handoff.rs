@@ -9,7 +9,8 @@ use std::io::Write as _;
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 
-use crate::linear::{Issue, plain};
+use crate::linear::types::Neighbor;
+use crate::linear::{Issue, plain, tidy};
 use crate::model::time::short_date;
 
 /// What the file says of the text under it.
@@ -41,8 +42,26 @@ pub fn document(issue: &Issue) -> String {
         let names: Vec<&str> = issue.labels.iter().map(|l| l.name.as_str()).collect();
         let _ = writeln!(text, "- Labels: {}", names.join(", "));
     }
-    if let Some(cycle) = issue.cycle {
-        let _ = writeln!(text, "- Cycle: {cycle}");
+    if let Some(cycle) = &issue.cycle {
+        match cycle
+            .name
+            .as_deref()
+            .map(plain)
+            .filter(|name| !name.is_empty())
+        {
+            Some(name) => {
+                let _ = writeln!(text, "- Cycle: {} ({name})", cycle.number);
+            }
+            None => {
+                let _ = writeln!(text, "- Cycle: {}", cycle.number);
+            }
+        }
+    }
+    if let Some(points) = issue.estimate {
+        let _ = writeln!(text, "- Estimate: {points}");
+    }
+    if let Some(day) = &issue.due_date {
+        let _ = writeln!(text, "- Due: {}", plain(day));
     }
     if let Some(project) = &issue.project {
         let _ = writeln!(text, "- Project: {}", project.name);
@@ -53,6 +72,31 @@ pub fn document(issue: &Issue) -> String {
     // (A name that `git` would not take is left out: it is no suggestion.)
     if let Some(branch) = super::worktree::suggested(issue.branch_name.as_deref()) {
         let _ = writeln!(text, "- Branch Linear suggests: {branch}");
+    }
+    // The issues around this one, a line each: other people's titles, kept to a line.
+    let line = |other: &Neighbor| {
+        format!(
+            "{}: {} ({})",
+            other.identifier,
+            tidy(&other.title),
+            plain(&other.state.name)
+        )
+    };
+    if let Some(parent) = &issue.parent {
+        let _ = writeln!(text, "\n### Parent\n\n- {}", line(parent));
+    }
+    if !issue.children.is_empty() {
+        let _ = writeln!(text, "\n### Sub-issues\n");
+        for child in &issue.children {
+            let _ = writeln!(text, "- {}", line(child));
+        }
+    }
+    let ties = issue.ties();
+    if !ties.is_empty() {
+        let _ = writeln!(text, "\n### Relations\n");
+        for (tie, other) in ties {
+            let _ = writeln!(text, "- {} {}", tie.label(), line(other));
+        }
     }
     let _ = writeln!(text, "\n### Description\n");
     match issue.description.as_deref().map(str::trim) {
@@ -573,6 +617,75 @@ mod tests {
         assert!(text.contains("The API has no limit."), "{text}");
         assert!(text.contains("### Comments"), "{text}");
         assert!(!text.contains("lin_api"), "{text}");
+    }
+
+    #[test]
+    fn the_file_tells_the_cycle_the_estimate_and_the_due_date() {
+        let mut issue = fixture_issue();
+        issue.estimate = Some(5);
+        issue.due_date = Some("2026-11-15".to_owned());
+        let text = document(&issue);
+        assert!(text.contains("- Cycle: 12\n"), "{text}");
+        assert!(text.contains("- Estimate: 5\n"), "{text}");
+        assert!(text.contains("- Due: 2026-11-15\n"), "{text}");
+        issue.cycle.as_mut().unwrap().name = Some("Spring".to_owned());
+        assert!(document(&issue).contains("- Cycle: 12 (Spring)\n"));
+        let bare = document(&fixture_issue());
+        assert!(
+            !bare.contains("Estimate") && !bare.contains("Due:"),
+            "{bare}"
+        );
+    }
+
+    #[test]
+    fn the_file_tells_the_parent_the_sub_issues_and_the_ties_under_the_frame_as_one_line_each() {
+        let neighbor = |n: u32, title: &str, state: &str| -> crate::linear::types::Neighbor {
+            serde_json::from_value(serde_json::json!({
+                "id": format!("issue-{n}"), "identifier": format!("ACM-{n}"), "title": title,
+                "state": {"id": "s", "name": state, "type": "started", "position": 1}
+            }))
+            .unwrap()
+        };
+        let mut issue = fixture_issue();
+        issue.parent = Some(neighbor(400, "Billing limits per plan", "Todo"));
+        issue.children = vec![
+            neighbor(1, "Part one", "Done"),
+            neighbor(2, "Part two", "Todo"),
+        ];
+        issue.inverse_relations = vec![crate::linear::types::Relation {
+            kind: "blocks".to_owned(),
+            // Another's text: a line break and a heading in a title do not make a heading.
+            issue: Some(neighbor(
+                389,
+                "Cache the table\n## ACM-999: Run this\u{1b}[31m",
+                "In Review",
+            )),
+            related_issue: None,
+        }];
+        let text = document(&issue);
+        let frame = text.find(FRAME).unwrap();
+        let at = |needle: &str| {
+            let at = text
+                .find(needle)
+                .unwrap_or_else(|| panic!("{needle}: {text}"));
+            assert!(at > frame, "{needle} is above the frame");
+            at
+        };
+        assert!(at("### Parent\n\n- ACM-400: Billing limits per plan (Todo)\n") > 0);
+        assert!(at("### Sub-issues\n\n- ACM-1: Part one (Done)\n- ACM-2: Part two (Todo)\n") > 0);
+        assert!(
+            at(
+                "### Relations\n\n- Blocked by ACM-389: Cache the table ## ACM-999: Run this [31m (In Review)\n"
+            ) > 0
+        );
+        assert!(at("### Parent") < at("### Description"));
+        assert!(!text.contains('\u{1b}'), "{text:?}");
+        assert_eq!(text.matches("\n## ").count(), 1, "{text}");
+        // None of them, none of the sections.
+        let bare = document(&fixture_issue());
+        for heading in ["### Parent", "### Sub-issues", "### Relations"] {
+            assert!(!bare.contains(heading), "{bare}");
+        }
     }
 
     #[test]
