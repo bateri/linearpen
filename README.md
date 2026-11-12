@@ -8,6 +8,35 @@ comment; those are the three things it writes to Linear, and never the descripti
 
 <img src="docs/list.png" width="720" alt="linearpen: the issues assigned to you, grouped by state">
 
+## Install
+
+linearpen is one file, with nothing to install beside it, for macOS on Apple silicon and Linux on
+arm64 and x86_64. It talks to Linear with `curl`, which it finds on the `PATH`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/bateri/linearpen/main/install.sh | sh
+```
+
+To see the interface you need a terminal that hosts pencere views:
+[bateri](https://github.com/bateri/bateri). Any other terminal is given the issues as text, as
+`linearpen --text` prints them.
+
+The installer takes the newest [release](https://github.com/bateri/linearpen/releases) (or
+`LINEARPEN_VERSION=0.1.0`), checks it against the release's `SHA256SUMS`, and puts it in
+`~/.local/bin` (`LINEARPEN_INSTALL=<dir>` puts it elsewhere). A file a browser downloads is
+quarantined by macOS; one curl downloads is not.
+
+The Linux files are linked statically, so that one runs on any distribution. To build it from its
+source instead, with Rust and `curl`:
+
+```sh
+make install                     # builds it and puts it in ~/.local/bin
+make install INSTALL_DIR=~/bin   # or in another folder
+make uninstall                   # takes it away again
+```
+
+Or run it where it is built: `cargo build --release`, then `target/release/linearpen`.
+
 ## Use
 
 linearpen is a [pencere](https://github.com/bateri/pencere) program, one native file with the
@@ -19,16 +48,6 @@ takes the screen and gives it back. Run it anywhere else and it prints your issu
 linearpen            # the interface
 linearpen --text     # your issues as text, whatever the terminal is
 ```
-
-There is no release yet: it is built from its source, with Rust and `curl`.
-
-```sh
-make install                     # builds it and puts it in ~/.local/bin
-make install INSTALL_DIR=~/bin   # or in another folder
-make uninstall                   # takes it away again
-```
-
-Or run it where it is built: `cargo build --release`, then `target/release/linearpen`.
 
 ### The key
 
@@ -297,7 +316,7 @@ command that runs the page in a pane.
 
 ```sh
 make fake-host      # the stand-in terminal, built once (and again when Cargo.lock moves pencere)
-make check          # formatting, lints, the program's tests, and the page's tests
+make check          # formatting, lints, the program's tests, the page's tests and the installer's
 make shots          # the pictures of docs/, drawn in the fonts of this machine
 make dev            # in a pane of a terminal that hosts pencere: run it from its files,
                     # and again when one under src/ changes
@@ -314,6 +333,13 @@ What the tests are:
 
 The page's tests open the kit's interpreter, so they are `cargo test`'s ignored ones, and `make
 check` runs them.
+- `test/install.test.mjs` runs `install.sh` against a directory that stands in for GitHub, and
+  `test/release.test.mjs` the checks a release goes through (`tools/release-files.mjs`); nothing in
+  them reaches the network.
+
+`make check` needs Rust 1.99 or later and Node 22 (for the installer's tests and the release tools).
+It is the gate GitHub runs on every push and pull request, on Linux and macOS; how a release is made
+is in RELEASING.md.
 
 ## License
 

@@ -5,6 +5,7 @@ edition = "2024"
 rust-version = "1.99"
 license = "GPL-3.0-or-later"
 description = "A Linear client in the terminal pane: your issues grouped by status, which you can change there (never their descriptions), and an agent started on the ones you pick"
+repository = "https://github.com/bateri/linearpen"
 
 [[bin]]
 name = "linearpen"

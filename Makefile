@@ -1,12 +1,12 @@
 # linearpen is one native file: the program (src/program/, Rust, on the pencere crate) with the page
 # (src/view/, a page of pencere's kit) and the pictures (src/assets/) carried in it by build.rs. The
 # gate and `make dev` are here.
-.PHONY: pin fmt lint test test-page check-timing shots check build install uninstall pencere-src pencere fake-host pencere-ref dev
+.PHONY: pin fmt lint test test-page check-timing shots test-tools check build install uninstall pencere-src pencere fake-host pencere-ref dev dist sums release-prepare release publish
 
 # pencere is pinned in one place, Cargo.lock (Cargo.toml names the commit): the crate the program is
-# built on is of it, and so are the `pencere` command `make dev` runs linearpen under and the
-# stand-in terminal the program's tests run it in, which are built from it in .cache/pencere. To
-# work against a checkout you are changing, say so; one that is not at Cargo.lock's ref is said to
+# built on is of it, and so are the `pencere` command `make dev` runs linearpen under and `make sums`
+# signs a release with, and the stand-in terminal the program's tests run it in, which are built from
+# it in .cache/pencere. To work against a checkout you are changing, say so; one that is not at Cargo.lock's ref is said to
 # be so, and used:
 #
 #   make dev PENCERE_SRC=../pencere
@@ -67,8 +67,15 @@ check-timing:
 shots:
 	cargo test --locked --bin linearpen page_shots:: -- --ignored
 
-# check is the gate: the pin of pencere, formatting, lints, the program's tests, the page's tests.
-check: pin lint test test-page
+# test-tools runs the tests of the installer (install.sh) against a directory that stands in for
+# GitHub: nothing in them reaches the network, and the release checks (tools/release-files.mjs),
+# against a directory of their own.
+test-tools:
+	node --test test/install.test.mjs test/release.test.mjs
+
+# check is the gate: the pin of pencere, formatting, lints, the program's tests, the page's tests, the
+# installer's tests.
+check: pin lint test test-page test-tools
 
 # build makes target/release/linearpen, the program for this machine, with the page in it.
 build:
@@ -123,3 +130,49 @@ pencere-ref:
 # when one of it does.
 dev: pencere
 	"$(PENCERE)" dev
+
+# dist makes the program for one target (TARGET, a Rust target triple) into dist/release, as
+# linearpen-<version>-<target>: Apple silicon Macs and both Linux architectures, the Linux ones linked
+# statically with musl (bateri, the terminal that shows the page, runs on Apple silicon only).
+# Each is built on a machine of its own target, with that target added to the toolchain; `make sums`
+# then names the three where they are together, and signs the app.json that says what they are.
+TARGETS = aarch64-apple-darwin aarch64-unknown-linux-musl x86_64-unknown-linux-musl
+PACKAGE_VERSION = $(shell sed -n 's/^version = "\(.*\)"$$/\1/p' Cargo.toml | head -n 1)
+
+dist:
+	@test -n "$(TARGET)" || { echo "usage: make dist TARGET=<one of: $(TARGETS)>"; exit 2; }
+	cargo build --locked --release --target $(TARGET)
+	mkdir -p dist/release
+	cp target/$(TARGET)/release/linearpen dist/release/linearpen-$(PACKAGE_VERSION)-$(TARGET)
+
+# sums writes the SHA256SUMS of the three files of dist/release, then the app.json that names them
+# and its signature (`pencere dist`, which signs with the key `pencere key` made: ~/.config/pencere/
+# signing.key, or the one PENCERE_SIGNING_KEY names). A terminal that follows linearpen reads those
+# two. What the program needs of its terminal in app.json comes from the program itself, the file
+# of this machine's target, started once. DIST_FLAGS goes to `pencere dist`: --base, --previous
+# (`--previous none` for the first release).
+#
+# On release day PENCERE must be a pencere that has `dist` and is the one Cargo.lock takes
+# (PENCERE_REF): `make pencere` builds it. A release made with another one has an app.json that
+# the pencere linearpen is built with did not write.
+DIST_FLAGS ?=
+sums:
+	cd dist/release && { sha256sum linearpen-* 2>/dev/null || shasum -a 256 linearpen-*; } > SHA256SUMS
+	@cat dist/release/SHA256SUMS
+	@test -x "$(PENCERE)" || { echo "sums: no pencere at $(PENCERE): make pencere, or PENCERE=<a pencere command that has dist>"; exit 1; }
+	"$(PENCERE)" dist --files dist/release $(DIST_FLAGS) $(PACKAGE_VERSION)
+
+# release-prepare sets the version and dates the changelog's Unreleased section.
+release-prepare:
+	@test -n "$(VERSION)" || { echo "usage: make release-prepare VERSION=<x.y.z>"; exit 2; }
+	node tools/release.mjs prepare $(VERSION)
+
+# release runs the gate and the release checks (dist/release holds the three files of this
+# version and their SHA256SUMS, made after the release commit), then tags. Nothing is pushed.
+release: check
+	node tools/release.mjs tag
+
+# publish pushes main and the tag, then makes the GitHub release with the three files and
+# SHA256SUMS. Publishing: run on the maintainer's word.
+publish:
+	node tools/release.mjs publish
