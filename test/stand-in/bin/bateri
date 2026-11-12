@@ -12,10 +12,16 @@
 #
 #   STANDIN_BATERI=refuse   split and tab fail as bateri does where no app answers: exit 69
 if [ -n "${STANDIN_BATERI_LOG-}" ]; then
+	# One write for the whole record: calls run at the same time (the panes are looked at while one
+	# is waited for), and a record written in two pieces would be mixed with another's. So it is
+	# made in a file of its own and put in the log by one `cat`.
+	mine="$STANDIN_BATERI_LOG.$$"
 	{
 		printf '%s\0' "$@"
 		printf '\001\0'
-	} >>"$STANDIN_BATERI_LOG"
+	} >"$mine"
+	cat "$mine" >>"$STANDIN_BATERI_LOG"
+	rm -f "$mine"
 fi
 
 case "${1-}" in
