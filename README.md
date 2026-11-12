@@ -121,7 +121,9 @@ you chose last time (agent, folder, where the pane goes and `Status`), which is 
 How it starts one:
 
 - It asks bateri for the pane (`bateri split` or `bateri tab`), so nothing is started outside a
-  bateri pane, and the form says why.
+  bateri pane, and the form says why. Where linearpen runs on a server, in a pane bateri opened over
+  `ssh`, the agent is started on that server: its pane, the file of the issues and the agent itself
+  are there, so the agent has to be installed there.
 - Then, if `Status` says so, the issues in Triage, Backlog or Todo go to the first state of work in
   progress of their team, one change for each team. Only forward and only the status: an issue that
   has begun, is done or is canceled is left as it is, and nothing is written if the pane was not

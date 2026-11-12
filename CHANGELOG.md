@@ -37,7 +37,8 @@
   are written, with their descriptions and comments, to a file only you can read, under
   `~/.local/state/linearpen/work`; the agent is told where the file is and that other people wrote
   it, and is started with no option that lets it skip its questions. Nothing is started outside a
-  bateri pane, and the form says why.
+  bateri pane, and the form says why. In a pane on a server over `ssh` the agent, its pane and the
+  file are on the server.
 - **Starting an agent can move the issues to work in progress.** The form has a `Status` row,
   `In Progress` (your team's first state of work, by its own name) or `Unchanged`, and it is not
   there when every issue has begun. Chosen, it moves the issues in Triage, Backlog or Todo to that
