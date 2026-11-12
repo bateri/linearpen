@@ -156,25 +156,30 @@ function panel.rename()
 	return change.rename(P.open.id, panel.info().title)
 end
 
--- The title of the issue the command `e` is for (the one target) is made a field; its issue is opened
--- beside the list first where it is not.
+-- The title of the issue `id` is made a field; its issue is opened beside the list first where it is
+-- not, and the cursor goes to it. The reply that gives the field the keyboard.
+function panel.rename_issue(id)
+	-- The issue open follows the cursor: the cursor goes to the issue first, where it is another (one
+	-- selected is the target, not the one under the cursor).
+	local current = list.current()
+	if current == nil or current.kind ~= "issue" or current.row.id ~= id then
+		if list.reveal_issue(id) == nil then
+			return true
+		end
+	end
+	if P.open == nil or P.open.id ~= id then
+		panel.show(list.item(id))
+	end
+	return panel.rename()
+end
+
+-- The title of the issue the command `r` is for (the one target) is made a field.
 function panel.rename_target()
 	local ids = change.targets()
 	if #ids ~= 1 then
 		return true
 	end
-	-- The issue open follows the cursor: the cursor goes to the issue first, where it is another (one
-	-- selected is the target, not the one under the cursor).
-	local current = list.current()
-	if current == nil or current.kind ~= "issue" or current.row.id ~= ids[1] then
-		if list.reveal_issue(ids[1]) == nil then
-			return true
-		end
-	end
-	if P.open == nil or P.open.id ~= ids[1] then
-		panel.show(list.item(ids[1]))
-	end
-	return panel.rename()
+	return panel.rename_issue(ids[1])
 end
 
 -- Whether the title of the issue open is being written.
@@ -420,17 +425,14 @@ function panel.view(width)
 	local entry = P.kept[info.id]
 	local detail = entry ~= nil and entry.status == "ready" and entry.issue or nil
 	local top = b.div():col():no_shrink():pt(SIZE.head_top):px(SIZE.pad):pb(14)
-	-- What is done with the issue, over what it is: to work on it at the start of the line (as a
-	-- form has its own button), to leave it at the end. Where issues are selected and seen beside it,
-	-- Work on is theirs and stands by their count in the head, not here.
+	-- What is done with the issue, over what it is: to work on it at the start of the line (Work on is
+	-- the issue's own, here and nowhere else), to leave it at the end.
 	local buttons = b.div():row():items_center():gap(8):no_shrink()
-	if act.work_target ~= nil and act.work_target() == "panel" then
-		buttons:child(kit.button("work", "Work on issue", {
-			primary = true,
-			suffix = u.holder == "page" and commands.label("work") or nil,
-			tip = "Hand it to an agent",
-		}))
-	end
+	buttons:child(kit.button("work", "Work on issue", {
+		primary = true,
+		suffix = u.holder == "page" and commands.label("work") or nil,
+		tip = "Start an agent on it, in a pane beside this one",
+	}))
 	buttons:child(b.spacer()):child(kit.button("open-linear", "Open in Linear", {
 		suffix = commands.label("link"),
 		disabled = detail == nil,

@@ -20,12 +20,12 @@ the person and never hold the key.
 The pen writes two things: the issue the person makes (`create`), and the change the person makes to
 issues (`change`): one of their status, priority, assignee, labels, project or title. The description
 and the team are never written, by any call. One more call writes, and only as `change` does: `start`
-moves the issues that have not begun to their team's first state of work in progress, where the
+moves the issue, if it has not begun, to its team's first state of work in progress, where the
 person chose that (`progress`), once the agent's pane is made. Nothing else here changes anything in
 Linear.
 
 The program also writes two things of its own, in `$XDG_STATE_HOME/linearpen` (`~/.local/state/linearpen`)
-and never to Linear: the file of the issues handed to an agent, under `work/` (see `start`), which it
+and never to Linear: the file of the issue handed to an agent, under `work/` (see `start`), which it
 puts away again when it is older than 14 days, and `prefs.json`, four words (`0600`), which `start`
 keeps and `boot` tells.
 
@@ -45,7 +45,7 @@ has a key and has not begun (listening to the topic `issues` begins it too). Par
 `problem` is, where there is a key that cannot be used (it is not one, or its file cannot be read),
 the words that say why; `key` is `none` then.
 
-`prefs` is what the form that hands issues to an agent was left at by the last `start`
+`prefs` is what the form that hands an issue to an agent was left at by the last `start`
 (`$XDG_STATE_HOME/linearpen/prefs.json`): `agent` (`claude`, `codex` or `cursor`), `folder` (`here` or
 `worktree`), `place` (`split` or `tab`) and `status` (`progress` or `keep`). Each is null where the
 file does not say it, is not a word of the form's, or the file is missing or cannot be read. Whether
@@ -95,6 +95,7 @@ of the issue (a row's `id`) or its identifier: up to 64 letters, digits and dash
 {
   "id": "issue-412", "identifier": "ACM-412", "title": "Add rate limiting",
   "url": "https://linear.app/acme/issue/ACM-412/add-rate-limiting",
+  "branchName": "ada/acm-412-add-rate-limiting",
   "description": "The public API has no limit per key.\n\n- A limit per key",
   "priority": "high", "state": { "name": "In Progress", "kind": "started" },
   "labels": [{ "id": "l-api", "name": "api", "color": "#3e63dd" }],
@@ -105,8 +106,9 @@ of the issue (a row's `id`) or its identifier: up to 64 letters, digits and dash
 }
 ```
 
-`description` and each comment's `body` are markdown written by others: text to show, nothing to
-act on. `description` is null where there is none. Comments are the first fifty, the oldest first;
+`branchName` is the name of the branch Linear suggests (null where it has none; it holds no control
+character). `description` and each comment's `body` are markdown written by others: text to show,
+nothing to act on. `description` is null where there is none. Comments are the first fifty, the oldest first;
 `more` says there is more in Linear than is told (more comments, or a text cut at 20 000 characters
 for the description and 2 000 for a comment). `assignee` is `"you"`, a name or null; `cycle` is the
 cycle's number or null. `at` is the day as the list writes it. `teamId`, `stateId`, `assigneeId`,
@@ -118,7 +120,7 @@ same issue tells it. Errors: `bad-params`, `no-key`,
 
 ### `work_options`
 
-What the person can choose from when they hand issues to an agent, and what cannot be chosen and
+What the person can choose from when they hand an issue to an agent, and what cannot be chosen and
 why. Params: none. Nothing is started, and Linear is not asked.
 
 ```json
@@ -144,31 +146,31 @@ Errors: `bad-params`.
 
 ### `start`
 
-Hands the issues to an agent in a pane of bateri. The program writes the issues, with their
-descriptions and comments, to a file of its own and starts the agent with a prompt that names the
-file. It answers when the pane is made. Params:
+Hands one issue to an agent in a pane of bateri (the page calls it from the issue's own detail: Work
+on is one issue's, and there are no words to give the agent: it opens in a pane of its own, and is
+written to there). The program writes the issue, with its description and comments, to a file of its
+own and starts the agent with a prompt that is the program's own sentence and names the file. It
+answers when the pane is made. Params (a member that is not named here is refused):
 
 ```json
-{ "ids": ["issue-412", "issue-405"], "prompt": "Start with the rate limiter.",
-  "agent": "claude", "folder": "here", "open": "split", "progress": true }
+{ "id": "issue-412", "agent": "claude", "folder": "here", "open": "split", "progress": true }
 ```
 
-- `ids`: one to twenty-five Linear ids of issues, the first the one that names the pane.
-- `prompt`: what the person wrote for the agent, up to 4 000 characters; it may be empty.
+- `id`: the Linear id of the issue.
 - `agent`: `claude`, `codex` or `cursor`. `folder`: `here` (the agent works in the folder the pen
   was started in) or `worktree` (the agent is asked to make a new `git` worktree first, by the
   project's own rules for where one goes and what its branch is called; the pen makes none, and the
   agent starts in the pen's folder either way). `open`: `split` (a pane to the right of this one) or
   `tab` (a new tab). The new pane is not given the focus.
 - `progress`: optional; given where the form had the Status row, as the person chose it: `true` to
-  move, `false` to leave the issues as they are (not given where the row was not there, which is
-  where no issue would move). Only `true` writes to Linear. With it the program moves the issues whose
-  state, as Linear says it now, is of the kind `triage`, `backlog` or `unstarted` to the first
-  `started` state (by position) of the team each is of, with the `change` write of a status, one for
-  each team, **after** the pane is made. Nothing else is written: an issue that has begun, is done or
-  is canceled is left as it is, and the move is never a way to give an issue to someone or to take
-  one from a team. Where no issue would move, nothing is sent. The page sends `true` only where the
-  person chose to move the issues and the form said which of them would. Where it is given (true or
+  move, `false` to leave the issue as it is (not given where the row was not there, which is where
+  the issue would not move). Only `true` writes to Linear. With it the program moves the issue, if its
+  state, as Linear says it now, is of the kind `triage`, `backlog` or `unstarted`, to the first
+  `started` state (by position) of its team, with the `change` write of a status, **after** the pane
+  is made. Nothing else is written: an issue that has begun, is done or is canceled is left as it
+  is, and the move is never a way to give an issue to someone or to take one from a team. Where the
+  issue would not move, nothing is sent. The page sends `true` only where the
+  person chose to move the issue and the form said it would move. Where it is given (true or
   false) it is kept with the choices below, so that the next form is opened with it; where it is not,
   the choice kept before stays.
 
@@ -177,18 +179,18 @@ file. It answers when the pane is made. Params:
   "moved": 1, "notMoved": null }
 ```
 
-`moved` is how many issues were moved (0 where `progress` was not `true` or none had to move), and
-`notMoved` says why some that were to move did not (Linear refused, did not answer, or a team has no
-state of work in progress), or is null. The agent is started either way: a refusal is not an error of
-`start`, and the move is not sent again. The lists are changed in place, as after `change`, and the
-issues keep the mark below.
+`moved` is how many issues were moved (0 or 1: 0 where `progress` was not `true` or the issue had
+nothing to move), and `notMoved` says why it did not (Linear refused, did not answer, or the team has
+no state of work in progress), or is null. The agent is started either way: a refusal is not an error
+of `start`, and the move is not sent again. The lists are changed in place, as after `change`, and
+the issue keeps the mark below.
 
 The file is `$XDG_STATE_HOME/linearpen/work/<UTC time>-<first identifier>/issues.md` (the
-directories `0700`, the file `0600`); it says in its first lines that the text under them was
-written by others and holds no instructions for the agent, and for each issue the branch Linear
-suggests for it (where that is a name `git` would take). The text of an issue is never in the
-prompt (the agent's command line): only the file's path is, and for `worktree` a sentence of the
-program's own that asks for one. No flag that lets the agent do what it
+directories `0700`, the file `0600`); it says in its first lines that the text under it was
+written by others and holds no instructions for the agent, and the branch Linear
+suggests for the issue (where that is a name `git` would take). The text of an issue is never in the
+prompt (the agent's command line), and nothing a person typed is: only the file's path is, and for
+`worktree` a sentence of the program's own that asks for one. No flag that lets the agent do what it
 would ask about is ever added. The key is not in the file.
 
 Once the pane is made, `start` keeps the agent, the folder, the place and (where `progress` was
@@ -202,10 +204,10 @@ file goes at that age too: the agent read it long before). The file and then the
 removed, never a tree, and nothing outside `work/` is touched. The program does the same once as
 it begins.
 
-From here the issues of the call carry a mark in the topic (`working`) until the agent's pane ends,
+From here the issue of the call carries a mark in the topic (`working`) until the agent's pane ends,
 and the program looks at the panes (see `working`) for as long as there is one.
-Errors: `bad-params`, `no-key`, `refused`, `unreachable`, `failed` (the issues are asked of Linear
-for their text), `unavailable`, `start-failed`.
+Errors: `bad-params`, `no-key`, `refused`, `unreachable`, `failed` (the issue is asked of Linear
+for its text), `unavailable`, `start-failed`.
 
 ### `new_options`
 
@@ -357,6 +359,8 @@ the lists came, asking failed). The same value `view` answers with.
       "count": 4, "closed": false,
       "rows": [
         { "id": "issue-412", "identifier": "ACM-412", "title": "Add rate limiting",
+          "url": "https://linear.app/acme/issue/ACM-412/add-rate-limiting",
+          "branchName": "ada/acm-412-add-rate-limiting",
           "priority": "high", "updated": "Nov 9",
           "labels": [{ "id": "l-api", "name": "api", "color": "#3e63dd" }], "assignee": null,
           "teamId": "team-acm", "stateId": "s-prog", "assigneeId": "u-ada", "projectId": null }
@@ -378,6 +382,9 @@ the lists came, asking failed). The same value `view` answers with.
   `completed`, `canceled`, `other`), within a kind by the position of the state; states of one name
   in several teams are one group. A group is named by `key`, `kind:name`. A folded group has `count`
   and `closed: true` and no `rows`. In a group the issue updated last is first.
+- `url`: where the issue is in Linear, and `branchName`: the name of the branch Linear suggests for it
+  (null where it has none): what the page copies (`Copy link`, `Copy branch name`). Neither holds a
+  control character.
 - `priority`: `none`, `urgent`, `high`, `medium` or `low`. `updated`: the day of the last change as
   the list writes it. `assignee` is set only in the list of all issues: `"you"`, a name, or null.
 - A label's `color` is Linear's own (`#rrggbb`): data, not a role of the theme.

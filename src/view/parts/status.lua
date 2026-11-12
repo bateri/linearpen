@@ -1,10 +1,13 @@
--- The line of keys under the page (the library's `u:status`): what the keyboard does here, each key
--- said once. A key that has a button on the page is on the button, so Refresh's key is here only
--- where the pane is too narrow for the button. The two at its end open the palette and the card of
--- keys, which hold the rest.
+-- The line under the page. With issues selected it is the bar of the selection (how many, the values
+-- to change, More and Clear), as high as the line of keys that it stands in the place of; else it is
+-- the line of keys (the library's `u:status`): what the keyboard does here, each key said once. A
+-- key that has a button on the page is on the button, so the keys of Refresh and New issue are here only
+-- where the pane is too narrow for their buttons. The two at the end of the line open the palette and
+-- the card of keys, which hold the rest.
 
 local kit = require("../lib/kit")
 local commands = require("./commands")
+local change = require("./change")
 local head = require("./head")
 local list = require("./list")
 local new = require("./new")
@@ -38,8 +41,9 @@ function status.finish()
 			priority = 2,
 		}
 	end
-	-- (In a form `?` is a character of the words, not the card of keys.)
-	if not S.form_open and not S.editing then
+	-- (In the form of a new issue, and while a title is written, `?` is a character of the words, not the
+	-- card of keys.)
+	if not S.new_open and not S.editing then
 		finish[#finish + 1] = {
 			key = "help",
 			words = hint({ "help" }, "keys"),
@@ -82,6 +86,72 @@ local function edit_hints()
 	}
 end
 
+-- The values the bar changes, in the order the keys are in the card: the kind of choice (`change`'s),
+-- the command, its words.
+local VALUES = {
+	{ "state", "status", "Status" },
+	{ "priority", "priority", "Priority" },
+	{ "assignee", "assignee", "Assignee" },
+	{ "labels", "labels", "Labels" },
+	{ "project", "project", "Project" },
+}
+
+-- Which of them the pane has room for: all of them, the first four, or the status and the assignee.
+local function shown_values()
+	if S.width >= SIZE.bar_all then
+		return VALUES
+	elseif S.width >= SIZE.bar_four then
+		return { VALUES[1], VALUES[2], VALUES[3], VALUES[4] }
+	end
+	return { VALUES[1], VALUES[3] }
+end
+
+-- Whether the bar is the line under the page: issues are selected and the list is seen (where the issue
+-- has the whole pane what is selected is not seen, and a change is of the issue read), and no form or
+-- title is where the keys are.
+function status.selecting()
+	return list.marked() > 0 and not S.alone and not S.work_open and not S.new_open and not S.editing
+end
+
+-- The bar of the selection, in the place of the line of keys and as high. How many are selected is
+-- said inside a place of its own width, so that the buttons do not move as the count does.
+function status.bar()
+	local t = u.theme
+	local bar = b.div():id("selection-bar"):row():items_center():gap(6):h(t.size.status):w_full():no_shrink():bg(t.surface):px(8)
+	bar:child(
+		b.div():w(84):no_shrink():child(
+			b.text(list.marked() .. " selected"):text_size(SIZE.tiny + 0.5):weight(700):color("accent"):no_shrink()
+		)
+	)
+	for _, value in shown_values() do
+		bar:child(kit.button("bar:" .. value[1], value[3], {
+			bar = true,
+			suffix = commands.label(value[2]),
+			disabled = not change.can(value[1] == "priority"),
+			tip = "Change the " .. string.lower(value[3]) .. " of the issues selected",
+		}))
+	end
+	bar:child(b.spacer())
+	bar:child(kit.button("bar:more", "More", {
+		bar = true,
+		suffix = commands.label("palette"),
+		tip = "Every change, for the issues selected",
+	}))
+	bar:child(kit.button("clear-selection", "Clear", { bar = true, suffix = "Esc", tip = "Let go of the issues selected" }))
+	return bar
+end
+
+-- A button of the bar pressed. The reply, or nil where it was not the bar's.
+function status.press(id)
+	local kind = string.match(id, "^bar:(%a+)$")
+	if kind == nil then
+		return nil
+	elseif kind == "more" then
+		return act.run("palette")
+	end
+	return change.run(kind, id)
+end
+
 function status.view()
 	if S.editing then
 		return u:status("status", { start = edit_hints(), finish = status.finish() })
@@ -91,6 +161,9 @@ function status.view()
 	end
 	if S.work_open then
 		return u:status("status", { start = work_hints(), finish = status.finish() })
+	end
+	if status.selecting() then
+		return status.bar()
 	end
 	-- A list with no line has nothing to move on, select or open: its keys are not said. Nor is a
 	-- key said where it does something else: in the filter `x` is a letter, and where the issue has
@@ -114,15 +187,6 @@ function status.view()
 		start[#start + 1] = { key = "move", words = hint({ "up", "down" }, "move"), priority = 8 }
 		if not typing and not alone then
 			start[#start + 1] = { key = "select", words = hint({ "select" }, "select"), priority = 6 }
-			if list.marked() > 0 then
-				start[#start + 1] = {
-					key = "select_more",
-					words = b.div():row():items_center():gap(5):no_shrink():child(u:kbd("shift+up")):child(u:kbd("shift+down")):child(
-						b.text("select more")
-					),
-					priority = 4,
-				}
-			end
 		end
 		if not alone then
 			start[#start + 1] = { key = "open", words = hint({ "open" }, "open"), priority = 7 }
@@ -135,14 +199,19 @@ function status.view()
 	if not typing and commands.when.changeable() then
 		start[#start + 1] = { key = "status", words = hint({ "status" }, "status"), priority = 4 }
 	end
+	-- (Where the issue has the pane the list is not there to go from: its keys are not said.)
+	if not typing and not alone and commands.enabled(commands.get("lists")) then
+		start[#start + 1] = { key = "lists", words = hint({ "lists" }, "go to"), priority = 5 }
+	end
 	if head.field.value ~= "" then
 		start[#start + 1] = { key = "clear", words = hint({ "back" }, "clear the filter"), priority = 5 }
 	end
-	if S.room < SIZE.wide then
+	-- A key that has a button is on the button; where the head has none (the page has too little room)
+	-- the key is here, which is the only place it is written.
+	if S.width < SIZE.wide then
 		start[#start + 1] = { key = "refresh", words = hint({ "refresh" }, "refresh"), priority = 3 }
 	end
-	-- Where the head has no button for it (the list has too little room) the key is said here.
-	if S.room < SIZE.roomy and not typing then
+	if S.width < SIZE.roomy and not typing then
 		start[#start + 1] = { key = "new", words = hint({ "new" }, "new issue"), priority = 4 }
 	end
 	local finish = status.finish()

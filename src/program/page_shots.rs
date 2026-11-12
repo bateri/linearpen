@@ -69,21 +69,24 @@ fn one_team(size: (f32, f32), fonts: &Fonts) -> Result<(Arc<Canned>, Page), Erro
     Ok((linear, page))
 }
 
-/// Selects the issues the agent is shown being handed: two that are in progress and one in Todo, which
-/// has not begun, so that the form has its Status row.
-fn select_for_work(page: &mut Page) -> Result<(), Error> {
-    page.press("x")?;
-    for issue in ["ACM-405", "ACM-415"] {
-        for _ in 0..30 {
-            if cursor(page).contains(issue) {
-                break;
-            }
-            page.press("down")?;
-            page.advance(0.05)?;
+/// Opens `issue` beside the list (or over it, in a pane too narrow for both), and then its Work on
+/// form: Work on is the detail's, and one issue's. ACM-415 is in Todo, which has not begun, so its
+/// form has the Status row.
+fn work_on(page: &mut Page, issue: &str) -> Result<(), Error> {
+    for _ in 0..30 {
+        if cursor(page).contains(issue) {
+            break;
         }
-        page.press("x")?;
+        page.press("down")?;
+        page.advance(0.05)?;
     }
-    // (A pane as narrow as 80 columns does not say how many are selected: the boxes do.)
+    page.press("enter")?;
+    page.wait_for(Duration::from_secs(20), |page| {
+        pressable(page, "panel-value:state") && pressable(page, "work")
+    })?;
+    page.advance(0.6)?;
+    page.press("w")?;
+    page.wait_for(Duration::from_secs(20), |page| page.says("Open in"))?;
     page.advance(0.3)
 }
 
@@ -152,7 +155,7 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     })?;
     page.advance(0.6)?;
     save(&page, &fonts, Palette::Dark, "edit.png");
-    page.press("e")?;
+    page.press("r")?;
     page.wait_for(Duration::from_secs(20), |page| page.says("save"))?;
     page.advance(0.6)?;
     save(&page, &fonts, Palette::Dark, "edit-title.png");
@@ -234,7 +237,9 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     page.advance(0.6)?;
     save(&page, &fonts, Palette::Dark, "narrow-new.png");
 
-    // Issues selected, to be taken to an agent.
+    // Issues selected: the line under the page is the bar of the selection, which changes what they
+    // have in common (an agent is started from the detail of one issue, not from the selection). The
+    // menu of a right press is the host's, which a picture made without one does not draw.
     let mut page = lists(BIG, &fonts)?;
     page.press("x")?;
     page.press("shift+down")?;
@@ -242,18 +247,28 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     page.wait_for(Duration::from_secs(20), |page| page.says("3 selected"))?;
     page.advance(0.4)?;
     save(&page, &fonts, Palette::Dark, "select.png");
+    let mut page = lists(PANE, &fonts)?;
+    page.press("x")?;
+    page.press("shift+down")?;
+    page.press("shift+down")?;
+    page.wait_for(Duration::from_secs(20), |page| page.says("3 selected"))?;
+    page.advance(0.4)?;
+    save(&page, &fonts, Palette::Dark, "narrow-select.png");
 
-    // Issues handed to an agent: the form (on a machine that has bateri and three agents), and the
-    // list after the start, where each issue says who works on it.
+    // The lists, from the button in the head.
+    let mut page = lists(BIG, &fonts)?;
+    page.click("lists")?;
+    page.wait_for(Duration::from_secs(20), |page| page.says("The workspace"))?;
+    page.advance(0.6)?;
+    save(&page, &fonts, Palette::Dark, "lists.png");
+
+    // An issue handed to an agent: the form (on a machine that has bateri and three agents), and the
+    // list after the start, where the issue says who works on it.
     let linear = Canned::new(Mode::Fine);
     let machine = rig(&linear, true, &["claude", "codex", "cursor-agent"]);
     let mut page = open(&machine.session, BIG, Some(&fonts), "ACM-412")?;
-    select_for_work(&mut page)?;
-    page.press("w")?;
+    work_on(&mut page, "ACM-415")?;
     page.wait_for(Duration::from_secs(20), |page| page.says("Unchanged"))?;
-    page.type_text(
-        "Start with the rate limiter. The two others touch the same middleware, so do them in the same branch and say what you left out.",
-    )?;
     page.click("work-folder/item/worktree")?;
     page.wait_for(Duration::from_secs(20), |page| {
         page.says("The agent makes it")
@@ -268,8 +283,8 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     save(&page, &fonts, Palette::Dark, "started.png");
     machine.hands.end();
 
-    // The same issues, handed over with their status left as it is, an agent in a pane that has been
-    // quiet for a minute: the rows say it has stopped.
+    // The same issue, handed over with its status left as it is, an agent in a pane that has been
+    // quiet for a minute: the row says it has stopped.
     let linear = Canned::new(Mode::Fine);
     let machine = rig_polling(
         &linear,
@@ -279,8 +294,7 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     );
     machine.hands.set_ls(&ls_of_p41(0.0));
     let mut page = open(&machine.session, BIG, Some(&fonts), "ACM-412")?;
-    select_for_work(&mut page)?;
-    page.press("w")?;
+    work_on(&mut page, "ACM-415")?;
     page.wait_for(Duration::from_secs(20), |page| page.says("Unchanged"))?;
     page.click("work-status/item/keep")?;
     page.press("mod+enter")?;
@@ -304,17 +318,16 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     let linear = Canned::new(Mode::Fine);
     let machine = rig(&linear, true, &["claude", "codex", "cursor-agent"]);
     let mut page = open(&machine.session, PANE, Some(&fonts), "ACM-412")?;
-    select_for_work(&mut page)?;
-    page.press("w")?;
+    work_on(&mut page, "ACM-415")?;
     page.wait_for(Duration::from_secs(20), |page| page.says("Unchanged"))?;
-    page.type_text("Start with the rate limiter.")?;
     page.click("work-folder/item/worktree")?;
     page.advance(0.4)?;
     save(&page, &fonts, Palette::Dark, "narrow-work.png");
     machine.hands.end();
 
-    // The card of keys, and the palette.
-    let mut page = lists(BIG, &fonts)?;
+    // The card of keys (in a taller window than the others: it has seven groups and the keyboard
+    // scrolls it where the window is shorter), and the palette.
+    let mut page = lists((BIG.0, BIG.1 + 100.0), &fonts)?;
     page.press("?")?;
     page.wait_for(Duration::from_secs(20), |page| page.says("Keys"))?;
     page.advance(0.4)?;

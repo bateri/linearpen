@@ -46,6 +46,8 @@ struct IssueMessage {
     title: String,
     /// Where the issue is in Linear: the page opens it there.
     url: String,
+    /// The branch Linear suggests for it, where it has one: the page copies it.
+    branch_name: Option<String>,
     description: Option<String>,
     priority: &'static str,
     state: StateMessage,
@@ -103,6 +105,7 @@ fn message(issue: &Issue) -> IssueMessage {
         identifier: issue.identifier.clone(),
         title: issue.title.clone(),
         url: issue.url.clone(),
+        branch_name: super::issues::branch_name(issue),
         description,
         priority: issue.priority.name(),
         state: StateMessage {

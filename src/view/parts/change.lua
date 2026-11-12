@@ -1,5 +1,6 @@
 -- Changing issues in Linear: one field of one issue or of several (`change`, docs/calls.md). The
--- targets are the issues selected, else the one the cursor is on; the choices are the team's
+-- targets are the issues selected, else the one the cursor is on (and a right press, or the bar,
+-- names its own); the choices are the team's
 -- (`new_options`, kept for each team); a choice is sent when it is made, with no question, and
 -- the issue is busy until the answer comes. What is written is only what the menus offer: the
 -- status, priority, assignee, labels and project, and the title. Nothing is sent again by the page.
@@ -85,6 +86,9 @@ end
 local function row_of(id)
 	return list.issue(id) or act.panel_row(id)
 end
+
+-- The line of the issue `id`, for what asks what an issue is (its identifier, its link, its branch).
+change.row = row_of
 
 -- The ids of what a command changes: the issues selected, else the one under the cursor. Where the
 -- issue has the whole pane the list is not on the page, and what is selected in it is not seen: the
@@ -208,7 +212,7 @@ end
 -- Opens the menu with `entries` for the request, near its element where that is laid out, else in the
 -- middle. The reply.
 local function show(request, entries)
-	local where = { at = { x = S.width / 2 - 100, y = S.height / 3 } }
+	local where = { at = request.at or { x = S.width / 2 - 100, y = S.height / 3 } }
 	if request.near ~= nil and b.layout.bounds(request.near) ~= nil then
 		where = { near = request.near }
 	end
@@ -258,13 +262,13 @@ local function open_menu(request)
 end
 
 -- Opens the menu of `kind` (`state`, `priority`, `assignee`, `labels`, `project`) for the issues `ids`
--- near the element named `near`. The reply.
-function change.open(kind, ids, near)
+-- near the element named `near`, or at the place `at` (`{ x, y }`: where a press was). The reply.
+function change.open(kind, ids, near, at)
 	if #ids == 0 then
 		return true
 	end
 	C.serial += 1
-	local request = { kind = kind, ids = table.clone(ids), near = near, serial = C.serial }
+	local request = { kind = kind, ids = table.clone(ids), near = near, at = at, serial = C.serial }
 	local rows = target_rows(ids)
 	if rows == nil then
 		return true
@@ -284,15 +288,18 @@ function change.open(kind, ids, near)
 end
 
 -- A command of the list (`state`, `priority`, `assignee`, `labels`): the menu for the targets, near the
--- control of the issue open where it is that issue alone, else near the cursor's line.
-function change.run(kind)
+-- control of the issue open where it is that issue alone, else near the cursor's line; or near
+-- `by`, the element that was pressed (a button of the bar).
+function change.run(kind, by)
 	local ids = change.targets()
 	if #ids == 0 then
 		return true
 	end
 	local near = nil
 	local control = "panel-value:" .. kind
-	if #ids == 1 and act.panel_id() == ids[1] and b.layout.bounds(control) ~= nil then
+	if by ~= nil then
+		near = by
+	elseif #ids == 1 and act.panel_id() == ids[1] and b.layout.bounds(control) ~= nil then
 		near = control
 	else
 		-- The cursor's line, or where the cursor is on none of the issues that change, the first of them.
@@ -420,6 +427,37 @@ local function pick(entry)
 		state = data ~= nil and values.find(data.allStates, id) or nil
 	end
 	send(request.ids, field, value, state)
+end
+
+-- Gives the issues `ids` to the person: the one the team's choices call Me. The reply.
+function change.assign_me(ids)
+	local rows = ids ~= nil and #ids > 0 and #ids <= MOST and target_rows(ids) or nil
+	if rows == nil then
+		return true
+	end
+	local team = team_of(rows)
+	if team == "mixed" then
+		change.note("The issues are of more than one team")
+		return true
+	end
+	local data = team ~= nil and change.options(team) or nil
+	if data == nil then
+		-- (They are asked for before a key is pressed; a key pressed too soon does nothing but ask.)
+		change.ask(team, true)
+		return true
+	end
+	local me = values.me_of(data)
+	if me == nil then
+		change.note("Linear did not say who you are in this team")
+		return true
+	end
+	for _, id in ids do
+		if C.busy[id] then
+			return true
+		end
+	end
+	send(ids, "assignee", me.id)
+	return true
 end
 
 -- --- The title ---------------------------------------------------------------------------------------

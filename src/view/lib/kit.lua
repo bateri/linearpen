@@ -38,6 +38,8 @@ local S = {
 	connect_error = nil,
 	-- Calls out that the person waits on.
 	refreshing = false,
+	-- What is said for a moment (a copy was made): the library's toasts.
+	toasts = {},
 }
 
 -- The sizes (lib/sizes.lua) and the theme's.
@@ -99,7 +101,9 @@ end
 local buttons = {}
 
 -- A button: a verb, the key that does the same dim inside it. `o`: `primary`, `disabled`, `suffix`
--- (the key, as it is written), `tip`, `busy` (a turning picture before the words), `small`. It is
+-- (the key, as it is written), `tip`, `busy` (a turning picture before the words), `small`, `bar` (the
+-- size of the buttons in the bar of the selection, which is as high as the line of keys), `bold`, `count` (a
+-- number after the words, dim) and `chevron` (the mark of a button that opens a card). It is
 -- named `id` and pressed with the pointer, or with enter or the space bar while it has the keyboard
 -- (`page.lua`'s `on_button`). A disabled one answers nothing and says why in its tip.
 local function button(id, label, o)
@@ -120,9 +124,9 @@ local function button(id, label, o)
 		:row()
 		:items_center()
 		:justify_center()
-		:gap(9)
-		:h(o.small and SIZE.small_control or t.size.control)
-		:px(o.small and 8 or t.size.pad)
+		:gap(o.bar and 6 or 9)
+		:h(o.bar and SIZE.bar_control or o.small and SIZE.small_control or t.size.control)
+		:px(o.bar and 7 or o.small and 8 or t.size.pad)
 		:no_shrink()
 		:rounded(t.radius.control)
 		:bg(ground)
@@ -137,7 +141,17 @@ local function button(id, label, o)
 	if o.busy then
 		el:child(spinner(13, ink))
 	end
-	el:child(b.text(label):weight(o.primary and 600 or 500))
+	local words = b.text(label):weight(o.bold and 700 or o.primary and 600 or 500)
+	if o.bar then
+		words = words:text_size(SIZE.tiny + 0.5)
+	end
+	el:child(words)
+	if o.count then
+		el:child(b.text(o.count):text_size(SIZE.small):color(b.alpha(ink, 0.6)):no_shrink())
+	end
+	if o.chevron then
+		el:child(icon("chevron-down", 13, b.alpha(ink, 0.7)))
+	end
 	if o.suffix then
 		el:child(b.text(o.suffix):text_size(SIZE.tiny):color(b.alpha(ink, 0.6)))
 	end

@@ -9,7 +9,7 @@ use std::time::Duration;
 use pencere::{Options, ViewError};
 use serde::Serialize;
 
-use crate::linear::{Issue, Scope};
+use crate::linear::{Issue, Scope, plain};
 use crate::model::filter::Filter;
 use crate::model::groups::{Group, group};
 use crate::model::time::short_date;
@@ -40,6 +40,10 @@ pub struct RowMessage {
     pub id: String,
     pub identifier: String,
     pub title: String,
+    /// Where the issue is in Linear, and the name of the branch Linear suggests for it (none where
+    /// it has none): what the page copies. Neither holds a control character.
+    pub url: String,
+    pub branch_name: Option<String>,
     pub priority: &'static str,
     pub updated: String,
     pub labels: Vec<LabelMessage>,
@@ -127,11 +131,22 @@ pub struct Snapshot {
     pub working: BTreeMap<String, WorkingMessage>,
 }
 
+/// The branch Linear suggests for an issue, as one line with no control character in it, or none.
+pub fn branch_name(issue: &Issue) -> Option<String> {
+    issue
+        .branch_name
+        .as_deref()
+        .map(plain)
+        .filter(|name| !name.is_empty())
+}
+
 fn row(issue: &Issue, scope: Scope) -> RowMessage {
     RowMessage {
         id: issue.id.clone(),
         identifier: issue.identifier.clone(),
         title: issue.title.clone(),
+        url: plain(&issue.url),
+        branch_name: branch_name(issue),
         priority: issue.priority.name(),
         updated: short_date(&issue.updated_at),
         labels: labels(issue),

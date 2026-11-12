@@ -4,16 +4,39 @@
 
 ### Added
 
+- **The head of the page has fixed places.** The list button (the list, how many it has and a
+  chevron) opens a card of lists, which for now holds My issues and All issues (`g`, or `1` and
+  `2`); the filter says how many it lets through (`4 of 14`) inside itself, and Refresh and New
+  issue stay where they are whatever the page is doing: the cursor moving, issues selected, an issue
+  open or shut. A page too narrow for Refresh (under 880 points) or for New issue (under 760) leaves
+  their buttons out and the filter takes a row of its own under 640; the keys still work.
+- **The bar of the selection.** With issues selected the line under the page is a bar: how many are
+  selected, the values to change in them (Status, Assignee, and in a wider pane Priority, Labels and
+  Project), `More` (`Cmd K`) and `Clear` (`Esc`); a press on a value opens its menu for all of them,
+  and `Esc` gives the line of keys back. The head has no count and no Work on button any more.
+- **A right press on a line opens its menu.** The values (Status, Priority, Assignee, Labels,
+  Project), `Assign to me` (`i`), and for one issue `Rename` (`r`), `Copy ID`, `Copy branch name`,
+  `Copy link` and `Open in Linear`; on a line that is selected it is the menu of the whole
+  selection, without what is of one issue, and the cursor goes to the line that was pressed.
+- **Copying.** `Cmd Shift I` puts the identifier of the issue (the open one, the one selected or the
+  one under the cursor) on the pasteboard, `Cmd Shift .` its branch name and `Cmd Shift ,` its link,
+  and the page says what it copied for a moment. The page gets the branch name and the link of each
+  issue with the rows (`branchName` and `url`).
+- **Linear's keys.** `r` renames, `o` opens the issue (Enter's twin), `Shift O` opens it in Linear,
+  `Cmd R` asks Linear again, `i` assigns the issue to you and `g` goes to a list. Keys that were
+  `e` (rename), `o` (open in Linear) and `r` (ask again) are not those any more.
+
 - **linearpen opens in a bateri pane as a list of your issues.** My issues and All issues, each
   with its count, grouped by state with the backlog folded; the arrow keys and `j` and `k` move,
-  Left and Right fold a group, `1` and `2` choose the list, `/` filters by title, identifier or
-  label, and `r` asks Linear again. A pane that is narrow drops the labels and the button.
+  Left and Right fold a group, `g` (or `1` and `2`) chooses the list, `/` filters by title,
+  identifier or label, and `Cmd R` asks Linear again. A pane that is narrow drops the labels and the
+  buttons of the head.
 - **Connect, loading, error and empty screens.** Without a key the pane asks for one (the field
   hides what you type) and keeps it where `LINEAR_API_KEY` is not set; a key Linear refuses is
   said there, and one Linear cannot be asked about leaves a way to try again.
 - **Enter opens an issue beside the list.** The panel shows what the list does not carry: the
   description (as markdown, with its links opening only where you press them), the comments oldest
-  first, the cycle, the project and who it is assigned to. `Open in Linear` (`o`) opens it in your
+  first, the cycle, the project and who it is assigned to. `Open in Linear` (`Shift O`) opens it in your
   browser and `Close` (`Esc`) puts it away; the panel follows the cursor, asks Linear once for each
   issue, and takes the whole of a pane too narrow for both. There the list is not on the page, so the arrows
   scroll the issue, `j` and `k` go to the issue after and the one before, and no key does something
@@ -26,24 +49,23 @@
   commands that the key line is made from, so a key is written once; words typed in the palette that
   are no command's filter the issues. In a narrow pane the card is one column, and the arrows and
   Page Up and Page Down scroll it.
-- **Work on an issue, or the ones you selected, with an agent.** `w` opens a form beside the list.
-  Its button stands by what it works on: by the count of what is selected (`Work on them`), in the
-  panel of the issue that is open (`Work on issue`), or at the end of the head, where it names the
-  issue under the cursor (`Work on ACM-412`). The form holds: the issues, what to tell the agent, which agent (Claude, Codex or
-  Cursor, the ones in your `PATH`), whether it works in this folder or makes a new `git` worktree
-  first (by the project's own rules for one; where it has none, on the branch Linear suggests, which
-  the file of issues gives), and whether its pane splits to the right or opens a new tab. `Cmd Enter` starts it
-  in a pane of bateri, and each issue says which agent works on it until the pane ends. The issues
-  are written, with their descriptions and comments, to a file only you can read, under
-  `~/.local/state/linearpen/work`; the agent is told where the file is and that other people wrote
-  it, and is started with no option that lets it skip its questions. Nothing is started outside a
-  bateri pane, and the form says why. In a pane on a server over `ssh` the agent, its pane and the
-  file are on the server.
-- **Starting an agent can move the issues to work in progress.** The form has a `Status` row,
+- **Work on an issue, with an agent.** Work on is one issue's, in its detail, at the start of its
+  first line (`Work on issue`, `w`), as in Linear; the list has no button for it and a selection
+  starts no agent. The form holds: the issue, which agent (Claude, Codex or Cursor, the ones in your
+  `PATH`), whether it works in this folder or makes a new `git` worktree first (by the project's own
+  rules for one; where it has none, on the branch Linear suggests, which the file of the issue gives),
+  and whether its pane splits to the right or opens a new tab; it has no words for the agent, which
+  is written to in its own pane. `Cmd Enter` starts it in a pane of bateri, and the issue says which
+  agent works on it until the pane ends. The issue is written, with its description and comments, to
+  a file only you can read, under `~/.local/state/linearpen/work`; the agent is told where the file
+  is and that other people wrote it, and is started with no option that lets it skip its questions.
+  Nothing is started outside a bateri pane, and the form says why. In a pane on a server over `ssh`
+  the agent, its pane and the file are on the server.
+- **Starting an agent can move the issue to work in progress.** The form has a `Status` row,
   `In Progress` (your team's first state of work, by its own name) or `Unchanged`, and it is not
-  there when every issue has begun. Chosen, it moves the issues in Triage, Backlog or Todo to that
-  state once the pane is made, one change for each team, and nothing else: a started, done or
-  canceled issue is left as it is, and nothing is written if the pane was not made. A move Linear
+  there when the issue has begun. Chosen, it moves an issue in Triage, Backlog or Todo to that
+  state once the pane is made, and nothing else: a started, done or canceled issue is left as it
+  is, and nothing is written if the pane was not made. A move Linear
   refuses does not stop the agent; the list says it did not happen. In a short pane the line
   under Folder is left out, so that Start stays on the page.
 - **A row says when its agent has stopped.** While an agent is on, linearpen asks bateri for the
@@ -79,9 +101,9 @@
   needs a key with Create issues permission, which the Connect screen now says.
 - **Change an issue: status, priority, assignee, labels, project and title.** The issue open beside the
   list has these as buttons, the same ones the form of a new issue has (the status offers every
-  state of the team, Done and Canceled too), and its title becomes a field on `e` or a press (`Enter`
-  saves, `Esc` leaves it, an empty title is not sent). From the list `s`, `p`, `a`, `l`, `Shift P` and `e` change
-  the issue under the cursor, or all the issues selected, up to fifty in one request; a label that
+  state of the team, Done and Canceled too), and its title becomes a field on `r` or a press (`Enter`
+  saves, `Esc` leaves it, an empty title is not sent). From the list `s`, `p`, `a`, `i` (assign to
+  you), `l`, `Shift P` and `r` change the issue under the cursor, or all the issues selected, up to fifty in one request; a label that
   every one of them has is taken off, issues of several teams change only their priority, and a menu
   says how many issues it is for. A change is sent when you choose it, once, with the control (or the
   line) busy until Linear has answered; the issue goes to its new group with the cursor on it, and an

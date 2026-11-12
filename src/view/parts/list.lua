@@ -204,6 +204,21 @@ local function put(key)
 	return true
 end
 
+-- The line of `key` (`{ kind, key, group, row }`), or nil.
+function list.item_of(key)
+	return L.items[L.at[key] or 0]
+end
+
+-- Whether the line of `key` is selected.
+function list.is_marked(key)
+	return L.marks[key] == true
+end
+
+-- Puts the cursor on the line of `key` (a right press does, for the menu is of the line it is on).
+function list.focus(key)
+	return put(key)
+end
+
 -- Puts the cursor on the issue with Linear's `id` and scrolls it into view. Its line, or nil where it
 -- is not in the list.
 function list.reveal_issue(id)
@@ -362,7 +377,8 @@ function list.key(event, in_field)
 		list.move(name)
 		return true
 	end
-	if event.key == "enter" and not in_field then
+	-- Enter opens the line the cursor is on, and so does `o` (Linear's key for it).
+	if (event.key == "enter" or (event.key == "o" and not mods.shift)) and not in_field then
 		list.open()
 		return true
 	end

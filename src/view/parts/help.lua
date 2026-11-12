@@ -14,7 +14,7 @@ local H = { open = false }
 local SCROLL = "help/scroll"
 
 -- The groups of the card, in the order they stand in the table.
-local ORDER = { "Move", "Select", "Change", "Issue", "Work on, New issue", "Everywhere" }
+local ORDER = { "Move", "Select", "Change", "Copy", "Issue", "Work on, New issue", "Everywhere" }
 
 function help.is_open()
 	return H.open
@@ -100,7 +100,7 @@ function help.view(root)
 		local left = b.div():col():w(left_width):no_shrink()
 		local right = b.div():col():w(inner - 28 - left_width):no_shrink()
 		for index, name in ORDER do
-			local side = index <= 3 and left or right
+			local side = index <= 4 and left or right
 			side:child(group(name))
 		end
 		columns:child(left):child(right)

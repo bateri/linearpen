@@ -1,36 +1,35 @@
--- Handing issues to an agent: beside the list (or over it, in a narrow pane) a form with the issues,
--- what to tell the agent, which agent, where it works and where its pane goes. The program does the
--- work (`work_options`, `start`: the file of issues, the worktree, the pane of bateri); the page
--- asks it what can be chosen and what the person chose.
+-- Handing an issue to an agent: the issue's own, from its detail (Work on is one issue's and no
+-- other's; what is selected is for changing values). Beside the list (or over it, in a narrow pane) a
+-- form with the issue, which agent, where it works and where its pane goes; there are no words to give
+-- the agent, which is written to in its pane. The program does the work (`work_options`, `start`: the
+-- file of the issue, the worktree, the pane of bateri); the page asks it what can be chosen and what the
+-- person chose.
 
 local kit = require("../lib/kit")
 local change = require("./change")
 local commands = require("./commands")
 local list = require("./list")
 local panel = require("./panel")
-local row = require("./row")
 
 local b, u, S, SIZE, act = kit.b, kit.u, kit.S, kit.SIZE, kit.act
 
 local work = {}
 
--- The form: whether it is open; the issues (those selected, as they are selected, or the one the
--- cursor was on); what the program said can be chosen; what was chosen; the words of why the last
--- start did not.
+-- The form: whether it is open; the issue (by Linear's id) and what is said of it where the list does
+-- not hold it (it was open and left the list); what the program said can be chosen; what was chosen; the
+-- words of why the last start did not.
 local W = {
 	open = false,
 	serial = 0,
-	live = false,
-	fixed = {},
-	-- What is said of an issue the list does not hold (one that is open and left the list): by id.
-	rows = {},
+	id = nil,
+	row = nil,
 	asked = nil,
 	options = nil,
 	agent = nil,
 	folder = "here",
 	place = "split",
-	-- Whether the issues that have not begun are moved to their team's state of work in progress
-	-- when the agent starts ("progress"), or left as they are ("keep").
+	-- Whether the issue, if it has not begun, is moved to its team's state of work in progress when the
+	-- agent starts ("progress"), or left as it is ("keep").
 	status = "progress",
 	-- Whether what the last start chose (which the program kept, and `boot` brought) has been put in
 	-- the form: once for a run of the page, so that what is chosen after is not undone.
@@ -42,24 +41,13 @@ work.state = W
 
 local AGENT, FOLDER, PLACE, STATUS = "work-agent", "work-folder", "work-place", "work-status"
 
--- The most issues one agent is started on (the program's limit, docs/calls.md).
-work.MOST = 25
-
--- The editor of the words for the agent: another each time the form opens, so that it begins empty.
-local function prompt_name()
-	return "work-prompt" .. W.serial
-end
-
 function work.is_open()
 	return W.open
 end
 
--- The issues the form is for, by Linear's id.
+-- The issue the form is for, by Linear's id: a list of one, or none.
 function work.ids()
-	if W.live then
-		return list.marked_ids()
-	end
-	return W.fixed
+	return W.id ~= nil and { W.id } or {}
 end
 
 -- What the program said can be chosen, once it has.
@@ -81,10 +69,9 @@ local function first_started(data)
 	return nil
 end
 
--- What Status would do for the issues of the form: how many have not begun and are of a team whose
--- state of work in progress is known, and what that state is called (one name, or "Started" where the
--- teams call it differently). nil where none would move. The program decides again, by what Linear
--- says then; this is only what the form can promise.
+-- What Status would do for the issue of the form: whether it has not begun and is of a team whose
+-- state of work in progress is known (`count` 1), and what that state is called. nil where it would not
+-- move. The program decides again, by what Linear says then; this is only what the form can promise.
 function work.moving()
 	local count, name, mixed = 0, nil, false
 	for _, id in work.ids() do
@@ -92,8 +79,8 @@ function work.moving()
 		local team, kind
 		if item ~= nil then
 			team, kind = item.row.teamId, item.group.kind
-		elseif W.rows[id] ~= nil then
-			team, kind = W.rows[id].teamId, W.rows[id].kind
+		elseif W.row ~= nil then
+			team, kind = W.row.teamId, W.row.kind
 		end
 		local data = team ~= nil and NOT_BEGUN[kind] and change.options(team) or nil
 		local state = data ~= nil and first_started(data) or nil
@@ -111,39 +98,13 @@ function work.moving()
 	return { count = count, name = mixed and "Started" or name }
 end
 
--- What Work on is for, which is also where its button stands: "marks", the issues selected where
--- they are seen (the button is by their count, in the head); "panel", the issue that is open (in
--- its own panel); "cursor", the issue under the cursor (at the end of the head, and named). Where
--- the issue has the whole pane what is selected is not on the page, and it is the issue.
-function work.target()
-	if list.marked() > 0 and not S.alone then
-		return "marks"
-	end
-	if panel.is_open() then
-		return "panel"
-	end
-	local item = list.current()
-	if item ~= nil and item.kind == "issue" then
-		return "cursor"
-	end
-	return nil
-end
-
--- Whether an issue can be handed over now.
+-- Whether the issue can be handed over now: one is open (its detail is where the button is), and no
+-- form is.
 function work.workable()
-	return not W.open and work.target() ~= nil
+	return not W.open and panel.is_open()
 end
 
--- For the head and the panel, which draw the button: what it is for, or nil where there is none
--- (a form is open in its place).
-act.work_target = function()
-	if W.open or S.form_open then
-		return nil
-	end
-	return work.target()
-end
-
--- Whether what Status would do is known: the choices of the team of each issue that has not begun are
+-- Whether what Status would do is known: the choices of the team of the issue, if it has not begun, are
 -- here (or could not come, and then the row is not there and nothing is moved). Until they are, Start
 -- waits, so that what the form promises (the row, and the choice kept for it) is what is sent.
 local function status_known()
@@ -152,8 +113,8 @@ local function status_known()
 		local team, kind
 		if item ~= nil then
 			team, kind = item.row.teamId, item.group.kind
-		elseif W.rows[id] ~= nil then
-			team, kind = W.rows[id].teamId, W.rows[id].kind
+		elseif W.row ~= nil then
+			team, kind = W.row.teamId, W.row.kind
 		end
 		if team ~= nil and NOT_BEGUN[kind] and not change.ready(team) then
 			return false
@@ -171,17 +132,18 @@ function work.startable()
 		and options ~= nil
 		and options.unavailable == nil
 		and W.agent ~= nil
-		and #work.ids() > 0
-		and #work.ids() <= work.MOST
+		and W.id ~= nil
 end
 
--- Asks the program what can be chosen (it is the same whichever the issues are), once for a form.
+-- Asks the program what can be chosen (it is the same whichever the issue is), once for a form. The
+-- keyboard goes to the choice of the agent when it comes, so that the arrows choose.
 local function ask(ids)
 	if ids[1] == nil or W.asked then
 		return
 	end
 	W.asked = true
 	W.options = { status = "loading" }
+	local serial = W.serial
 	kit.call("work_options", {}, function(result, err)
 		if not W.asked then
 			return true
@@ -201,18 +163,21 @@ local function ask(ids)
 		if W.folder == "worktree" and not result.worktree.available then
 			W.folder = "here"
 		end
+		if W.serial == serial and W.open and W.agent ~= nil and u.holder == "page" then
+			return u:focus(u:name(AGENT, "item", W.agent))
+		end
 		return true
 	end)
 end
 
--- Keeps what is asked of the program to the issues the form is for.
+-- Keeps what is asked of the program to the issue the form is for.
 function work.sync()
 	if W.open then
 		ask(work.ids())
-		-- What Status can move the issues to is what their teams say can be chosen.
+		-- What Status can move the issue to is what its team says can be chosen.
 		for _, id in work.ids() do
 			local item = list.item(id)
-			local team = item ~= nil and item.row.teamId or (W.rows[id] ~= nil and W.rows[id].teamId or nil)
+			local team = item ~= nil and item.row.teamId or (W.row ~= nil and W.row.teamId or nil)
 			change.ask(team, false)
 		end
 	end
@@ -244,49 +209,37 @@ local function remember()
 	end
 end
 
--- Opens the form for the issues selected, or the one the cursor is on. The reply that gives the
--- keyboard to the words for the agent.
+-- Opens the form for the issue that is open. The reply.
 function work.show()
-	local target = work.target()
-	if W.open or target == nil then
+	if not work.workable() then
 		return true
 	end
 	remember()
-	local live = target == "marks"
-	local ids, rows = {}, {}
-	if target == "panel" then
-		local info = panel.info()
-		ids = { info.id }
-		rows[info.id] = {
-			identifier = info.identifier,
-			title = info.title,
-			teamId = info.teamId,
-			kind = info.state ~= nil and info.state.kind or nil,
-		}
-	elseif target == "cursor" then
-		ids = { list.current().row.id }
-	end
+	local info = panel.info()
+	W.row = {
+		identifier = info.identifier,
+		title = info.title,
+		teamId = info.teamId,
+		kind = info.state ~= nil and info.state.kind or nil,
+	}
 	panel.close()
-	W.open, W.live, W.fixed, W.rows = true, live, ids, rows
+	W.open, W.id = true, info.id
 	W.serial += 1
 	-- (A start that is on its way is not forgotten: its answer comes to a form that may be gone.)
 	W.asked, W.options, W.error = nil, nil, nil
 	work.sync()
-	return u:focus(prompt_name())
+	return u:focus(nil)
 end
 
 function work.close()
 	W.open = false
 end
 
--- Hands the issues over, with the words of the editor, to the program.
+-- Hands the issue over to the program.
 function work.start()
 	if not work.startable() then
 		return true
 	end
-	local name = prompt_name()
-	local length = b.layout.editor_length(name) or 0
-	local words = b.layout.editor_text(name, 1, length + 1) or ""
 	W.starting, W.error = true, nil
 	-- Status goes only where the form had the row, and then as it said: to move (true) or to leave
 	-- (false). Without the row there is nothing to move and nothing to remember.
@@ -296,8 +249,7 @@ function work.start()
 	end
 	local serial = W.serial
 	kit.call("start", {
-		ids = work.ids(),
-		prompt = words,
+		id = W.id,
 		agent = W.agent,
 		folder = W.folder,
 		open = W.place,
@@ -312,13 +264,12 @@ function work.start()
 			W.error = err.message or err.code
 			return true
 		end
-		-- It is on its way: the form is done, and what was selected was for it. Where the issues were to
-		-- move and Linear did not, the list's strip says so (the agent is started all the same).
+		-- It is on its way: the form is done. Where the issue was to move and Linear did not, the list's
+		-- strip says so (the agent is started all the same).
 		if result ~= nil and result.notMoved ~= nil then
 			change.note(result.notMoved)
 		end
 		W.open = false
-		list.clear_marks()
 		return u:focus(nil)
 	end)
 	return true
@@ -341,92 +292,6 @@ local function note(words, one_line)
 	local text = b.text(words):text_size(SIZE.small):color("dim"):min_w(0):grow(1)
 	text = one_line and text:truncate() or text:wrap()
 	return b.div():row():gap(12):no_shrink():child(b.div():w(LABEL):no_shrink()):child(text)
-end
-
--- The box that lets an issue go from the form (and from the selection).
-local function leave_box(id, info)
-	local name = "work-check:" .. id
-	local ring = u.theme.ring
-	-- The box has the keyboard in Tab's order, and enter or the space bar lets the issue go.
-	return b.div()
-		:row()
-		:size(18, 18)
-		:items_center()
-		:justify_center()
-		:rounded(6)
-		:no_shrink()
-		:border(1, u:focus_visible(name) and ring or u.theme.clear)
-		:press(name)
-		:focusable()
-		:role("checkbox")
-		:checked(true)
-		:label("Leave out " .. info.identifier)
-		:child(row.box(name, true))
-end
-
--- An issue the form is for: its box (where they were selected, to let one go), identifier and title.
-local function issue_line(id)
-	local info = list.issue(id) or W.rows[id]
-	if info == nil then
-		return nil
-	end
-	local line = b.div():row():items_center():gap(10):h(26):no_shrink()
-	if W.live then
-		line:child(leave_box(id, info))
-	end
-	line:child(b.text(info.identifier):text_size(SIZE.small):color("dim"):no_shrink())
-	line:child(b.text(info.title):grow(1):min_w(0):truncate())
-	return line
-end
-
--- The issues: a line each, and in a short pane one line of identifiers.
-local function issues_box(ids, compact)
-	local box = b.div():col():no_shrink()
-	if compact then
-		local line = b.div():row():wrap():gap_x(14):gap_y(4):no_shrink()
-		for _, id in ids do
-			local info = list.issue(id) or W.rows[id]
-			if info ~= nil then
-				local item = b.div():row():items_center():gap(7):no_shrink()
-				if W.live then
-					item:child(leave_box(id, info))
-				end
-				line:child(item:child(b.text(info.identifier):text_size(SIZE.small)))
-			end
-		end
-		return box:child(line)
-	end
-	for _, id in ids do
-		local line = issue_line(id)
-		if line ~= nil then
-			box:child(line)
-		end
-	end
-	return box
-end
-
--- The words for the agent: an editor the host keeps, that wraps, in a box of the field's look.
-local function prompt_box(compact)
-	local t = u.theme
-	local name = u:field(prompt_name())
-	local ringed = u:keyboard() == name
-	local editor = b.editor(name, {
-		wrap = true,
-		gutter = false,
-		padding = 8,
-		line_height = 1.5,
-		hint = "Tell the agent what to do (optional)",
-		-- Tab is the page's: it goes on to the next field.
-		keymap = { tab = false, ["shift+tab"] = false },
-	}):grow(1):min_h(0):label("What the agent is to do")
-	return b.div()
-		:h(compact and 64 or 118)
-		:no_shrink()
-		:rounded(t.radius.control)
-		:bg(t.field)
-		:border(1, ringed and t.ring or t.line)
-		:motion({ seconds = t.motion, color = true })
-		:child(editor)
 end
 
 local function agents_control(options)
@@ -498,10 +363,6 @@ local function start_button()
 	local why = nil
 	if options ~= nil and options.unavailable ~= nil then
 		why = options.unavailable
-	elseif #work.ids() == 0 then
-		why = "No issue is chosen"
-	elseif #work.ids() > work.MOST then
-		why = "At most " .. work.MOST .. " issues at a time: leave some out"
 	end
 	local button = kit.button("work-start", start_label(), {
 		primary = true,
@@ -513,25 +374,18 @@ local function start_button()
 	return button, why
 end
 
-local function title_words(count)
-	if count > 1 then
-		return "Work on " .. count .. " issues"
-	end
-	return "Work on issue"
-end
-
 function work.view(width)
-	local ids = work.ids()
 	local compact = S.height < SIZE.short
 	local options = chosen()
-	local content = b.div():col():grow(1):min_w(0):min_h(0):pt(SIZE.head_top):px(SIZE.pad):gap(compact and 8 or 12)
-	content:child(
+	local row = list.issue(W.id) or W.row or {}
+	local top = b.div():col():no_shrink():pt(SIZE.head_top):px(SIZE.pad):pb(14)
+	top:child(
 		b.div():row():items_center():gap(8):no_shrink():child(
-			b.text(title_words(#ids)):text_size(15):weight(700)
+			b.text("Work on " .. (row.identifier or "")):text_size(15):weight(700)
 		):child(b.spacer()):child(kit.button("work-close", "Close", { suffix = "Esc" }))
 	)
-	content:child(issues_box(ids, compact))
-	content:child(prompt_box(compact))
+	top:child(b.text(row.title or ""):wrap():mt(6):no_shrink())
+	local content = b.div():col():grow(1):min_w(0):min_h(0):pt(14):px(SIZE.pad):gap(compact and 8 or 12)
 	if W.options == nil or W.options.status == "loading" then
 		content:child(b.div():row():items_center():gap(8):no_shrink():child(kit.spinner(14, "quiet")):child(
 			b.text("Looking at what can be chosen"):color("dim"):text_size(SIZE.small)
@@ -557,19 +411,22 @@ function work.view(width)
 		end
 	end
 	local button, why = start_button()
-	local foot = b.div():row():items_center():gap(12):no_shrink():child(button)
-	if why ~= nil and #ids > 0 then
+	local foot = b.div():row():items_center():gap(12):no_shrink():mt(compact and 4 or 8):child(button)
+	if why ~= nil then
 		foot:child(b.text(why):text_size(SIZE.small):color("warning"):wrap():min_w(0):grow(1))
 	end
 	content:child(foot)
 	if W.error ~= nil then
 		content:child(b.text(W.error):text_size(SIZE.small):color("warning"):wrap())
 	end
+	local box = b.div():col():grow(1):min_w(0):min_h(0):child(top)
+	box:child(b.div():h(1):bg(b.alpha("foreground", 0.18)):no_shrink())
+	box:child(b.div():id("work-scroll"):scroll():col():grow(1):min_w(0):min_h(0):pb(SIZE.pad):child(content))
 	local side = b.div():row():w(width):no_shrink():min_h(0)
 	if width < S.width then
 		side:child(b.div():w(1):bg(b.alpha("foreground", 0.23)):no_shrink())
 	end
-	return side:child(b.div():id("work-scroll"):scroll():col():grow(1):min_w(0):min_h(0):pb(SIZE.pad):child(content))
+	return side:child(box)
 end
 
 -- --- What the person does ------------------------------------------------------------------------
@@ -581,10 +438,6 @@ function work.press(id)
 		return u:focus(nil)
 	elseif id == "work-start" then
 		return work.start()
-	elseif string.sub(id, 1, 11) == "work-check:" then
-		list.toggle_mark("i:" .. string.sub(id, 12))
-		-- The box is gone with the issue: the keyboard goes back to the words for the agent.
-		return u:focus(u:field(prompt_name()))
 	end
 	return nil
 end
@@ -608,19 +461,10 @@ function work.action(action)
 	return true
 end
 
--- What Tab goes through, in order, as it stands now: the boxes that let an issue go, the words for the
--- agent, the choice made in each control (the one of its parts that is in the order of the keyboard), and the button that starts.
+-- What Tab goes through, in order, as it stands now: the choice made in each control (the one of its
+-- parts that is in the order of the keyboard), and the button that starts.
 local function order()
 	local names = {}
-	if W.live then
-		for _, id in work.ids() do
-			local name = "work-check:" .. id
-			if b.layout.bounds(name) ~= nil then
-				names[#names + 1] = name
-			end
-		end
-	end
-	names[#names + 1] = u:field(prompt_name())
 	local controls = { { AGENT, W.agent }, { FOLDER, W.folder }, { PLACE, W.place }, { STATUS, W.status } }
 	for _, control in controls do
 		local name = control[2] ~= nil and u:name(control[1], "item", control[2]) or nil

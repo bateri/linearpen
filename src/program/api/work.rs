@@ -1,7 +1,6 @@
-//! The calls `work_options` and `start`: handing issues to an agent in a pane of bateri. What
-//! happens is `work/`'s; this reads what the page asks, finds the issues, and tells what came.
+//! The calls `work_options` and `start`: handing an issue to an agent in a pane of bateri. What
+//! happens is `work/`'s; this reads what the page asks, finds the issue, and tells what came.
 
-use std::collections::HashSet;
 use std::sync::Arc;
 
 use pencere::Options;
@@ -16,12 +15,6 @@ use crate::state::prefs;
 use crate::work::agents::{self, Agent};
 use crate::work::bateri::Place;
 use crate::work::{self, Env, Folder, Refused, Request, progress};
-
-/// The most issues handed over at once.
-const IDS_MOST: usize = 25;
-
-/// The most characters of the person's own words that go to the prompt.
-const PROMPT_MOST: usize = work::handoff::PROMPT_MOST;
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -55,14 +48,14 @@ struct OptionsMessage {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Hand {
-    ids: Vec<String>,
-    #[serde(default)]
-    prompt: String,
+    /// The one issue handed over: Work on is an issue's own, and no words of a person's go to the
+    /// agent (a member `ids` or `prompt` is refused with any other that is not named).
+    id: String,
     agent: String,
     folder: String,
     open: String,
-    /// What the form's Status row said, where it had one: move the issues that have not begun to
-    /// their team's first state of work in progress, once the pane is made (`true`), or leave them
+    /// What the form's Status row said, where it had one: move the issue, if it has not begun, to
+    /// its team's first state of work in progress, once the pane is made (`true`), or leave it
     /// (`false`). Not given where the form had no such row. Only `true` writes to Linear.
     progress: Option<bool>,
 }
@@ -77,23 +70,6 @@ struct StartedMessage {
     moved: usize,
     /// Why some that were to move were not.
     not_moved: Option<String>,
-}
-
-/// The ids, checked: one to `IDS_MOST`, each one an id, none twice.
-fn check_ids(ids: &[String]) -> Result<(), Failure> {
-    if ids.is_empty() || ids.len() > IDS_MOST {
-        return Err(Failure::BadParams(format!(
-            "ids are one to {IDS_MOST} ids of issues"
-        )));
-    }
-    let mut seen = HashSet::new();
-    for id in ids {
-        check_id(id)?;
-        if !seen.insert(id) {
-            return Err(Failure::BadParams(format!("{id} is named twice")));
-        }
-    }
-    Ok(())
 }
 
 fn env(session: &Session) -> Env<'_> {
@@ -139,12 +115,7 @@ fn options(session: &Session, _: Nothing) -> Result<OptionsMessage, Failure> {
 }
 
 fn start(session: &Session, params: Hand) -> Result<StartedMessage, Failure> {
-    check_ids(&params.ids)?;
-    if params.prompt.chars().count() > PROMPT_MOST {
-        return Err(Failure::BadParams(format!(
-            "prompt is at most {PROMPT_MOST} characters"
-        )));
-    }
+    check_id(&params.id)?;
     let agent = Agent::parse(&params.agent)
         .ok_or_else(|| Failure::BadParams("agent is claude, codex or cursor".to_owned()))?;
     let folder = Folder::parse(&params.folder)
@@ -156,21 +127,15 @@ fn start(session: &Session, params: Hand) -> Result<StartedMessage, Failure> {
             "there is no key to ask Linear with".to_owned(),
         ));
     }
-    // What cannot be done from here is said before Linear is asked for the text of each issue.
+    // What cannot be done from here is said before Linear is asked for the text of the issue.
     if let Some(why) = session.work.setup.unavailable() {
         return Err(Failure::Unavailable(why));
     }
-    let issues: Vec<Issue> = params
-        .ids
-        .iter()
-        .map(|id| session.detail_fresh(id))
-        .collect::<Result<_, _>>()
-        .map_err(Failure::Linear)?;
+    let issue: Issue = session.detail_fresh(&params.id).map_err(Failure::Linear)?;
     let started = work::start(
         &env(session),
         &Request {
-            issues: &issues,
-            prompt: &params.prompt,
+            issue: &issue,
             agent,
             folder,
             place,
@@ -180,13 +145,18 @@ fn start(session: &Session, params: Hand) -> Result<StartedMessage, Failure> {
         Refused::Unavailable(why) => Failure::Unavailable(why),
         Refused::Failed(why) => Failure::StartFailed(why),
     })?;
-    // The marks are on the ids the page sent: they are the ones it knows the issues by.
-    session.watch(&params.ids, agent.name(), &started.pane, &started.context);
+    // The mark is on the id the page sent: it is the one it knows the issue by.
+    session.watch(
+        std::slice::from_ref(&params.id),
+        agent.name(),
+        &started.pane,
+        &started.context,
+    );
     // A run of a while ago is put away now and then: here, when a new one has been made.
     session.tidy();
     // Only now, with the pane made: a start that came to nothing leaves Linear as it was.
     let moved = if params.progress == Some(true) {
-        move_forward(session, &issues)
+        move_forward(session, std::slice::from_ref(&issue))
     } else {
         Moved::default()
     };
@@ -334,15 +304,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_ids_are_one_to_twenty_five_and_none_twice() {
-        let ids = |n: usize| (0..n).map(|i| format!("issue-{i}")).collect::<Vec<_>>();
-        assert!(check_ids(&ids(1)).is_ok());
-        assert!(check_ids(&ids(25)).is_ok());
-        assert!(check_ids(&[]).is_err());
-        assert!(check_ids(&ids(26)).is_err());
-        assert!(check_ids(&["a".to_owned(), "a".to_owned()]).is_err());
-        assert!(check_ids(&["a b".to_owned()]).is_err());
-        assert!(check_ids(&["../x".to_owned()]).is_err());
+    fn the_id_is_an_id_and_the_words_of_a_start_are_the_pens_alone() {
+        use crate::api::params::parse;
+        let base =
+            json!({ "id": "issue-412", "agent": "claude", "folder": "here", "open": "split" });
+        assert!(parse::<Hand>(base.clone()).is_ok());
+        // One issue, and nothing a person typed: `ids` and `prompt` are members no more.
+        for (name, value) in [
+            ("ids", json!(["issue-412"])),
+            ("prompt", json!("Start with the limiter.")),
+        ] {
+            let mut more = base.clone();
+            more[name] = value;
+            assert!(parse::<Hand>(more).is_err(), "{name} is refused");
+        }
+        let mut none = base.clone();
+        none.as_object_mut().unwrap().remove("id");
+        assert!(parse::<Hand>(none).is_err());
+        for bad in ["", "a b", "../x"] {
+            assert!(check_id(bad).is_err(), "{bad:?}");
+        }
     }
 
     // --- `progress`: what a start moves in Linear ---------------------------------------------------
@@ -350,10 +331,9 @@ mod tests {
     use crate::page_tests::{Canned, Change as Answer, Ledger, Mode, rig, rig_polling};
     use serde_json::json;
 
-    fn hand(ids: &[&str], progress: bool) -> Hand {
+    fn hand(id: &str, progress: bool) -> Hand {
         Hand {
-            ids: ids.iter().map(|id| (*id).to_owned()).collect(),
-            prompt: String::new(),
+            id: id.to_owned(),
             agent: "claude".to_owned(),
             folder: "here".to_owned(),
             open: "split".to_owned(),
@@ -373,7 +353,7 @@ mod tests {
     #[test]
     fn progress_moves_an_issue_that_has_not_begun_to_the_first_state_of_work_and_only_that() {
         let (linear, rig) = machine();
-        let started = start(&rig.session, hand(&["issue-415", "issue-412"], true)).unwrap();
+        let started = start(&rig.session, hand("issue-415", true)).unwrap();
         assert_eq!(started.moved, 1);
         assert_eq!(started.not_moved, None);
         // One status write, of the one issue that had not begun, to In Progress and to nothing
@@ -388,7 +368,7 @@ mod tests {
     #[test]
     fn without_progress_no_mutation_is_sent() {
         let (linear, rig) = machine();
-        let started = start(&rig.session, hand(&["issue-415"], false)).unwrap();
+        let started = start(&rig.session, hand("issue-415", false)).unwrap();
         assert_eq!((started.moved, started.not_moved), (0, None));
         assert!(linear.changed().is_empty());
         assert_eq!(linear.times("IssueBatchUpdate"), 0);
@@ -398,30 +378,23 @@ mod tests {
     #[test]
     fn with_progress_and_nothing_to_move_nothing_is_sent() {
         let (linear, rig) = machine();
-        let started = start(&rig.session, hand(&["issue-412", "issue-398"], true)).unwrap();
+        let started = start(&rig.session, hand("issue-412", true)).unwrap();
         assert_eq!((started.moved, started.not_moved), (0, None));
         assert_eq!(linear.times("IssueBatchUpdate"), 0, "not even an empty one");
         rig.hands.end();
     }
 
     #[test]
-    fn issues_of_two_teams_are_two_changes_each_to_its_own_team() {
+    fn an_issue_of_another_team_is_moved_to_the_state_of_its_own_team() {
         let (linear, rig) = machine();
         linear.set_team_of("issue-420", "team-web", "WEB");
-        let started = start(
-            &rig.session,
-            hand(&["issue-415", "issue-420", "issue-418"], true),
-        )
-        .unwrap();
-        assert_eq!(started.moved, 3);
+        let started = start(&rig.session, hand("issue-420", true)).unwrap();
+        assert_eq!(started.moved, 1);
         let sent = linear.changed();
-        assert_eq!(sent.len(), 2, "{sent:?}");
-        assert_eq!(sent[0]["ids"], json!(["issue-415", "issue-418"]));
-        assert_eq!(sent[1]["ids"], json!(["issue-420"]));
-        for each in &sent {
-            assert_eq!(each["input"].as_object().unwrap().len(), 1, "{each}");
-            assert!(each["input"]["stateId"].is_string(), "{each}");
-        }
+        assert_eq!(sent.len(), 1, "{sent:?}");
+        assert_eq!(sent[0]["ids"], json!(["issue-420"]));
+        assert_eq!(sent[0]["input"].as_object().unwrap().len(), 1, "{sent:?}");
+        assert!(sent[0]["input"]["stateId"].is_string(), "{sent:?}");
         rig.hands.end();
     }
 
@@ -431,7 +404,7 @@ mod tests {
         let ledger: Ledger = Ledger::default();
         linear.keep_ledger(&ledger);
         rig.hands.keep_ledger(&ledger);
-        start(&rig.session, hand(&["issue-415"], true)).unwrap();
+        start(&rig.session, hand("issue-415", true)).unwrap();
         let seen = ledger.lock().unwrap().clone();
         let at = |what: &str| seen.iter().position(|line| line.starts_with(what));
         let pane = at("bateri split").unwrap_or_else(|| panic!("a pane was made: {seen:?}"));
@@ -445,7 +418,7 @@ mod tests {
     fn where_no_pane_is_made_nothing_is_written_to_linear() {
         let (linear, rig) = machine();
         rig.hands.refuse_the_pane("the bateri app is not connected");
-        let failed = start(&rig.session, hand(&["issue-415"], true));
+        let failed = start(&rig.session, hand("issue-415", true));
         assert!(matches!(failed, Err(Failure::StartFailed(_))), "{failed:?}");
         assert_eq!(linear.times("IssueBatchUpdate"), 0);
     }
@@ -454,7 +427,7 @@ mod tests {
     fn a_change_linear_refuses_leaves_the_start_whole_and_says_why_and_is_not_sent_again() {
         let (linear, rig) = machine();
         linear.set_change(Answer::Refused);
-        let started = start(&rig.session, hand(&["issue-415"], true)).unwrap();
+        let started = start(&rig.session, hand("issue-415", true)).unwrap();
         assert!(started.pane.starts_with('p'));
         assert_eq!(started.moved, 0);
         let why = started.not_moved.expect("the reason is told");
@@ -467,7 +440,7 @@ mod tests {
     fn a_change_whose_answer_was_lost_is_told_and_not_sent_again() {
         let (linear, rig) = machine();
         linear.set_change(Answer::Lost);
-        let started = start(&rig.session, hand(&["issue-415"], true)).unwrap();
+        let started = start(&rig.session, hand("issue-415", true)).unwrap();
         assert_eq!(started.moved, 0);
         assert!(started.not_moved.is_some());
         assert_eq!(linear.times("IssueBatchUpdate"), 1);
@@ -477,7 +450,7 @@ mod tests {
     #[test]
     fn progress_is_a_boolean_and_nothing_else_is_taken() {
         use crate::api::params::parse;
-        let base = json!({ "ids": ["i"], "agent": "claude", "folder": "here", "open": "split" });
+        let base = json!({ "id": "i", "agent": "claude", "folder": "here", "open": "split" });
         assert_eq!(parse::<Hand>(base.clone()).unwrap().progress, None);
         let mut with = base.clone();
         with["progress"] = json!(true);
@@ -515,7 +488,7 @@ mod tests {
         let (_linear, rig) = machine();
         let old = old_run(&rig, 30, "ACM-1");
         let recent = old_run(&rig, 3, "ACM-2");
-        let started = start(&rig.session, hand(&["issue-412"], false)).unwrap();
+        let started = start(&rig.session, hand("issue-412", false)).unwrap();
         assert!(!old.exists(), "a run of thirty days ago is put away");
         assert!(recent.join("issues.md").exists());
         assert!(
@@ -565,7 +538,7 @@ mod tests {
             said_prefs(&rig),
             json!({ "agent": null, "folder": null, "place": null, "status": null })
         );
-        let mut tab = hand(&["issue-415"], false);
+        let mut tab = hand("issue-415", false);
         tab.folder = "worktree".to_owned();
         tab.open = "tab".to_owned();
         start(&rig.session, tab).unwrap();
@@ -574,7 +547,7 @@ mod tests {
         assert_eq!(kept(&rig), Some(first.clone()));
         assert_eq!(said_prefs(&rig), first);
         // A form that had no Status row says nothing of it: what was kept of it stays.
-        let mut none = hand(&["issue-412"], false);
+        let mut none = hand("issue-412", false);
         none.progress = None;
         start(&rig.session, none).unwrap();
         assert_eq!(
@@ -584,7 +557,7 @@ mod tests {
             )
         );
         // And one that did, and moved the issues, says so.
-        start(&rig.session, hand(&["issue-415"], true)).unwrap();
+        start(&rig.session, hand("issue-415", true)).unwrap();
         assert_eq!(kept(&rig).unwrap()["status"], "progress");
         rig.hands.end();
     }
@@ -593,10 +566,10 @@ mod tests {
     fn a_start_that_came_to_nothing_keeps_nothing() {
         let (_linear, rig) = machine();
         rig.hands.refuse_the_pane("the bateri app is not connected");
-        assert!(start(&rig.session, hand(&["issue-415"], true)).is_err());
+        assert!(start(&rig.session, hand("issue-415", true)).is_err());
         assert_eq!(kept(&rig), None);
         // Nor does a call that was not understood.
-        let mut odd = hand(&["issue-415"], false);
+        let mut odd = hand("issue-415", false);
         odd.agent = "emacs".to_owned();
         assert!(start(&rig.session, odd).is_err());
         assert_eq!(kept(&rig), None);
@@ -700,7 +673,7 @@ mod tests {
             std::time::Duration::from_millis(15),
         );
         rig.hands.set_ls(&ls_of(0.0));
-        start(&rig.session, hand(&["issue-412"], false)).unwrap();
+        start(&rig.session, hand("issue-412", false)).unwrap();
         (rig, linear)
     }
 
@@ -786,7 +759,7 @@ mod tests {
         // A start that put no agent in a pane looks at nothing.
         std::thread::sleep(std::time::Duration::from_millis(100));
         assert_eq!(rig.hands.ls_calls(), 0);
-        start(&rig.session, hand(&["issue-412"], false)).unwrap();
+        start(&rig.session, hand("issue-412", false)).unwrap();
         until("the pane is looked at", || rig.hands.ls_calls() >= 2);
         rig.hands.end();
         until("the mark goes", || idle(&rig).is_none());
@@ -801,7 +774,7 @@ mod tests {
         );
         // A pane made after it is looked at again.
         rig.hands.begin_again();
-        start(&rig.session, hand(&["issue-412"], false)).unwrap();
+        start(&rig.session, hand("issue-412", false)).unwrap();
         until("the new pane is looked at", || {
             rig.hands.ls_calls() >= calls + 3
         });

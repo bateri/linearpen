@@ -7,10 +7,12 @@ local markdown = require("@pencere/markdown")
 local kit = require("./lib/kit")
 local change = require("./parts/change")
 local commands = require("./parts/commands")
+local context = require("./parts/context")
 local data = require("./parts/data")
 local head = require("./parts/head")
 local help = require("./parts/help")
 local list = require("./parts/list")
+local lists = require("./parts/lists")
 local new = require("./parts/new")
 local palette = require("./parts/palette")
 local panel = require("./parts/panel")
@@ -25,7 +27,7 @@ local b, u, S, SIZE, act, lib = kit.b, kit.u, kit.S, kit.SIZE, kit.act, kit.lib
 -- What a command can be done under: what the page shows, never where the keyboard is, but for the one
 -- whose key a field would take (`idle`).
 local function modal()
-	return palette.is_open() or help.is_open()
+	return palette.is_open() or help.is_open() or lists.is_open()
 end
 
 -- While a form (the one for an agent, the one for a new issue) is open, or the title of the issue is
@@ -36,6 +38,11 @@ local function form_open()
 end
 commands.when.list = function()
 	return S.screen == "list" and not modal() and not form_open()
+end
+-- The card of keys is not offered where words are written in a form (`?` is a letter of them): the form
+-- of a new issue. The form of Work on has none.
+commands.when.helpable = function()
+	return S.screen == "list" and not modal() and not new.is_open() and not panel.editing()
 end
 commands.when.keyed = function()
 	return (S.screen == "list" or S.screen == "failed") and not modal() and not form_open()
@@ -54,8 +61,18 @@ end
 commands.when.shown_idle = function()
 	return commands.when.idle() and not S.alone
 end
-commands.when.issue = function()
-	return commands.when.list() and panel.detail() ~= nil
+-- What the head does (the list that is shown, the filter): the head is on the page where the issue has
+-- the whole pane too, and so are its keys.
+commands.when.headed = function()
+	return commands.when.list()
+end
+-- The one issue the copies and Open in Linear are of: the issue read, the one selected or the one under
+-- the cursor, where none of several is. (The copies are chords and a field does not take them.)
+commands.when.single = function()
+	return commands.when.list() and context.single() ~= nil
+end
+commands.when.single_idle = function()
+	return commands.when.idle() and context.single() ~= nil
 end
 -- Space scrolls the open issue, but where a button has the keyboard it presses the button.
 commands.when.reading = function()
@@ -75,6 +92,7 @@ end
 commands.when.titleable = function()
 	return commands.when.plain_change() and #change.targets() == 1
 end
+-- Work on is the open issue's: where an issue is open (its detail has the button).
 commands.when.workable = function()
 	return commands.when.idle() and work.workable()
 end
@@ -168,14 +186,16 @@ local function side(width)
 	return panel.view(width)
 end
 
--- The list with its head, and beside it (or, in a pane too narrow for both, over it) the issue.
+-- The head, the whole width of the page, and under it the list and, beside it (or, in a pane too narrow
+-- for both, over it) the issue or a form.
 local function listing()
 	local over = S.panel_open and S.width < 760
+	local page = b.div():col():grow(1):min_h(0)
+	page:child(head.view())
 	if over then
-		return b.div():row():grow(1):min_h(0):child(side(S.width))
+		return page:child(b.div():row():grow(1):min_h(0):child(side(S.width)))
 	end
 	local left = b.div():col():grow(1):min_w(0):min_h(0)
-	left:child(head.view())
 	local banner = problem()
 	if banner ~= nil then
 		left:child(banner)
@@ -189,7 +209,7 @@ local function listing()
 	if S.panel_open then
 		row:child(side(panel.width(S.width)))
 	end
-	return row
+	return page:child(row)
 end
 
 local function render(size, now, reduce_motion)
@@ -221,7 +241,12 @@ local function render(size, now, reduce_motion)
 		root:child(listing())
 		root:child(status.view())
 		palette.view(root)
+		lists.view(root)
 		help.view(root)
+	end
+	kit.lib.toasts_prune(S.toasts, u.now)
+	if #S.toasts > 0 then
+		root:child(u:toasts("toasts", { items = S.toasts }))
 	end
 	commands.settle()
 	cmds:write(u, root)
@@ -249,10 +274,21 @@ local function command(id)
 		return change.run("labels")
 	elseif id == "project" then
 		return change.run("project")
+	elseif id == "assign_me" then
+		local ids = change.targets()
+		return change.assign_me(ids)
 	elseif id == "title" then
 		return panel.rename_target()
+	elseif id == "copy_id" then
+		return context.copy("id", context.single())
+	elseif id == "copy_branch" then
+		return context.copy("branch", context.single())
+	elseif id == "copy_link" then
+		return context.copy("link", context.single())
 	elseif id == "link" then
-		return panel.link()
+		return context.link(context.single())
+	elseif id == "lists" then
+		lists.show()
 	elseif id == "read_down" then
 		panel.scroll(1)
 	elseif id == "read_up" then
@@ -293,6 +329,8 @@ local function press(id)
 		act.connect(screens.field.value)
 	elseif id == "create-key" then
 		return { link = screens.KEYS_URL }
+	elseif id == "lists" then
+		lists.show()
 	elseif id == "work" then
 		return work.show()
 	elseif id == "new" then
@@ -310,7 +348,10 @@ local function press(id)
 	elseif id == "help-close" then
 		help.hide()
 	else
-		local reply = work.press(id)
+		local reply = status.press(id)
+		if reply == nil then
+			reply = work.press(id)
+		end
 		if reply == nil then
 			reply = new.press(id)
 		end
@@ -331,7 +372,13 @@ local function on_action(action)
 		reply = palette.action(action)
 	end
 	if reply == nil then
+		reply = lists.action(action)
+	end
+	if reply == nil then
 		reply = help.action(action)
+	end
+	if reply == nil then
+		reply = context.action(action)
 	end
 	if reply == nil then
 		reply = work.action(action)
@@ -345,7 +392,15 @@ local function on_action(action)
 	if reply ~= nil then
 		return reply
 	end
-	if from == "status" then
+	if from == "toasts" and kind == "close" then
+		for index, item in S.toasts do
+			if item.key == action.key then
+				table.remove(S.toasts, index)
+				break
+			end
+		end
+		return true
+	elseif from == "status" then
 		status.action(action)
 		return true
 	elseif from == "key" and kind == "submit" then
@@ -415,7 +470,7 @@ local function key(event)
 		plain
 		and (event.key == "enter" or event.key == " ")
 		and target ~= nil
-		and (kit.buttons[target] or string.sub(target, 1, 11) == "work-check:")
+		and kit.buttons[target]
 		-- (A button that is not drawn any more, such as the one the person pressed and that went with its
 		-- screen, is not pressed by a key.)
 		and b.layout.bounds(target) ~= nil
@@ -463,7 +518,6 @@ local function shape(event)
 			kit.buttons[over]
 			or string.sub(over, 1, 4) == "row:"
 			or string.sub(over, 1, 6) == "check:"
-			or string.sub(over, 1, 11) == "work-check:"
 		)
 	then
 		wanted = "pointer"
@@ -563,8 +617,12 @@ local function handle(event)
 		if (event.button or "left") == "left" then
 			S.armed = b.layout.hit({ x = event.x, y = event.y })
 		end
-		if not taken and S.screen == "list" and not modal() and list.press(event) then
-			reply = b.merge(reply, true)
+		if not taken and S.screen == "list" and not modal() then
+			if (event.button or "left") == "right" then
+				reply = b.merge(reply, context.press(event))
+			elseif list.press(event) then
+				reply = b.merge(reply, true)
+			end
 		end
 		if not taken then
 			reply = b.merge(reply, markdown.handle(event))
@@ -575,7 +633,7 @@ local function handle(event)
 		if
 			armed ~= nil
 			and armed == over
-			and (kit.buttons[armed] or string.sub(armed, 1, 11) == "work-check:")
+			and kit.buttons[armed]
 			and (event.button or "left") == "left"
 		then
 			reply = b.merge(reply, press(armed))

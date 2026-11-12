@@ -1,4 +1,4 @@
-//! Handing issues to an agent: which agents there are, the file of issues, and the pane
+//! Handing an issue to an agent: which agents there are, the file of the issue, and the pane
 //! of bateri that runs the agent. It takes and gives plain Rust values and knows nothing of the page.
 //!
 //! What it needs of the machine (the `PATH`, whether the pen runs in bateri, the folder it started
@@ -6,10 +6,10 @@
 //! test says what `git` and `bateri` answer without running them.
 //!
 //!   agents     which agents are installed, and the command that starts one
-//!   handoff    the file of issues, and the prompt that names it
+//!   handoff    the file of the issue, and the prompt that names it
 //!   worktree   what the agent is told of a new `git` worktree (the pen makes none)
 //!   bateri     the pane that runs the agent, and the wait for its end
-//!   progress   what a start moves in Linear where the person chose it (issues not begun, forward)
+//!   progress   what a start moves in Linear where the person chose it (an issue not begun, forward)
 
 pub mod agents;
 pub mod bateri;
@@ -105,10 +105,9 @@ impl Folder {
 
 /// What is asked.
 pub struct Request<'a> {
-    /// The issues with their descriptions and comments, the first the one that names the pane.
-    pub issues: &'a [Issue],
-    /// What the person wrote for the agent.
-    pub prompt: &'a str,
+    /// The issue with its description and comments; it names the pane. The agent is given no
+    /// words of a person's: the prompt is the pen's own sentence.
+    pub issue: &'a Issue,
     pub agent: Agent,
     pub folder: Folder,
     pub place: Place,
@@ -155,7 +154,7 @@ pub fn worktree_available(env: &Env<'_>) -> Result<(), String> {
     worktree::available(env.runner, folder)
 }
 
-/// Hands the issues to the agent: writes the file and makes the pane that runs the agent, in the
+/// Hands the issue to the agent: writes the file and makes the pane that runs the agent, in the
 /// pen's folder. A new worktree is the agent's to make: the prompt asks it for one.
 ///
 /// # Errors
@@ -172,9 +171,7 @@ pub fn start(env: &Env<'_>, request: &Request<'_>) -> Result<Started, Refused> {
             request.agent.program()
         )));
     }
-    let Some(first) = request.issues.first() else {
-        return Err(Refused::Failed("there is no issue to work on".to_owned()));
-    };
+    let issue = request.issue;
     let here = env.setup.folder.clone().ok_or_else(|| {
         Refused::Failed("the folder the pen was started in is not known".to_owned())
     })?;
@@ -185,20 +182,15 @@ pub fn start(env: &Env<'_>, request: &Request<'_>) -> Result<Started, Refused> {
     }
     let state = env
         .state
-        .ok_or_else(|| Refused::Failed("there is no folder to keep the issues in".to_owned()))?;
-    let context = handoff::write(
-        state,
-        &handoff::stamp(env.now),
-        &first.identifier,
-        request.issues,
-    )
-    .map_err(|why| Refused::Failed(format!("the issues could not be written: {why}")))?;
-    let prompt = handoff::prompt(request.prompt, &context, worktree);
+        .ok_or_else(|| Refused::Failed("there is no folder to keep the issue in".to_owned()))?;
+    let context = handoff::write(state, &handoff::stamp(env.now), issue)
+        .map_err(|why| Refused::Failed(format!("the issue could not be written: {why}")))?;
+    let prompt = handoff::prompt(&context, worktree);
     let pane = bateri::launch(
         env.runner,
         request.place,
         &here,
-        &first.identifier,
+        &issue.identifier,
         &request.agent.command(&prompt),
     )
     .map_err(|no| {

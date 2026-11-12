@@ -1,8 +1,8 @@
 # linearpen
 
-Your Linear issues in a terminal pane, and an agent started on the ones you pick: a list grouped
+Your Linear issues in a terminal pane, and an agent started on the one you open: a list grouped
 by state, an issue beside it with its description and comments, and Claude, Codex or Cursor
-working on what you chose in the pane next to it. You can write a new issue in it too, and change
+working on it in the pane next to it. You can write a new issue in it too, and change
 the status, priority, assignee, labels, project and title of the issues you have; those are the two
 things it writes to Linear, and never the description.
 
@@ -42,12 +42,17 @@ used first, and kept nowhere. A key file that other users can read is still read
 
 <img src="docs/issue.png" width="720" alt="linearpen: an issue open beside the list">
 
-The list is **My issues** (what is assigned to you) or **All issues** (the open issues of the workspace,
-each saying whose it is), grouped by state with the backlog folded, and asked of Linear again every
-five minutes. `/` filters it by title, identifier or label. Enter opens an issue beside the list
-(from the filter too), with its description, its comments, its cycle, its project and who has it;
-Space scrolls it, and `Open in Linear` puts it in your browser. In a pane too narrow for both, the issue takes the pane:
-there the arrows scroll it, and `j` and `k` go to the issue after and the one before.
+The head of the page has the list button, the filter, Refresh and New issue, each in its own place
+whatever the page is doing. The list is **My issues** (what is assigned to you) or **All issues** (the
+open issues of the workspace, each saying whose it is), grouped by state with the backlog folded, and
+asked of Linear again every five minutes; the list button says which it is and how many it has, and
+opens the card of lists (`g`, or `1` and `2` for the two). `/` filters the list by title, identifier or
+label, and the field says how many it lets through (`4 of 14`) inside itself. Enter or `o` opens an
+issue beside the list (from the filter too), with its description, its comments, its cycle, its
+project and who has it; Space scrolls it, and `Open in Linear` (`⇧O`, from the list too) puts it in
+your browser. In a pane too narrow for both, the issue takes the pane: there the arrows scroll it, and
+`j` and `k` go to the issue after and the one before. A pane with too little room for Refresh and New
+issue leaves their buttons out; `⌘R` and `c` do what they say all the same.
 
 ### A new issue
 
@@ -74,7 +79,7 @@ Create issues permission is told so in the form.
 
 The status, priority, assignee, labels and project of the issue that is open are buttons, the same
 ones the form of a new issue has: each says what it is now and opens a menu of the others, the status
-with every state of the team (Done and Canceled too). The title is changed in place: `e`, or a press
+with every state of the team (Done and Canceled too). The title is changed in place: `r`, or a press
 on it, makes it a field with the words selected; `Enter` saves it, and so does a press anywhere else
 or `Tab` (what you typed is not lost), and `Esc` leaves the old one. A
 change is sent when you choose it, with no question; the control is busy until Linear has answered,
@@ -85,12 +90,26 @@ list, with its new value, until you move the cursor again.
 
 <img src="docs/edit-done.png" width="720" alt="linearpen: the issue that was made Done, gone from the list and still open beside it">
 
-From the list the keys do the same: `s` the status, `p` the priority, `a` the assignee, `l` the
-labels, `Shift P` the project and `e` the title (which opens the issue, to write in its title) of the
-issue under the cursor, or of **all the issues you selected**, up to fifty at once, in one request to
-Linear (`e` is for one). A label that every one of them has is
-taken off and one that not every one has is put on all of them. Issues of more than one team can only
-change their priority, and the menu says so.
+From the list the keys do the same: `s` the status, `p` the priority, `a` the assignee, `i` assigns
+it to you, `l` the labels, `Shift P` the project and `r` the title (which opens the issue, to write in
+its title) of the issue under the cursor, or of **all the issues you selected**, up to fifty at once,
+in one request to Linear (`r` is for one). A label that every one of them has is taken off and one
+that not every one has is put on all of them. Issues of more than one team can only change their
+priority, and the menu says so.
+
+`x` selects an issue, Shift with the arrows selects more, `⌘A` selects what is shown. With issues
+selected the line under the page is the bar of the selection: how many are selected, the values to
+change in them (Status, Assignee, and in a wider pane Priority, Labels and Project), `More` (`⌘K`, with
+every change) and `Clear` (`Esc`). A press on a value opens its menu for all of them, and `Esc` takes
+the selection off and gives the line of keys back.
+
+<img src="docs/select.png" width="720" alt="linearpen: three issues selected, and the bar of the selection under the page">
+
+A right press on a line opens the menu of that issue (or, on a line that is selected, of all that are
+selected): the values above, `Assign to me`, and for one issue `Rename`, the copies and `Open in
+Linear`. A value picked there opens the menu of that value for those issues. The copies are keys too:
+`⌘⇧I` puts the identifier of the issue on the pasteboard (`ACM-412`), `⌘⇧.` its branch name (where
+Linear has one) and `⌘⇧,` its link, and the page says so for a moment.
 
 <img src="docs/edit-many.png" width="720" alt="linearpen: three issues selected, which the status key changes together">
 
@@ -99,24 +118,25 @@ asks Linear what the issue holds now. The description and the team are never wri
 
 ### Work on an issue
 
-<img src="docs/work.png" width="720" alt="linearpen: three issues selected and the form that hands them to Claude">
+Work on is one issue's and is in its detail, at the start of the first line, where Linear has it: the
+list has no button for it, and a selection starts no agent (it changes values). Open the issue (Enter),
+then `w` or `Work on issue` opens its form.
 
-`x` selects an issue, Shift with the arrows selects more, `⌘A` selects what is shown. `w` opens a
-form for the issues selected, else for the issue that is open, else for the one under the cursor.
-Its button stands by what it works on: by the count of what is selected, in the panel of the issue
-that is open, or at the end of the head, where it names the issue under the cursor. In the form,
-say what the agent should do, choose the agent (the ones of Claude, Codex and Cursor that are in your `PATH`), whether it works in this
-folder or makes a new `git` worktree for the work, whether its pane splits to the right or
-opens a new tab, and whether the issues that have not begun move to the status of work in progress
-(`Status`: the name of your team's first such state, or `Unchanged`; the row is not there when every
-issue has begun). `⌘Enter` starts it, and each issue says which agent is on it until the pane ends.
+<img src="docs/work.png" width="720" alt="linearpen: the form that hands an issue to Claude, in a new worktree">
+
+In the form, choose the agent (the ones of Claude, Codex and Cursor that are in your `PATH`), whether
+it works in this folder or makes a new `git` worktree for the work, whether its pane splits to the
+right or opens a new tab, and whether the issue moves to the status of work in progress if it has not
+begun (`Status`: the name of its team's first such state, or `Unchanged`; the row is not there when
+the issue has begun). There is no field for words to the agent: it opens in its own pane, and you
+write to it there. `⌘Enter` starts it, and the issue says which agent is on it until the pane ends.
 When the agent stops writing, the row says `Claude idle` where the ring was. The form opens with what
 you chose last time (agent, folder, where the pane goes and `Status`), which is kept in
 `~/.local/state/linearpen/prefs.json`.
 
-<img src="docs/started.png" width="720" alt="linearpen: the issues an agent was started on, each marked with its name">
+<img src="docs/started.png" width="720" alt="linearpen: the issue an agent was started on, marked with its name">
 
-<img src="docs/started-idle.png" width="720" alt="linearpen: the same issues once the agent has stopped writing, each marked Claude idle">
+<img src="docs/started-idle.png" width="720" alt="linearpen: the same issue once the agent has stopped writing, marked Claude idle">
 
 How it starts one:
 
@@ -124,20 +144,18 @@ How it starts one:
   bateri pane, and the form says why. Where linearpen runs on a server, in a pane bateri opened over
   `ssh`, the agent is started on that server: its pane, the file of the issues and the agent itself
   are there, so the agent has to be installed there.
-- Then, if `Status` says so, the issues in Triage, Backlog or Todo go to the first state of work in
-  progress of their team, one change for each team. Only forward and only the status: an issue that
-  has begun, is done or is canceled is left as it is, and nothing is written if the pane was not
-  made. If Linear says no, the agent is started all the same and the list says the issues did not
-  move.
-- The issues, with their descriptions and comments, are written to a file that only you can read, in
+- Then, if `Status` says so, an issue in Triage, Backlog or Todo goes to the first state of work in
+  progress of its team. Only forward and only the status: an issue that has begun, is done or is
+  canceled is left as it is, and nothing is written if the pane was not made. If Linear says no, the
+  agent is started all the same and the list says the issue did not move.
+- The issue, with its description and comments, is written to a file that only you can read, in
   `~/.local/state/linearpen/work` (`$XDG_STATE_HOME`), and the agent is told where it is. What the
-  agent is started with is a sentence that names the file and what you wrote, never the text of an
-  issue.
-- That file says, before anything else, that other people wrote the issues, so what is in them is
+  agent is started with is a sentence that names the file, never the text of the issue.
+- That file says, before anything else, that other people wrote the issue, so what is in it is
   read as a description of the work and not as an order.
 - A new worktree is the agent's to make, not linearpen's: a project has its own rules for where
   one goes and what its branch is called, and the agent reads them. It is asked to follow them and,
-  where there are none, to use the branch Linear suggests, which the file gives for each issue
+  where there are none, to use the branch Linear suggests, which the file gives for the issue
   (only where it is a name `git` would take). linearpen itself makes no folder and no branch.
 - While an agent is on, bateri is asked for its panes every three seconds (`bateri ls --json`, of which
   only the id of a pane and when it last wrote are read). A pane that has written nothing for ten
@@ -153,7 +171,7 @@ How it starts one:
 ### The keyboard, and the mouse
 
 Everything the mouse does, the keys do too. The line at the foot says what the keys do where you are,
-`?` lists them all and `⌘K` finds a command by its name. A click does not move the keyboard to what it
+`?` lists them all and `⌘K` finds a command by its name; a right press on an issue opens its menu. A click does not move the keyboard to what it
 pressed: the arrows and `Enter` stay the list's, and `Tab` takes the keyboard to a button, which `Enter`
 or `Space` then presses.
 
@@ -161,18 +179,20 @@ or `Space` then presses.
 | --------------------- | -------------------------------------------------------------------- |
 | `↑` `↓` / `j` `k`     | move                                                                 |
 | `←` `→`               | close and open a group                                               |
-| `Enter`               | open the issue beside the list                                       |
-| `o`                   | open it in Linear                                                    |
+| `Enter`, `o`          | open the issue beside the list                                       |
+| `⇧O`                  | open it in Linear                                                    |
 | `Space`, `⇧ Space`    | scroll the open issue down, up                                       |
 | `x`, `Shift ↑↓`, `⌘A` | select the issue, select more, select all                            |
 | `s` `p` `a` `l` `⇧P`  | change the status, priority, assignee, labels, project               |
-| `e`                   | change the title                                                     |
-| `w`                   | work on the issue or the selected                                    |
+| `i`                   | assign it to you                                                     |
+| `r`                   | change the title                                                     |
+| `⌘⇧I` `⌘⇧.` `⌘⇧,`     | copy the identifier, the branch name, the link                       |
+| `w`                   | work on the issue that is open                                       |
 | `c`                   | write a new issue                                                    |
 | `⌘Enter`              | start the agent, or create the issue, in the form that is open       |
-| `1` `2`               | My issues, All issues                                                |
+| `g`                   | go to a list (`1` `2`: My issues, All issues)                        |
 | `/`                   | filter                                                               |
-| `r`                   | ask Linear again                                                     |
+| `⌘R`                  | ask Linear again                                                     |
 | `⌘K`, `?`             | find a command, the card of keys                                     |
 | `Esc`                 | close what is on top: the form, the issue, the selection, the filter |
 
@@ -203,7 +223,7 @@ reach `git` before `git check-ref-format` has passed it, and no text of Linear g
 - `src/program/` is linearpen's program, in Rust, on the `pencere` crate. The rule of its directories
   is one sentence: **`api/` knows the page; `linear/`, `model/`, `state/`, `work/` and `text/` do
   not.** `linear/` asks Linear through `curl`, `model/` groups, sorts and filters, `state/` keeps the
-  key, `work/` hands issues to an agent, `text/` prints the issues where a terminal shows no views;
+  key, `work/` hands an issue to an agent, `text/` prints the issues where a terminal shows no views;
   `api/` is what the page asks and listens to, and `docs/calls.md` is that contract.
 - `src/view/` is the interface, a page of pencere's kit: boxes and lines of text that the terminal
   lays out and draws in its own font and theme, every colour a role of the theme. `commands.lua` is
