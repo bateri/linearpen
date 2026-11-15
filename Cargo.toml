@@ -17,6 +17,13 @@ path = "src/program/main.rs"
 pencere = { git = "https://github.com/bateri/pencere", rev = "40b074fb4870f3259a2a275b2687566d99797f2c" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# The client's own screen where the terminal hosts no view: the page drawn with the characters of the
+# terminal it is started in (the `terminal` feature), with the interpreter compiled by the build.
+pencere-tui = { git = "https://github.com/bateri/pencere", rev = "40b074fb4870f3259a2a275b2687566d99797f2c", optional = true, default-features = false, features = ["precompile"] }
+
+[features]
+default = ["terminal"]
+terminal = ["dep:pencere-tui"]
 
 [build-dependencies]
 pencere = { git = "https://github.com/bateri/pencere", rev = "40b074fb4870f3259a2a275b2687566d99797f2c" }
@@ -55,6 +62,22 @@ opt-level = 2
 [profile.dev.package.wasmparser]
 opt-level = 2
 
+[profile.dist]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
+strip = "symbols"
+
 [lints.clippy]
 unwrap_used = "deny"
 expect_used = "warn"
+
+# Local, not committed: the pencere being worked on in ../pencere-tui.
+[patch."https://github.com/bateri/pencere"]
+pencere = { path = "../pencere-tui/program" }
+pencere-drive = { path = "../pencere-tui/kit/drive" }
+pencere-editor = { path = "../pencere-tui/kit/editor" }
+pencere-sandbox = { path = "../pencere-tui/kit/sandbox" }
+pencere-tui = { path = "../pencere-tui/host/tui" }
+pencere-view = { path = "../pencere-tui/kit/view" }
+pencere-wire = { path = "../pencere-tui/wire" }

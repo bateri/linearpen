@@ -4,6 +4,9 @@
 
 ### Added
 
+- **A terminal that speaks Kitty graphics is drawn on, as bateri does.** linearpen shows its issues
+  as pixels there, with the mouse and the keys; a terminal with no Kitty graphics, and a multiplexer,
+  keeps what linearpen printed. The keys are those of a keyboard with no ⌘: Ctrl is what ⌘ is.
 - **Drag an issue out of the list.** Drop it on a terminal pane, for example one running Claude Code,
   and its ID, title and link are typed there. Nothing runs until you press Enter.
 

@@ -206,15 +206,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f8f80099a98041a3d1622845c271458a2d73e688351bf3cb999266764b81d48"
 
 [[package]]
-name = "core_maths"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77745e017f5edba1a9c1d854f6f3a52dac8a12dd5af5d2f54aecf61e43d80d30"
-dependencies = [
- "libm",
-]
-
-[[package]]
 name = "cpufeatures"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -531,15 +522,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fontdue"
-version = "0.9.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e796cb6894e6418daacea84b28dd4f98d3b32c74d5bb452ba1ecfbf5ad8e84ca"
-dependencies = [
- "ttf-parser",
-]
-
-[[package]]
 name = "generic-array"
 version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -818,6 +800,7 @@ dependencies = [
  "pencere",
  "pencere-drive",
  "pencere-sandbox",
+ "pencere-tui",
  "pencere-view",
  "serde",
  "serde_json",
@@ -864,6 +847,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57804b2c9b69967f1536a56f86297e367a33b19e98852ed624b84551cdbc0d90"
 dependencies = [
  "rustix",
+]
+
+[[package]]
+name = "memmap2"
+version = "0.9.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d1219ed1b7f229ee7104d281dd01d6802fe28bb6e95d292942c4daacdeb798c0"
+dependencies = [
+ "libc",
 ]
 
 [[package]]
@@ -932,7 +924,6 @@ checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 [[package]]
 name = "pencere"
 version = "0.4.1"
-source = "git+https://github.com/bateri/pencere?rev=40b074fb4870f3259a2a275b2687566d99797f2c#40b074fb4870f3259a2a275b2687566d99797f2c"
 dependencies = [
  "libc",
  "pencere-wire",
@@ -943,22 +934,22 @@ dependencies = [
 [[package]]
 name = "pencere-drive"
 version = "0.4.1"
-source = "git+https://github.com/bateri/pencere?rev=40b074fb4870f3259a2a275b2687566d99797f2c#40b074fb4870f3259a2a275b2687566d99797f2c"
 dependencies = [
- "fontdue",
+ "memmap2",
+ "miniz_oxide 0.8.9",
  "pencere",
  "pencere-editor",
  "pencere-sandbox",
  "pencere-view",
  "pencere-wire",
  "serde_json",
+ "swash",
  "tiny-skia",
 ]
 
 [[package]]
 name = "pencere-editor"
 version = "0.4.1"
-source = "git+https://github.com/bateri/pencere?rev=40b074fb4870f3259a2a275b2687566d99797f2c#40b074fb4870f3259a2a275b2687566d99797f2c"
 dependencies = [
  "pencere-view",
  "regex",
@@ -969,7 +960,6 @@ dependencies = [
 [[package]]
 name = "pencere-sandbox"
 version = "0.4.1"
-source = "git+https://github.com/bateri/pencere?rev=40b074fb4870f3259a2a275b2687566d99797f2c#40b074fb4870f3259a2a275b2687566d99797f2c"
 dependencies = [
  "hayro",
  "pencere-view",
@@ -983,9 +973,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "pencere-tui"
+version = "0.4.1"
+dependencies = [
+ "miniz_oxide 0.9.1",
+ "pencere",
+ "pencere-drive",
+ "pencere-sandbox",
+ "pencere-view",
+ "unicode-width",
+]
+
+[[package]]
 name = "pencere-view"
 version = "0.4.1"
-source = "git+https://github.com/bateri/pencere?rev=40b074fb4870f3259a2a275b2687566d99797f2c#40b074fb4870f3259a2a275b2687566d99797f2c"
 dependencies = [
  "taffy",
 ]
@@ -993,7 +994,6 @@ dependencies = [
 [[package]]
 name = "pencere-wire"
 version = "0.4.1"
-source = "git+https://github.com/bateri/pencere?rev=40b074fb4870f3259a2a275b2687566d99797f2c#40b074fb4870f3259a2a275b2687566d99797f2c"
 dependencies = [
  "serde",
  "serde_json",
@@ -1470,6 +1470,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "swash"
+version = "0.2.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c2499c2d826531388872b2268718aed907a39bd785ab0dcfe57fab26283f92e"
+dependencies = [
+ "skrifa 0.44.0",
+ "yazi",
+ "zeno",
+]
+
+[[package]]
 name = "syn"
 version = "2.0.119"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1588,15 +1599,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ttf-parser"
-version = "0.25.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2df906b07856748fa3f6e0ad0cbaa047052d4a7dd609e231c4f72cee8c36f31"
-dependencies = [
- "core_maths",
-]
-
-[[package]]
 name = "typenum"
 version = "1.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1613,6 +1615,12 @@ name = "unicode-segmentation"
 version = "1.13.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c6f5d3c3b1bf09027a88a6bc961fc00497d651009560b5463668dc81b0fa87a8"
+
+[[package]]
+name = "unicode-width"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ca718471876992059f251e33aafc334346ada08042b7661dd1fe313a9bced557"
 
 [[package]]
 name = "unicode-xid"
@@ -2072,6 +2080,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "yazi"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e01738255b5a16e78bbb83e7fbba0a1e7dd506905cfc53f4622d89015a03fbb5"
+
+[[package]]
 name = "yoke"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2093,6 +2107,12 @@ dependencies = [
  "syn 3.0.9",
  "synstructure",
 ]
+
+[[package]]
+name = "zeno"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6df3dc4292935e51816d896edcd52aa30bc297907c26167fec31e2b0c6a32524"
 
 [[package]]
 name = "zerofrom"

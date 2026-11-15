@@ -37,7 +37,11 @@ mod work;
 use std::process::ExitCode;
 use std::sync::{Arc, Mutex, PoisonError};
 
+#[cfg(not(feature = "terminal"))]
+use pencere::serve;
 use pencere::{EndedBy, NoViewReason, Options, Outcome};
+#[cfg(feature = "terminal")]
+use pencere_tui::serve;
 
 use command_line::Asked;
 use linear::transport::{Curl, DEFAULT_URL};
@@ -173,7 +177,7 @@ fn main() -> ExitCode {
     }
     let fallen_back = Arc::new(Mutex::new(None));
     let session = session();
-    let status = match pencere::serve(options(&session, &fallen_back)) {
+    let status = match serve(options(&session, &fallen_back)) {
         // The terminal took the client down: what it said is the one trace of why, so it is left
         // under the prompt rather than lost with the view.
         Ok(Outcome::Closed(closed)) if closed.by == EndedBy::Error => {
