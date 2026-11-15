@@ -1,7 +1,7 @@
 # linearpen is one native file: the program (src/program/, Rust, on the pencere crate) with the page
 # (src/view/, a page of pencere's kit) and the pictures (src/assets/) carried in it by build.rs. The
 # gate and `make dev` are here.
-.PHONY: pin fmt lint test test-page check-timing shots test-tools check build install uninstall pencere-src pencere fake-host pencere-ref dev dist sums release-prepare release publish
+.PHONY: pin fmt lint test test-page test-features check-timing shots test-tools check build install uninstall pencere-src pencere fake-host pencere-ref dev dist sums release-prepare release publish
 
 # pencere is pinned in one place, Cargo.lock (Cargo.toml names the commit): the crate the program is
 # built on is of it, and so are the `pencere` command `make dev` runs linearpen under and `make sums`
@@ -73,9 +73,23 @@ shots:
 test-tools:
 	node --test test/install.test.mjs test/release.test.mjs
 
+# test-features: the file is built in two types, with the screen of its own (the default) and without it
+# (`--no-default-features`, the smaller). The second is built, linted and tested too, and what the file
+# is made of is held: no code generator (`cranelift-codegen`) in the tree of either type, and no
+# `pencere-tui` in the one without the screen. A file that is shipped is built in a run of cargo of its
+# own, as `cargo build` does here: what `cargo test` builds with (its dev-dependencies) has the code
+# generator in it again.
+test-features:
+	cargo clippy --locked --no-default-features --all-targets -- -D warnings
+	cargo test --locked --no-default-features --bin linearpen
+	@tree="$$(cargo tree --locked -p linearpen -e normal)" || exit 1; \
+	if printf '%s\n' "$$tree" | grep -q 'cranelift-codegen'; then echo "test-features: the code generator (cranelift-codegen) is in the tree of linearpen"; exit 1; fi
+	@tree="$$(cargo tree --locked -p linearpen -e normal --no-default-features)" || exit 1; \
+	if printf '%s\n' "$$tree" | grep -q 'cranelift-codegen\|pencere-tui v'; then echo "test-features: the build without the screen has the code generator or pencere-tui in its tree"; exit 1; fi
+
 # check is the gate: the pin of pencere, formatting, lints, the program's tests, the page's tests, the
 # installer's tests.
-check: pin lint test test-page test-tools
+check: pin lint test test-page test-features test-tools
 
 # build makes target/release/linearpen, the program for this machine, with the page in it.
 build:

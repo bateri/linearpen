@@ -17,9 +17,10 @@ arm64 and x86_64. It talks to Linear with `curl`, which it finds on the `PATH`:
 curl -fsSL https://raw.githubusercontent.com/bateri/linearpen/main/install.sh | sh
 ```
 
-To see the interface you need a terminal that hosts pencere views:
-[bateri](https://github.com/bateri/bateri). Any other terminal is given the issues as text, as
-`linearpen --text` prints them.
+To see the interface you need a terminal that hosts pencere views
+([bateri](https://github.com/bateri/bateri)) or one that speaks Kitty's graphics protocol (Ghostty,
+kitty), where linearpen draws it itself, on a keyboard where Ctrl is what Cmd is on a Mac. Any other
+terminal is given the issues as text, as `linearpen --text` prints them.
 
 The installer takes the newest [release](https://github.com/bateri/linearpen/releases) (or
 `LINEARPEN_VERSION=0.1.0`), checks it against the release's `SHA256SUMS`, and puts it in
@@ -41,8 +42,9 @@ Or run it where it is built: `cargo build --release`, then `target/release/linea
 
 linearpen is a [pencere](https://github.com/bateri/pencere) program, one native file with the
 interface inside it. Run it in a terminal that hosts pencere views
-([bateri](https://github.com/bateri/bateri)) and the pane becomes the interface, the way `vim`
-takes the screen and gives it back. Run it anywhere else and it prints your issues as text.
+([bateri](https://github.com/bateri/bateri)), or in one that speaks Kitty's graphics protocol, and the
+pane becomes the interface, the way `vim` takes the screen and gives it back. Run it anywhere else and
+it prints your issues as text.
 
 ```sh
 linearpen            # the interface

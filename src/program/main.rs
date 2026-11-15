@@ -1,6 +1,7 @@
 //! linearpen: your Linear issues in the terminal pane, and an agent started on the ones you pick.
-//! In a terminal that shows pencere views the client opens in the pane; in one that does not, the
-//! program prints the issues as text and ends.
+//! In a terminal that shows pencere views the client opens in the pane, and in one that speaks Kitty
+//! graphics the program draws it itself as pictures; in any other the program prints the issues as
+//! text and ends.
 //!
 //! It reads, and writes three things: the issue the person makes in the form of the new issue, the
 //! change the person makes to issues (the status of the ones an agent is started on is such a
@@ -54,6 +55,10 @@ use work::Setup;
 use work::runner::System;
 
 /// The words under the text of a terminal that shows no views.
+#[cfg(feature = "terminal")]
+const NO_VIEWS: &str = "This terminal shows no views. linearpen opens as a Linear client in a terminal that\nhosts pencere (bateri), or draws it itself in one that speaks Kitty graphics (set PENCERE_TUI=1 to\nask for that); run it there, or over ssh from one.";
+/// The words under the text of a build that has no screen of its own.
+#[cfg(not(feature = "terminal"))]
 const NO_VIEWS: &str = "This terminal shows no views. linearpen opens as a Linear client in a terminal that\nhosts pencere (bateri); run it there, or over ssh from one.";
 
 /// The environment, which is read here and nowhere else.
