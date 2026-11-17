@@ -137,7 +137,8 @@ fn comment_takes_its_words_from_stdin_and_posts_once() {
         posted[0]["variables"]["input"]["body"],
         "Looks right\nto me"
     );
-    assert_eq!(posted[0]["variables"]["input"]["issueId"], "ACM-412");
+    // The issue's own id, which the issue it was named by is asked for.
+    assert_eq!(posted[0]["variables"]["input"]["issueId"], "issue-412");
     assert_eq!(writes(&home), 1);
 }
 

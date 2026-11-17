@@ -355,14 +355,18 @@ pub fn update(access: &Access, update: &Update) -> Result<String, Stop> {
 
 pub fn comment(access: &Access, comment: &Comment, stdin: &mut dyn Read) -> Result<String, Stop> {
     let body = words_of("body", &comment.body, BODY_MOST, stdin)?;
+    // The issue is asked for first, so that an issue Linear does not have is told before anything is
+    // written, and the comment goes to the issue's own id, as the page sends it.
+    let issue = issues_of(access, std::slice::from_ref(&comment.issue))?.remove(0);
     let id = draft::new_id().map_err(Stop::no)?;
-    let posted = linear::comment(access.transport, access.key, &id, &comment.issue, &body)
+    let posted = linear::comment(access.transport, access.key, &id, &issue.id, &body)
         .map_err(|error| written_wrong(access, &error))?;
+    let identifier = super::plain(&issue.identifier);
     if comment.json {
         return print_json(&Added {
-            issue: comment.issue.clone(),
+            issue: identifier,
             comment: json::Said::of(&posted),
         });
     }
-    Ok(format!("{}: comment added\n", comment.issue))
+    Ok(format!("{identifier}: comment added\n"))
 }

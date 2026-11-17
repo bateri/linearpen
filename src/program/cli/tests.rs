@@ -316,10 +316,21 @@ fn a_comment_is_posted_once_in_the_words_on_stdin_and_a_blank_one_is_not() {
     let done = run_with(&memory, &["comment", "ACM-412", "--body", "-"], " \n");
     assert_eq!(done.status, 2, "{}", done.err);
     assert!(memory.sent().is_empty());
-    let lost_memory = Memory::new(|_, _| lost());
+    // The comment goes to the issue's own id.
+    let input: serde_json::Value = serde_json::from_str(&sent[0]).unwrap();
+    assert_eq!(input["variables"]["input"]["issueId"], "issue-412");
+    let lost_memory = Memory::new(|name, _| match name {
+        "Issue" => ok(ISSUE),
+        _ => lost(),
+    });
     let done = run_with(&lost_memory, &["comment", "ACM-412", "--body", "hi"], "");
     assert_eq!(done.status, 3);
-    assert_eq!(lost_memory.sent().len(), 1);
+    assert_eq!(lost_memory.of("CommentCreate").len(), 1);
+    // An issue Linear does not have is told before anything is written.
+    let memory = world();
+    let done = run_with(&memory, &["comment", "ACM-9", "--body", "hi"], "");
+    assert_eq!(done.status, 1, "{}", done.err);
+    assert!(memory.of("CommentCreate").is_empty());
 }
 
 #[test]
