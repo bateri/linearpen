@@ -21,7 +21,8 @@ commands:
   help      linearpen help COMMAND, or linearpen COMMAND --help, tells the options of a command
 
 A name is written as Linear shows it; capital letters do not matter. Where a name is none of the
-team's, or is more than one, nothing is sent and the names there are come back instead.
+team's, or is more than one, nothing is sent and the names there are come back instead. An issue is
+written like ACM-412, or as Linear's id of it (a UUID).
 
 In a terminal that shows pencere views (bateri) linearpen opens in the pane. In any other it
 prints the issues as text and exits. The Linear API key is read from LINEAR_API_KEY, or from the
@@ -34,8 +35,14 @@ Progress; on the command line, the same three with create, update and comment. I
 description of an issue that exists, and never moves an issue to another team. `linearpen --text`,
 list, show and teams only read.
 
+In a pane where an agent was started on an issue, linearpen is run with LINEARPEN_AGENT set to
+Linear's id of the issue, and then create is refused, update changes only the status, and update and
+comment take only that issue. If the variable is set and holds no such id, no write is made. Reading
+is not limited.
+
 Each command ends with 0 when it is done. It ends with 1 where Linear could not do it, said no, or
-has nothing by a name given, with 2 where the command line is not understood or there is no usable
+has nothing by a name given, or where the run is an agent's and the write is not one it may make,
+with 2 where the command line is not understood or there is no usable
 key, and with 3 where a write was sent and it is not known whether Linear made it: look in Linear
 before running it again.
 ";
@@ -97,7 +104,8 @@ usage: linearpen create --team KEY --title TITLE [OPTIONS] [--json]
   --json              print JSON instead of text
 
 Prints the identifier and the link of the issue made. linearpen teams KEY lists the names each option
-takes. The issue is made once; if the answer is lost, linearpen asks Linear for the issue by the id
+takes. A run that an agent's pane was started for (LINEARPEN_AGENT is set) makes no issues.
+The issue is made once; if the answer is lost, linearpen asks Linear for the issue by the id
 it made for it, and ends with 3 where that does not settle it.
 ";
 
@@ -122,7 +130,8 @@ of one team. At most 50 issues are changed at once.
   --json            print JSON instead of text
 
 Each option is given once but --label and --unlabel. linearpen never changes an issue's description
-or team. Prints each issue as Linear says it is now.
+or team. Prints each issue as Linear says it is now. A run that an agent's pane was started for
+(LINEARPEN_AGENT is set) changes only the status, and only of the issue the agent was started on.
 ";
 
 pub const COMMENT: &str = "\
@@ -133,7 +142,8 @@ usage: linearpen comment KEY-N --body TEXT [--json]
   --body TEXT   the words of the comment, or - for the words on stdin
   --json        print JSON instead of text
 
-The comment is posted once, in the words given. Prints that it was added.
+The comment is posted once, in the words given. Prints that it was added. A run that an agent's
+pane was started for (LINEARPEN_AGENT is set) comments only on the issue the agent was started on.
 ";
 
 pub const TEAMS: &str = "\

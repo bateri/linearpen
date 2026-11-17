@@ -5,6 +5,7 @@
 use super::scan::{Scanned, many, one, scan, switch};
 use crate::linear::limits::{BODY_MOST, DESCRIPTION_MOST, TITLE_MOST};
 use crate::linear::{BATCH_MOST, Change, Priority};
+use crate::state::draft;
 
 /// The commands, by name.
 pub const NAMES: [&str; 6] = ["list", "show", "create", "update", "comment", "teams"];
@@ -127,8 +128,12 @@ pub enum Read {
 }
 
 /// The identifier `text` is (`acm-412` is `ACM-412`), or nothing: letters and digits that begin with a
-/// letter, a dash, and a number.
+/// letter, a dash, and a number; or Linear's own id of an issue, which is a UUID, in lower case (it is
+/// what an agent started on an issue is told to give).
 fn issue_key(text: &str) -> Option<String> {
+    if draft::is_uuid(text) {
+        return Some(text.to_ascii_lowercase());
+    }
     let (team, number) = text.split_once('-')?;
     let fine = team.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
         && team.chars().all(|c| c.is_ascii_alphanumeric())
@@ -331,7 +336,7 @@ fn list(args: &[String]) -> Result<Read, String> {
 fn the_issue(command: &str, found: &Scanned) -> Result<String, String> {
     match found.positional.as_slice() {
         [one] => issue_key(one)
-            .ok_or_else(|| format!("{one:?} is not an issue (an issue is written like ACM-412)")),
+            .ok_or_else(|| format!("{one:?} is not an issue (an issue is written like ACM-412, or is Linear's id of it)")),
         [] => Err(format!("{command} is given an issue, written like ACM-412")),
         _ => Err(format!("{command} is given one issue")),
     }
@@ -415,7 +420,7 @@ fn update(args: &[String]) -> Result<Read, String> {
     let mut issues: Vec<String> = Vec::new();
     for word in &found.positional {
         let key = issue_key(word).ok_or_else(|| {
-            format!("{word:?} is not an issue (an issue is written like ACM-412)")
+            format!("{word:?} is not an issue (an issue is written like ACM-412, or is Linear's id of it)")
         })?;
         if !issues.contains(&key) {
             issues.push(key);
@@ -537,6 +542,34 @@ mod tests {
 
     fn strings(of: &[&str]) -> Vec<String> {
         of.iter().map(|word| (*word).to_owned()).collect()
+    }
+
+    // Linear's own id of an issue is what an agent started on one is told to give.
+    #[test]
+    fn an_issue_is_its_identifier_or_linears_id_of_it_in_lower_case() {
+        let uuid = "0C9E0F1E-6d1b-4d7a-9a56-3b1c0a5e7f10";
+        let lower = "0c9e0f1e-6d1b-4d7a-9a56-3b1c0a5e7f10";
+        let Command::Update(update) = command("update", &[uuid, "ACM-1", "--status", "Done"])
+        else {
+            panic!()
+        };
+        assert_eq!(update.issues, [lower, "ACM-1"]);
+        assert!(matches!(
+            command("show", &[uuid]),
+            Command::Show { issue, .. } if issue == lower
+        ));
+        assert!(matches!(
+            command("comment", &[uuid, "--body", "-"]),
+            Command::Comment(comment) if comment.issue == lower
+        ));
+        // What is neither is not an issue.
+        for word in [
+            "0c9e0f1e-6d1b-4d7a-9a56-3b1c0a5e7f1",
+            "0c9e0f1e-6d1b-4d7a-9a56-3b1c0a5e7f1g",
+            "0c9e0f1e6d1b4d7a9a563b1c0a5e7f10",
+        ] {
+            assert!(refused("show", &[word]).contains("not an issue"), "{word}");
+        }
     }
 
     #[test]

@@ -747,9 +747,21 @@ fn an_agent_is_started_in_a_pane_that_is_given_the_file_of_the_issue_and_not_its
         std::path::Path::new(&call[3]).canonicalize().unwrap(),
         home.dir.path().canonicalize().unwrap()
     );
-    assert_eq!(&call[4..8], ["--label", "ACM-412", "--", "claude"]);
-    assert_eq!(call.len(), 9, "{call:?}");
-    let prompt = &call[8];
+    // The agent is run by `env`, which sets the variable the command line reads; this issue's id is
+    // no UUID, so it holds nothing, and the prompt says nothing of writing.
+    assert_eq!(
+        &call[4..10],
+        [
+            "--label",
+            "ACM-412",
+            "--",
+            "/usr/bin/env",
+            "LINEARPEN_AGENT=",
+            "claude"
+        ]
+    );
+    assert_eq!(call.len(), 11, "{call:?}");
+    let prompt = &call[10];
     assert!(prompt.contains(context.to_str().unwrap()), "{prompt}");
     assert_eq!(
         prompt,

@@ -249,3 +249,91 @@ fn what_is_not_understood_ends_with_two_and_help_and_teams_work() {
     assert_eq!(ran.status, Some(2), "{}", ran.stderr);
     assert!(home.calls().is_empty());
 }
+
+const AGENT: &str = "0c9e0f1e-6d1b-4d7a-9a56-3b1c0a5e7f10";
+
+#[test]
+fn in_an_agents_pane_a_write_it_may_not_make_stops_before_curl() {
+    let home = Home::new();
+    let made = linearpen(
+        &home,
+        &["create", "--team", "ACM", "--title", "x"],
+        &[("LINEARPEN_AGENT", AGENT)],
+        None,
+    );
+    assert_eq!(made.status, Some(1), "{}", made.stderr);
+    assert!(
+        made.stderr.contains("it makes no issues"),
+        "{}",
+        made.stderr
+    );
+    assert!(made.stdout.is_empty(), "{}", made.stdout);
+    let more = linearpen(
+        &home,
+        &["update", "ACM-412", "--status", "Done", "--priority", "low"],
+        &[("LINEARPEN_AGENT", AGENT)],
+        None,
+    );
+    assert_eq!(more.status, Some(1), "{}", more.stderr);
+    assert!(
+        more.stderr.contains("it changes only the status"),
+        "{}",
+        more.stderr
+    );
+    // A variable that is set and holds no id is an agent's run that may write nothing.
+    for value in ["", "ACM-412", "not-an-id"] {
+        let update = linearpen(
+            &home,
+            &["update", "ACM-412", "--status", "Done"],
+            &[("LINEARPEN_AGENT", value)],
+            None,
+        );
+        assert_eq!(update.status, Some(1), "{value:?}: {}", update.stderr);
+        assert!(
+            update.stderr.contains("it writes nothing"),
+            "{}",
+            update.stderr
+        );
+        let comment = linearpen(
+            &home,
+            &["comment", "ACM-412", "--body", "-"],
+            &[("LINEARPEN_AGENT", value)],
+            Some("words"),
+        );
+        assert_eq!(comment.status, Some(1), "{value:?}: {}", comment.stderr);
+    }
+    // Not one of them reached `curl`.
+    assert!(home.calls().is_empty(), "{:?}", home.calls().len());
+}
+
+#[test]
+fn in_an_agents_pane_another_issue_is_read_and_then_refused_with_no_write_and_the_rest_is_read() {
+    let home = Home::new();
+    // The issue the stand-in has is `issue-412`, not the agent's.
+    for args in [
+        &["update", "ACM-412", "--status", "done"][..],
+        &["comment", "ACM-412", "--body", "x"],
+    ] {
+        let ran = linearpen(&home, args, &[("LINEARPEN_AGENT", AGENT)], None);
+        assert_eq!(ran.status, Some(1), "{args:?}: {}", ran.stderr);
+        assert!(
+            ran.stderr.contains("on another issue"),
+            "{args:?}: {}",
+            ran.stderr
+        );
+    }
+    assert_eq!(writes(&home), 0);
+    assert!(!sent(&home, "Issue").is_empty());
+
+    let listed = linearpen(&home, &["list"], &[("LINEARPEN_AGENT", AGENT)], None);
+    assert_eq!(listed.status, Some(0), "{}", listed.stderr);
+    assert!(listed.stdout.starts_with("My issues"), "{}", listed.stdout);
+    let shown = linearpen(
+        &home,
+        &["show", "ACM-412"],
+        &[("LINEARPEN_AGENT", "")],
+        None,
+    );
+    assert_eq!(shown.status, Some(0), "{}", shown.stderr);
+    assert_eq!(writes(&home), 0);
+}

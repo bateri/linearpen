@@ -135,6 +135,7 @@ fn run_command(command: &command_line::Command) -> u8 {
             transport: &connection.transport,
             key: &connection.key,
             key_source: &connection.source,
+            guard: cli::Guard::of(std::env::var_os(work::AGENT_VARIABLE).as_deref()),
         },
         command,
         &mut std::io::stdin().lock(),
@@ -191,7 +192,10 @@ fn session() -> Arc<Session> {
         REFRESH_EVERY,
     )
     .with_work(
-        Setup::resolve(&lookup, std::env::current_dir().ok()),
+        Setup {
+            exe: std::env::current_exe().ok(),
+            ..Setup::resolve(&lookup, std::env::current_dir().ok())
+        },
         Arc::new(System),
     );
     // The folders of runs of a while ago are put away as the program begins.

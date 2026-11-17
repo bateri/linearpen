@@ -137,6 +137,10 @@ fn command(args: &[&str]) -> Command {
 }
 
 fn run_with(memory: &Memory, args: &[&str], stdin: &str) -> Done {
+    run_guarded(memory, Guard::Off, args, stdin)
+}
+
+fn run_guarded(memory: &Memory, guard: Guard, args: &[&str], stdin: &str) -> Done {
     let key = Key::new("lin_api_test").unwrap();
     let mut input = stdin.as_bytes();
     run(
@@ -144,6 +148,7 @@ fn run_with(memory: &Memory, args: &[&str], stdin: &str) -> Done {
             transport: memory,
             key: &key,
             key_source: "LINEAR_API_KEY",
+            guard,
         },
         &command(args),
         &mut input,
@@ -699,4 +704,336 @@ fn a_create_that_linear_says_it_did_not_make_is_a_no_and_not_a_not_known() {
         "{}",
         done.err
     );
+}
+
+// What a `linearpen` run in an agent's pane may write (`guard`): the issue it was started on, by
+// Linear's id (the stand-in curl answers a UUID with "not found", so what is allowed is tried here).
+
+const MINE: &str = "11111111-2222-4333-8444-555555555555";
+const OTHER: &str = "99999999-2222-4333-8444-555555555555";
+
+/// A world of two issues of ACM: `ACM-5` with the id `MINE` and `ACM-6` with the id `OTHER`; an
+/// update answers with `MINE`, as changed.
+fn agent_world() -> Memory {
+    Memory::new(|name, body| {
+        let asked = |key: &str| body.contains(&format!("\"id\":\"{key}\""));
+        match name {
+            "Issue" if asked(MINE) || asked("ACM-5") => issue_reply(MINE, "ACM-5", "acm"),
+            "Issue" if asked(OTHER) || asked("ACM-6") => issue_reply(OTHER, "ACM-6", "acm"),
+            "Issue" => {
+                ok(r#"{"data":{"issue":null},"errors":[{"message":"Entity not found: Issue"}]}"#)
+            }
+            "IssueBatchUpdate" => ok(&format!(
+                r#"{{"data":{{"issueBatchUpdate":{{"success":true,"issues":[{}]}}}}}}"#,
+                issue_of(MINE, "ACM-5", "acm")
+            )),
+            _ => world().post(&Key::new("k").unwrap(), body),
+        }
+    })
+}
+
+fn for_agent() -> Guard {
+    Guard::of(Some(std::ffi::OsStr::new(MINE)))
+}
+
+#[test]
+fn the_variable_makes_the_guard_and_only_an_id_that_is_a_uuid_gives_it_an_issue() {
+    use std::os::unix::ffi::OsStrExt;
+    assert_eq!(Guard::of(None), Guard::Off);
+    assert_eq!(
+        Guard::of(Some(std::ffi::OsStr::new(MINE))),
+        Guard::Issue(MINE.to_owned())
+    );
+    // The case of the letters of an id is not what it is.
+    let loud = "ABCDEF01-2222-4333-8444-555555555555";
+    assert_eq!(
+        Guard::of(Some(std::ffi::OsStr::new(loud))),
+        Guard::Issue(loud.to_lowercase())
+    );
+    // A variable that is set is an agent's run, whatever it holds: it is not "no agent".
+    for value in [
+        std::ffi::OsStr::new(""),
+        std::ffi::OsStr::new("ACM-5"),
+        std::ffi::OsStr::new("issue-412"),
+        std::ffi::OsStr::new(" 11111111-2222-4333-8444-555555555555"),
+        std::ffi::OsStr::from_bytes(b"11111111-2222-4333-8444-55555555555\xff"),
+    ] {
+        assert_eq!(Guard::of(Some(value)), Guard::Nothing, "{value:?}");
+    }
+}
+
+#[test]
+fn an_agent_may_change_the_status_of_its_issue_and_comment_on_it_and_each_is_one_write() {
+    let memory = agent_world();
+    let done = run_guarded(
+        &memory,
+        for_agent(),
+        &["update", MINE, "--status", "Done"],
+        "",
+    );
+    assert_eq!(done.status, 0, "{}", done.err);
+    assert_eq!(memory.wrote(), 1);
+    let sent = memory.of("IssueBatchUpdate");
+    assert_eq!(sent.len(), 1);
+    assert!(
+        sent[0].contains(MINE) && sent[0].contains("s-done"),
+        "{}",
+        sent[0]
+    );
+    assert!(
+        !sent[0].to_lowercase().contains("description"),
+        "{}",
+        sent[0]
+    );
+
+    // The same issue by its identifier, and an id written in capitals, are the same issue.
+    let memory = agent_world();
+    let done = run_guarded(
+        &memory,
+        for_agent(),
+        &["update", "acm-5", "--status", "Done"],
+        "",
+    );
+    assert_eq!(done.status, 0, "{}", done.err);
+    assert_eq!(memory.wrote(), 1);
+    let memory = agent_world();
+    let loud = MINE.to_uppercase();
+    let done = run_guarded(
+        &memory,
+        for_agent(),
+        &["update", &loud, "--status", "Done"],
+        "",
+    );
+    assert_eq!(done.status, 0, "{}", done.err);
+    assert_eq!(memory.wrote(), 1);
+
+    let memory = agent_world();
+    let done = run_guarded(
+        &memory,
+        for_agent(),
+        &["comment", MINE, "--body", "-"],
+        "Done; the limiter is in.\n",
+    );
+    assert_eq!(
+        (done.status, done.out.as_str()),
+        (0, "ACM-5: comment added\n"),
+        "{}",
+        done.err
+    );
+    assert_eq!(memory.wrote(), 1);
+    let sent = memory.of("CommentCreate");
+    assert_eq!(sent.len(), 1);
+    assert!(sent[0].contains(MINE), "{}", sent[0]);
+    assert!(sent[0].contains("Done; the limiter is in."), "{}", sent[0]);
+}
+
+#[test]
+fn an_agent_is_refused_any_other_issue_before_anything_is_written() {
+    for args in [
+        &["update", OTHER, "--status", "Done"][..],
+        &["update", "ACM-6", "--status", "Done"],
+        &["update", MINE, OTHER, "--status", "Done"],
+        &["update", "ACM-5", "ACM-6", "--status", "Done"],
+        &["comment", OTHER, "--body", "x"],
+        &["comment", "ACM-6", "--body", "x"],
+    ] {
+        let memory = agent_world();
+        let done = run_guarded(&memory, for_agent(), args, "");
+        assert_eq!(done.status, 1, "{args:?}: {}", done.err);
+        assert_eq!(
+            done.err,
+            "linearpen: linearpen was started for an agent on another issue; it may change only that issue's status and comment on it\n",
+            "{args:?}"
+        );
+        assert_eq!(memory.wrote(), 0, "{args:?}");
+        assert!(done.out.is_empty(), "{args:?}");
+    }
+}
+
+#[test]
+fn an_agent_makes_no_issue_and_changes_nothing_but_the_status_and_asks_linear_nothing_first() {
+    for (args, said) in [
+        (
+            &["create", "--team", "ACM", "--title", "x"][..],
+            "it makes no issues",
+        ),
+        (
+            &["update", MINE, "--priority", "low"],
+            "it changes only the status",
+        ),
+        (
+            &["update", MINE, "--title", "New"],
+            "it changes only the status",
+        ),
+        (
+            &["update", MINE, "--label", "bug"],
+            "it changes only the status",
+        ),
+        (
+            &["update", MINE, "--unlabel", "bug"],
+            "it changes only the status",
+        ),
+        (
+            &["update", MINE, "--assignee", "me"],
+            "it changes only the status",
+        ),
+        (
+            &["update", MINE, "--project", "none"],
+            "it changes only the status",
+        ),
+        (
+            &["update", MINE, "--cycle", "none"],
+            "it changes only the status",
+        ),
+        (
+            &["update", MINE, "--estimate", "none"],
+            "it changes only the status",
+        ),
+        (
+            &["update", MINE, "--due", "none"],
+            "it changes only the status",
+        ),
+        (
+            &["update", MINE, "--status", "Done", "--priority", "low"],
+            "it changes only the status",
+        ),
+    ] {
+        let memory = agent_world();
+        let done = run_guarded(&memory, for_agent(), args, "");
+        assert_eq!(done.status, 1, "{args:?}: {}", done.err);
+        assert!(done.err.contains(said), "{args:?}: {}", done.err);
+        assert!(
+            done.err
+                .starts_with("linearpen: linearpen was started for an agent"),
+            "{args:?}: {}",
+            done.err
+        );
+        // Not a word went to Linear: not a write, and not a read.
+        assert!(memory.sent().is_empty(), "{args:?}: {:?}", memory.sent());
+    }
+}
+
+#[test]
+fn an_agent_whose_variable_names_no_issue_writes_nothing_at_all() {
+    for args in [
+        &["create", "--team", "ACM", "--title", "x"][..],
+        &["update", "ACM-5", "--status", "Done"],
+        &["update", MINE, "--status", "Done"],
+        &["comment", MINE, "--body", "x"],
+        &["comment", "ACM-5", "--body", "-"],
+    ] {
+        for value in ["", "ACM-5", "not-an-id"] {
+            let memory = agent_world();
+            let done = run_guarded(
+                &memory,
+                Guard::of(Some(std::ffi::OsStr::new(value))),
+                args,
+                "words",
+            );
+            assert_eq!(done.status, 1, "{args:?} {value:?}: {}", done.err);
+            assert_eq!(
+                done.err,
+                "linearpen: linearpen was started for an agent with no issue of its own; it writes nothing\n",
+                "{args:?} {value:?}"
+            );
+            assert!(memory.sent().is_empty(), "{args:?} {value:?}");
+        }
+    }
+}
+
+#[test]
+fn an_agent_reads_what_it_likes() {
+    for guard in [for_agent(), Guard::Nothing] {
+        let memory = world();
+        let done = run_guarded(&memory, guard.clone(), &["show", "ACM-412"], "");
+        assert_eq!(done.status, 0, "{guard:?}: {}", done.err);
+        assert!(done.out.contains("ACM-412"), "{}", done.out);
+        let done = run_guarded(&memory, guard.clone(), &["teams"], "");
+        assert_eq!(done.status, 0, "{guard:?}: {}", done.err);
+        let done = run_guarded(&memory, guard.clone(), &["teams", "ACM"], "");
+        assert_eq!(done.status, 0, "{guard:?}: {}", done.err);
+        assert_eq!(memory.wrote(), 0);
+    }
+}
+
+/// The words of `line` as a shell would give them: white space between them, single and double
+/// quotes and a backslash outside quotes to hold what would end a word.
+fn shell_words(line: &str) -> Vec<String> {
+    let mut words = Vec::new();
+    let mut word = String::new();
+    let mut open = false;
+    let mut quote: Option<char> = None;
+    let mut chars = line.chars();
+    while let Some(c) = chars.next() {
+        match (quote, c) {
+            (Some(q), c) if c == q => quote = None,
+            (Some(_), c) => word.push(c),
+            (None, '\'' | '"') => {
+                quote = Some(c);
+                open = true;
+            }
+            (None, '\\') => {
+                word.extend(chars.next());
+                open = true;
+            }
+            (None, c) if c.is_whitespace() => {
+                if open {
+                    words.push(std::mem::take(&mut word));
+                    open = false;
+                }
+            }
+            (None, c) => {
+                word.push(c);
+                open = true;
+            }
+        }
+    }
+    if open {
+        words.push(word);
+    }
+    words
+}
+
+// The two commands the agent is told to run are commands `linearpen` takes, as the program the agent
+// is told to run is written whatever its path is, and what they come to is what the guard lets by.
+#[test]
+fn the_two_commands_the_prompt_gives_the_agent_are_the_two_the_command_line_takes() {
+    for exe in [
+        None,
+        Some("/usr/local/bin/linearpen"),
+        Some("/Applications/My Tools/lp's bin/linearpen"),
+    ] {
+        let said = crate::work::handoff::prompt(
+            std::path::Path::new("/state/work/x/issues.md"),
+            false,
+            Some(crate::work::handoff::Writes {
+                exe: exe.map(std::path::Path::new),
+                issue: MINE,
+            }),
+        );
+        // The commands are what is between the backticks.
+        let spans: Vec<&str> = said.split('`').skip(1).step_by(2).collect();
+        assert_eq!(spans.len(), 2, "{said}");
+        for span in &spans {
+            let words = shell_words(&span.replace("<status>", "In Review"));
+            assert_eq!(words[0], exe.unwrap_or("linearpen"), "{span}");
+        }
+        let update = shell_words(&spans[0].replace("<status>", "In Review"));
+        let Asked::Do(Command::Update(update)) = command_line::read(update[1..].iter().cloned())
+        else {
+            panic!("not an update: {}", spans[0]);
+        };
+        assert_eq!(update.issues, [MINE]);
+        assert_eq!(update.fields.status.as_deref(), Some("In Review"));
+        // It is what the guard of that very run lets by.
+        for_agent().updates(&update).unwrap();
+        let comment = shell_words(spans[1]);
+        let Asked::Do(Command::Comment(comment)) = command_line::read(comment[1..].iter().cloned())
+        else {
+            panic!("not a comment: {}", spans[1]);
+        };
+        assert_eq!(comment.issue, MINE);
+        assert_eq!(comment.body, crate::command_line::Words::Stdin);
+        for_agent().comments().unwrap();
+    }
 }

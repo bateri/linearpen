@@ -4,10 +4,14 @@
 //! of the environment, so that it is tested with a transport of memory. It knows nothing of the
 //! page.
 //!
+//! Where the run was started for an agent (`guard`), a write that is not one of the two it may make
+//! is refused before anything is sent.
+//!
 //! Names are found out before anything is written: a name that is none of what Linear has, or more
 //! than one, stops the command with the names there are. A write is sent once and never again; where
 //! its answer did not come, the command says that it is not known whether Linear made it.
 
+mod guard;
 mod json;
 mod read;
 mod resolve;
@@ -16,6 +20,8 @@ mod write;
 use std::io::Read;
 
 use serde::Serialize;
+
+pub use guard::Guard;
 
 use crate::command_line::Command;
 use crate::linear::transport::never_sent;
@@ -26,6 +32,8 @@ pub struct Access<'a> {
     pub transport: &'a dyn Transport,
     pub key: &'a Key,
     pub key_source: &'a str,
+    /// What the run may write: all of it, or, in an agent's pane, one issue's status and comments.
+    pub guard: Guard,
 }
 
 /// What a command comes to: what to print on stdout and on stderr, and the status to end with.

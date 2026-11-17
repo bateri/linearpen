@@ -187,6 +187,7 @@ fn settle(access: &Access, id: &str, failure: &Error) -> Result<Created, Stop> {
 }
 
 pub fn create(access: &Access, create: &Create, stdin: &mut dyn Read) -> Result<String, Stop> {
+    access.guard.creates()?;
     let description = create
         .description
         .as_ref()
@@ -293,7 +294,9 @@ fn issues_of(access: &Access, keys: &[String]) -> Result<(Vec<Issue>, TeamRef), 
 /// Changes the issues; what is printed on stdout, and a note for stderr where Linear did not say how
 /// an issue it changed is now.
 pub fn update(access: &Access, update: &Update) -> Result<(String, String), Stop> {
+    access.guard.updates(update)?;
     let (issues, team) = issues_of(access, &update.issues)?;
+    access.guard.only(&issues)?;
     let team = Team {
         id: team.id,
         key: super::plain(&team.key),
@@ -370,10 +373,12 @@ pub fn update(access: &Access, update: &Update) -> Result<(String, String), Stop
 }
 
 pub fn comment(access: &Access, comment: &Comment, stdin: &mut dyn Read) -> Result<String, Stop> {
+    access.guard.comments()?;
     let body = words_of("body", &comment.body, BODY_MOST, stdin)?;
     // The issue is asked for first, so that an issue Linear does not have is told before anything is
     // written, and the comment goes to the issue's own id, as the page sends it.
     let issue = issue_of(access, &comment.issue)?;
+    access.guard.only(std::slice::from_ref(&issue))?;
     let id = draft::new_id().map_err(Stop::no)?;
     let posted = linear::comment(access.transport, access.key, &id, &issue.id, &body)
         .map_err(|error| written_wrong(access, &error))?;

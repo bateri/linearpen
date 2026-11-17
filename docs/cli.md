@@ -4,10 +4,31 @@
 options of each command; this file is what `--json` prints. Text that Linear sent (titles, names,
 descriptions, comments) is in the JSON as it came: JSON escapes every control character.
 
-A command ends with 0 when it is done, 1 where Linear could not do it, said no, or has nothing by a
-name, 2 where the command line is not understood or there is no usable key, and 3 where a write was
+A command ends with 0 when it is done, 1 where Linear could not do it, said no, has nothing by a
+name, or the run is an agent's and the write is not one it may make, 2 where the command line is not understood or there is no usable key, and 3 where a write was
 sent and it is not known whether Linear made it. On an error the words are on stderr and stdout is
 empty.
+
+## In an agent's pane
+
+An issue is given as its identifier (`ACM-412`) or as Linear's id of it, a UUID.
+
+When an agent is started on an issue (Work on), the program is run with `LINEARPEN_AGENT` set to
+Linear's id of that issue, and the commands of the agent's `linearpen` write less. The variable is
+read as it is set, so one that is set and empty counts too.
+
+- `list`, `show`, `teams` and `--text` read as they do elsewhere.
+- `update` changes only the status (`--status`), and only of that issue; any other option is refused
+  before Linear is asked anything. An issue is that issue where Linear's id of it is the one in the
+  variable, whether it was given by identifier or by id; it is told so after Linear has been asked for
+  it, and before anything is sent.
+- `comment` posts under that issue only.
+- `create` is refused before Linear is asked anything.
+- Where the variable is set and holds no UUID, every write is refused before Linear is asked anything.
+
+A refusal ends with 1 and sends nothing; its words say that `linearpen` was started for an agent and
+what it may do. This is a guard and not a lock: an agent that unsets the variable, or reads the key
+for itself, goes round it.
 
 ## `list --json`
 

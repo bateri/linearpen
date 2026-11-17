@@ -21,6 +21,7 @@ pub mod worktree;
 use std::path::{Path, PathBuf};
 
 use crate::linear::Issue;
+use crate::state::draft;
 use agents::Agent;
 use bateri::Place;
 use runner::Runner;
@@ -36,7 +37,18 @@ pub struct Setup {
     pub in_bateri: bool,
     /// The folder the pen was started in.
     pub folder: Option<PathBuf>,
+    /// The program the pen is, as the agent is told to run it; where it is not known the agent is
+    /// told `linearpen`.
+    pub exe: Option<PathBuf>,
 }
+
+/// The variable that tells a `linearpen` run in an agent's pane that it was started for an agent,
+/// and for which issue (Linear's id of it): the command line then writes nothing but that issue's
+/// status and comments (`cli/guard.rs`). A start sets it, and `main.rs` reads it.
+pub const AGENT_VARIABLE: &str = "LINEARPEN_AGENT";
+
+/// The program that sets a variable for the one it runs.
+const ENV: &str = "/usr/bin/env";
 
 /// The variables that hold the address of the pane the pen runs in: the first is in the shells
 /// bateri holds on its own machine, the second is what `ssh` carries to a server, whose shells have
@@ -60,6 +72,7 @@ impl Setup {
                 .iter()
                 .any(|name| get(name).is_some_and(|url| !url.is_empty())),
             folder,
+            exe: None,
         }
     }
 
@@ -154,6 +167,15 @@ pub fn worktree_available(env: &Env<'_>) -> Result<(), String> {
     worktree::available(env.runner, folder)
 }
 
+/// `command` run with the agent variable set to `issue`, which is empty where the issue has no id
+/// that is a UUID: a `linearpen` the agent runs is then one that may write that issue's status and
+/// comments and nothing else.
+fn marked(issue: &str, command: Vec<String>) -> Vec<String> {
+    let mut words = vec![ENV.to_owned(), format!("{AGENT_VARIABLE}={issue}")];
+    words.extend(command);
+    words
+}
+
 /// Hands the issue to the agent: writes the file and makes the pane that runs the agent, in the
 /// pen's folder. A new worktree is the agent's to make: the prompt asks it for one.
 ///
@@ -185,13 +207,22 @@ pub fn start(env: &Env<'_>, request: &Request<'_>) -> Result<Started, Refused> {
         .ok_or_else(|| Refused::Failed("there is no folder to keep the issue in".to_owned()))?;
     let context = handoff::write(state, &handoff::stamp(env.now), issue)
         .map_err(|why| Refused::Failed(format!("the issue could not be written: {why}")))?;
-    let prompt = handoff::prompt(&context, worktree);
+    // The one thing of Linear's in the command is the id of the issue, and only where it is a UUID.
+    let id = draft::is_uuid(&issue.id).then_some(issue.id.as_str());
+    let prompt = handoff::prompt(
+        &context,
+        worktree,
+        id.map(|issue| handoff::Writes {
+            exe: env.setup.exe.as_deref(),
+            issue,
+        }),
+    );
     let pane = bateri::launch(
         env.runner,
         request.place,
         &here,
         &issue.identifier,
-        &request.agent.command(&prompt),
+        &marked(id.unwrap_or_default(), request.agent.command(&prompt)),
     )
     .map_err(|no| {
         // Nothing runs there, so the file made for it goes. (Where a pane may be there, it is
