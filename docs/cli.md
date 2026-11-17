@@ -20,7 +20,8 @@ empty.
 ```
 
 `truncated` is true where Linear has more issues than the 500 that are taken. `update --json` prints
-`{ "issues": [ <issue> ] }`, each issue as Linear says it is now.
+`{ "issues": [ <issue> ] }`, each issue as Linear says it is now; an issue that was changed but that
+Linear did not tell again is left out, and stderr names it.
 
 ### `<issue>`
 

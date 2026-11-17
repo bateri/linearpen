@@ -368,11 +368,41 @@ struct IssueData {
     issue: Option<Issue>,
 }
 
+/// What `fetch_issue` says where Linear answers with no issue.
+const NO_SUCH_ISSUE: &str = "Linear has no such issue";
+
 /// One issue with its description and its first comments.
 pub fn fetch_issue(transport: &dyn Transport, key: &Key, id: &str) -> Result<Issue, Error> {
     let data: IssueData = run(transport, key, &query::ISSUE, Some(Lookup { id }))?;
     data.issue
-        .ok_or_else(|| Error::Failed("Linear has no such issue".to_owned()))
+        .ok_or_else(|| Error::Failed(NO_SUCH_ISSUE.to_owned()))
+}
+
+/// Whether `error`, of `fetch_issue`, says that Linear has no issue by that id: its own "Entity not
+/// found: Issue", or an answer with no issue in it. Any other error says nothing of whether there is
+/// one.
+#[must_use]
+pub fn no_such_issue(error: &Error) -> bool {
+    matches!(error, Error::Failed(why)
+        if why == NO_SUCH_ISSUE || why.to_ascii_lowercase().contains("entity not found: issue"))
+}
+
+/// Whether the issue of the draft `id` was made, where the answer to `create` did not say: Linear is
+/// asked for the issue by that id, which it took as the issue's own (`issue(id:)` takes an identifier
+/// too, so only the issue of this draft is the answer). `Some` where it is there, `None` where Linear
+/// has no such issue or has another, and an error where the asking came to nothing either. The
+/// asking is a read, not a second write.
+pub fn made(transport: &dyn Transport, key: &Key, id: &str) -> Result<Option<Created>, Error> {
+    match fetch_issue(transport, key, id) {
+        Ok(issue) if issue.id.eq_ignore_ascii_case(id) => Ok(Some(Created {
+            id: issue.id,
+            identifier: issue.identifier,
+            url: issue.url,
+        })),
+        Ok(_) => Ok(None),
+        Err(error) if no_such_issue(&error) => Ok(None),
+        Err(error) => Err(error),
+    }
 }
 
 /// The teams an issue can be made in, by name.

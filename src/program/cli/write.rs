@@ -8,6 +8,7 @@ use super::resolve::{Lookups, cycle, estimate, pick};
 use super::{Access, Stop, asked_wrong, json as print_json, written_wrong};
 use crate::command_line::{Comment, Create, Fields, Setting, Update, Words};
 use crate::linear::limits::{BODY_MOST, DESCRIPTION_MOST, LABELS_MOST};
+use crate::linear::types::TeamRef;
 use crate::linear::{
     self, Change, Changes, Created, Error, Issue, NewIssue, Options, Priority, Team,
 };
@@ -29,6 +30,13 @@ fn words_of(flag: &str, words: &Words, most: usize, stdin: &mut dyn Read) -> Res
                 .take(limit)
                 .read_to_end(&mut bytes)
                 .map_err(|why| Stop::usage(format!("stdin could not be read: {why}")))?;
+            // More bytes than `most` characters can be is more characters than `most`, whatever
+            // they are, and the last of them may be cut: it is too long, not other than text.
+            if u64::try_from(bytes.len()).unwrap_or(u64::MAX) >= limit {
+                return Err(Stop::usage(format!(
+                    "--{flag} is from one to {most} characters"
+                )));
+            }
             String::from_utf8(bytes)
                 .map_err(|_| Stop::usage(format!("the words of --{flag} on stdin are not text")))?
         }
@@ -158,16 +166,17 @@ fn label(owner: &str, options: &Options, asked: &str) -> Result<String, Stop> {
     pick(owner, "label", asked, &labels)
 }
 
-/// Makes the issue where Linear has said nothing of whether it was made: asks for it by the id of
-/// the draft, which Linear took as the issue's own. That asking is a read, not a second write.
+/// The issue where Linear has said nothing of whether it was made, as the page settles it
+/// (`linear::made`): there, it was made; not there, it was not, and the failure is told with status 1;
+/// the asking comes to nothing too, it is not known, status 3.
 fn settle(access: &Access, id: &str, failure: &Error) -> Result<Created, Stop> {
-    match linear::fetch_issue(access.transport, access.key, id) {
-        Ok(issue) if issue.id.eq_ignore_ascii_case(id) => Ok(Created {
-            id: issue.id,
-            identifier: issue.identifier,
-            url: issue.url,
-        }),
-        _ => Err(Stop {
+    match linear::made(access.transport, access.key, id) {
+        Ok(Some(created)) => Ok(created),
+        Ok(None) => Err(Stop::no(format!(
+            "{}; Linear does not have the issue, so it was not made",
+            super::tidy(&failure.to_string())
+        ))),
+        Err(_) => Err(Stop {
             words: format!(
                 "{}; it is not known whether Linear made the issue; look in Linear before running it again (the id of this draft is {id})",
                 super::tidy(&failure.to_string())
@@ -237,22 +246,22 @@ pub fn create(access: &Access, create: &Create, stdin: &mut dyn Read) -> Result<
     })
 }
 
-/// The issues named, as Linear has them, each once and of one team.
-fn issues_of(access: &Access, keys: &[String]) -> Result<Vec<Issue>, Stop> {
+/// The issue named `key` (its identifier, or Linear's id of it), as Linear has it.
+fn issue_of(access: &Access, key: &str) -> Result<Issue, Stop> {
+    linear::fetch_issue(access.transport, access.key, key).map_err(|error| {
+        if linear::no_such_issue(&error) {
+            Stop::no(format!("Linear has no issue {}", super::plain(key)))
+        } else {
+            asked_wrong(access, &error)
+        }
+    })
+}
+
+/// The issues named, as Linear has them, each once, and the one team they are of.
+fn issues_of(access: &Access, keys: &[String]) -> Result<(Vec<Issue>, TeamRef), Stop> {
     let mut found: Vec<Issue> = Vec::new();
     for key in keys {
-        let issue =
-            linear::fetch_issue(access.transport, access.key, key).map_err(
-                |error| match &error {
-                    Error::Failed(why)
-                        if why.to_lowercase().contains("not found")
-                            || why == "Linear has no such issue" =>
-                    {
-                        Stop::no(format!("Linear has no issue {key}"))
-                    }
-                    other => asked_wrong(access, other),
-                },
-            )?;
+        let issue = issue_of(access, key)?;
         if !found.iter().any(|kept| kept.id == issue.id) {
             found.push(issue);
         }
@@ -278,14 +287,13 @@ fn issues_of(access: &Access, keys: &[String]) -> Result<Vec<Issue>, Stop> {
             )));
         }
     }
-    Ok(found)
+    Ok((found, first))
 }
 
-pub fn update(access: &Access, update: &Update) -> Result<String, Stop> {
-    let issues = issues_of(access, &update.issues)?;
-    let Some(team) = issues[0].team.clone() else {
-        return Err(Stop::no("Linear did not say which team the issues are of"));
-    };
+/// Changes the issues; what is printed on stdout, and a note for stderr where Linear did not say how
+/// an issue it changed is now.
+pub fn update(access: &Access, update: &Update) -> Result<(String, String), Stop> {
+    let (issues, team) = issues_of(access, &update.issues)?;
     let team = Team {
         id: team.id,
         key: super::plain(&team.key),
@@ -304,7 +312,18 @@ pub fn update(access: &Access, update: &Update) -> Result<String, Stop> {
     if let Some(who) = resolved.assignee {
         changes.push(Change::Assignee(who));
     }
-    changes.extend(resolved.labels.into_iter().map(Change::AddLabel));
+    let mut added: Vec<String> = Vec::new();
+    for id in resolved.labels {
+        if !added.contains(&id) {
+            added.push(id);
+        }
+    }
+    if added.len() > LABELS_MOST {
+        return Err(Stop::usage(format!(
+            "an issue is given at most {LABELS_MOST} labels"
+        )));
+    }
+    changes.extend(added.into_iter().map(Change::AddLabel));
     for asked in &update.unlabel {
         changes.push(Change::RemoveLabel(label(&team.key, &options, asked)?));
     }
@@ -334,25 +353,27 @@ pub fn update(access: &Access, update: &Update) -> Result<String, Stop> {
             match linear::fetch_issue(access.transport, access.key, &issue.id) {
                 Ok(got) => now.push(got),
                 Err(_) => note.push_str(&format!(
-                    "{}  changed; Linear did not say how it is now\n",
+                    "linearpen: {} was changed; Linear did not say how it is now\n",
                     super::plain(&issue.identifier)
                 )),
             }
         }
     }
-    if update.json {
-        return print_json(&Changed {
+    let out = if update.json {
+        print_json(&Changed {
             issues: now.iter().map(json::IssueRow::of).collect(),
-        });
-    }
-    Ok(format!("{}{note}", stated_lines(&now)))
+        })?
+    } else {
+        stated_lines(&now)
+    };
+    Ok((out, note))
 }
 
 pub fn comment(access: &Access, comment: &Comment, stdin: &mut dyn Read) -> Result<String, Stop> {
     let body = words_of("body", &comment.body, BODY_MOST, stdin)?;
     // The issue is asked for first, so that an issue Linear does not have is told before anything is
     // written, and the comment goes to the issue's own id, as the page sends it.
-    let issue = issues_of(access, std::slice::from_ref(&comment.issue))?.remove(0);
+    let issue = issue_of(access, &comment.issue)?;
     let id = draft::new_id().map_err(Stop::no)?;
     let posted = linear::comment(access.transport, access.key, &id, &issue.id, &body)
         .map_err(|error| written_wrong(access, &error))?;

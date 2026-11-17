@@ -284,18 +284,13 @@ fn shown(issue: &Issue) -> String {
 }
 
 pub fn show(access: &Access, identifier: &str, json: bool) -> Result<String, Stop> {
-    let issue =
-        linear::fetch_issue(access.transport, access.key, identifier).map_err(
-            |error| match &error {
-                linear::Error::Failed(why)
-                    if why.to_lowercase().contains("not found")
-                        || why == "Linear has no such issue" =>
-                {
-                    Stop::no(format!("Linear has no issue {identifier}"))
-                }
-                other => asked_wrong(access, other),
-            },
-        )?;
+    let issue = linear::fetch_issue(access.transport, access.key, identifier).map_err(|error| {
+        if linear::no_such_issue(&error) {
+            Stop::no(format!("Linear has no issue {identifier}"))
+        } else {
+            asked_wrong(access, &error)
+        }
+    })?;
     if json {
         return print_json(&Shown::of(&issue));
     }

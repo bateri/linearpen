@@ -393,13 +393,60 @@ fn a_create_whose_answer_is_lost_is_asked_for_by_the_id_of_its_draft() {
         &["create", "--team", "ACM", "--title", "Fix it"],
         "",
     );
+    // Linear has no issue under the draft's id: it was not made, as the page settles it.
+    assert_eq!(done.status, 1, "{}", done.err);
+    assert!(done.err.contains("so it was not made"), "{}", done.err);
+    assert_eq!(missing.of("IssueCreate").len(), 1);
+
+    let unknown = Memory::new(|name, body| match name {
+        "IssueCreate" | "Issue" => lost(),
+        _ => world().post(&Key::new("k").unwrap(), body),
+    });
+    let done = run_with(
+        &unknown,
+        &["create", "--team", "ACM", "--title", "Fix it"],
+        "",
+    );
     assert_eq!(done.status, 3);
     assert!(
         done.err.contains("the id of this draft is "),
         "{}",
         done.err
     );
-    assert_eq!(missing.of("IssueCreate").len(), 1);
+    assert_eq!(unknown.of("IssueCreate").len(), 1);
+}
+
+#[test]
+fn words_on_stdin_longer_than_a_body_is_are_too_long_even_cut_in_a_character() {
+    let memory = world();
+    let long = "\u{1f600}".repeat(crate::linear::limits::BODY_MOST + 1);
+    let done = run_with(&memory, &["comment", "ACM-412", "--body", "-"], &long);
+    assert_eq!(done.status, 2, "{}", done.err);
+    assert!(done.err.contains("characters"), "{}", done.err);
+    assert!(memory.sent().is_empty());
+}
+
+#[test]
+fn an_issue_linear_does_not_tell_after_a_change_is_said_on_stderr_also_with_json() {
+    let memory = Memory::new(|name, body| match name {
+        "IssueBatchUpdate" => ok(&format!(
+            r#"{{"data":{{"issueBatchUpdate":{{"success":true,"issues":[{}]}}}}}}"#,
+            issue_of("i1", "ACM-1", "acm")
+        )),
+        "Issue" if body.contains("\"id\":\"i2\"") => lost(),
+        _ => world().post(&Key::new("k").unwrap(), body),
+    });
+    let done = run_with(
+        &memory,
+        &["update", "ACM-1", "ACM-2", "--priority", "low", "--json"],
+        "",
+    );
+    assert_eq!(done.status, 0, "{}", done.err);
+    assert!(done.out.contains("\"ACM-1\""), "{}", done.out);
+    assert_eq!(
+        done.err,
+        "linearpen: ACM-2 was changed; Linear did not say how it is now\n"
+    );
 }
 
 #[test]

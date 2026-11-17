@@ -112,18 +112,19 @@ fn json<T: Serialize>(value: &T) -> Result<String, Stop> {
 
 /// Runs `command`.
 pub fn run(access: &Access, command: &Command, stdin: &mut dyn Read) -> Done {
+    let alone = |out: String| (out, String::new());
     let done = match command {
-        Command::List(list) => read::list(access, list),
-        Command::Show { issue, json } => read::show(access, issue, *json),
-        Command::Teams { team, json } => read::teams(access, team.as_deref(), *json),
-        Command::Create(create) => write::create(access, create, stdin),
+        Command::List(list) => read::list(access, list).map(alone),
+        Command::Show { issue, json } => read::show(access, issue, *json).map(alone),
+        Command::Teams { team, json } => read::teams(access, team.as_deref(), *json).map(alone),
+        Command::Create(create) => write::create(access, create, stdin).map(alone),
         Command::Update(update) => write::update(access, update),
-        Command::Comment(comment) => write::comment(access, comment, stdin),
+        Command::Comment(comment) => write::comment(access, comment, stdin).map(alone),
     };
     match done {
-        Ok(out) => Done {
+        Ok((out, err)) => Done {
             out,
-            err: String::new(),
+            err,
             status: 0,
         },
         // The words may hold names Linear gave (the labels there are, a team's key): they are made one

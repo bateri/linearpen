@@ -800,21 +800,13 @@ impl Session {
             Err(failure @ (Error::Refused | Error::Forbidden)) => return Err(failure),
             Err(failure) => failure,
         };
-        match linear::fetch_issue(transport, &key, &input.id) {
-            // `issue(id:)` takes an identifier too: only the issue of this draft is the answer.
-            Ok(issue) if issue.id.eq_ignore_ascii_case(&input.id) => {
+        match linear::made(transport, &key, &input.id) {
+            Ok(Some(created)) => {
                 self.refresh();
-                Ok(Created {
-                    id: issue.id,
-                    identifier: issue.identifier,
-                    url: issue.url,
-                })
+                Ok(created)
             }
             // Linear has no such issue, or has another: the draft was not made.
-            Ok(_) => Err(failure),
-            Err(Error::Failed(why)) if why.to_ascii_lowercase().contains("not found") => {
-                Err(failure)
-            }
+            Ok(None) => Err(failure),
             Err(_) => Err(Error::Unsure),
         }
     }

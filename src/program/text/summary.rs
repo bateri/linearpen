@@ -47,7 +47,7 @@ fn rest(issue: &Issue) -> String {
 }
 
 fn line(issue: &Issue, widest: usize) -> String {
-    format!("    {:<widest$}  {}", issue.identifier, rest(issue))
+    format!("    {:<widest$}  {}", plain(&issue.identifier), rest(issue))
 }
 
 /// The issues one to a line, each with its state (where a list is not grouped by it), the way the
@@ -56,7 +56,7 @@ fn line(issue: &Issue, widest: usize) -> String {
 pub fn stated_lines(issues: &[Issue]) -> String {
     let id_width = issues
         .iter()
-        .map(|issue| issue.identifier.chars().count())
+        .map(|issue| plain(&issue.identifier).chars().count())
         .max()
         .unwrap_or(0);
     let states: Vec<String> = issues
@@ -73,7 +73,7 @@ pub fn stated_lines(issues: &[Issue]) -> String {
         let _ = writeln!(
             out,
             "{:<id_width$}  {state:<state_width$}  {}",
-            issue.identifier,
+            plain(&issue.identifier),
             rest(issue)
         );
     }
@@ -98,7 +98,7 @@ pub fn section(out: &mut String, title: &str, listing: &Listing, empty: &str) {
     let widest = listing
         .issues
         .iter()
-        .map(|issue| issue.identifier.chars().count())
+        .map(|issue| plain(&issue.identifier).chars().count())
         .max()
         .unwrap_or(0);
     for group in groups {
