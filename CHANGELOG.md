@@ -4,14 +4,19 @@
 
 ### Added
 
-- **A command line.** `linearpen list`, `show`, `create`, `update`, `comment` and `teams` read and
-  write Linear without the interface, with names as Linear shows them and `--json` for scripts;
-  `linearpen help` says how. It writes the same three things the interface does, and never a
-  description of an issue that exists.
-- **An agent can move its issue forward and say how it went.** Work on tells the agent how to set the
-  status of its issue and comment on it with `linearpen update` and `linearpen comment`; in that
-  pane (the agent is started with `LINEARPEN_AGENT` set in its environment) linearpen refuses any
-  other write: a guard, not a lock. What the agent writes shows in Linear under your name.
+- **Use linearpen from the command line.** You no longer need the interface to look at or change an
+  issue: `linearpen list` prints your issues, `linearpen show ACM-412` prints one with its
+  description and comments, and `update`, `create` and `comment` change them. Statuses, labels and
+  people are written by the names you see in Linear, as in
+  `linearpen update ACM-412 --status "In Review" --label bug`. If a name does not match, linearpen
+  sends nothing and lists the names that would. Add `--json` when a script reads the output, and
+  run `linearpen help` for the rest.
+- **The agent can report back.** When you start Claude, Codex or Cursor on an issue with Work on,
+  it is told it may move that issue to another status and leave a comment on it once it is done or
+  stuck. That is all it can write: from the agent's pane, linearpen refuses to change any other
+  issue or anything else. This stops an agent from doing more than you asked, for example because a
+  comment on the issue told it to. It is a guard, not a lock, and the agent still asks you before it
+  runs a command. What the agent writes appears in Linear under your name.
 - **Drag an issue out of the list.** Drop it on a terminal pane, for example one running Claude Code,
   and its ID, title and link are typed there. Nothing runs until you press Enter.
 
