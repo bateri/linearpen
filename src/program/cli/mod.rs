@@ -18,6 +18,7 @@ use std::io::Read;
 use serde::Serialize;
 
 use crate::command_line::Command;
+use crate::linear::transport::never_sent;
 use crate::linear::{Error, Key, Transport, left_open, plain, tidy};
 
 /// The way to Linear a command is given, and where the key came from (said where Linear refuses it).
@@ -69,16 +70,22 @@ fn asked_wrong(access: &Access, error: &Error) -> Stop {
     })
 }
 
+/// Whether a write that failed with `error` may have been made: nothing came back, or what came
+/// cannot be read. A request that never left the machine (no host, no connection) was not made.
+fn unknown(error: &Error) -> bool {
+    match error {
+        Error::Refused | Error::Forbidden => false,
+        Error::Failed(why) => left_open(why),
+        Error::Unreachable(why) => !never_sent(why),
+        Error::Unsure => true,
+    }
+}
+
 /// What a write that failed says. Where Linear answered that it did not make it, status 1; where
 /// nothing came or what came cannot be read, the write may have been made: status 3, and the words
 /// say to look in Linear before it is run again.
 fn written_wrong(access: &Access, error: &Error) -> Stop {
-    let unknown = match error {
-        Error::Refused | Error::Forbidden => false,
-        Error::Failed(why) => left_open(why),
-        Error::Unreachable(_) | Error::Unsure => true,
-    };
-    if !unknown {
+    if !unknown(error) {
         return match error {
             Error::Forbidden => Stop::no("Linear did not allow this key to write that"),
             other => asked_wrong(access, other),
@@ -119,9 +126,11 @@ pub fn run(access: &Access, command: &Command, stdin: &mut dyn Read) -> Done {
             err: String::new(),
             status: 0,
         },
+        // The words may hold names Linear gave (the labels there are, a team's key): they are made one
+        // line with no control character here, the one way they go to stderr.
         Err(stop) => Done {
             out: String::new(),
-            err: format!("linearpen: {}\n", stop.words),
+            err: format!("linearpen: {}\n", plain(&stop.words)),
             status: stop.status,
         },
     }

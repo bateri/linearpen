@@ -9,7 +9,7 @@ use super::{Access, Stop, asked_wrong, json as print_json, written_wrong};
 use crate::command_line::{Comment, Create, Fields, Setting, Update, Words};
 use crate::linear::limits::{BODY_MOST, DESCRIPTION_MOST, LABELS_MOST};
 use crate::linear::{
-    self, Change, Changes, Created, Error, Issue, NewIssue, Options, Priority, Team, left_open,
+    self, Change, Changes, Created, Error, Issue, NewIssue, Options, Priority, Team,
 };
 use crate::state::draft;
 use crate::text::summary::stated_lines;
@@ -216,12 +216,7 @@ pub fn create(access: &Access, create: &Create, stdin: &mut dyn Read) -> Result<
     let created = match linear::create(access.transport, access.key, &input) {
         Ok(created) => created,
         Err(error) => {
-            let open = match &error {
-                Error::Unreachable(_) | Error::Unsure => true,
-                Error::Failed(why) => left_open(why),
-                Error::Refused | Error::Forbidden => false,
-            };
-            if !open {
+            if !super::unknown(&error) {
                 return Err(written_wrong(access, &error));
             }
             settle(access, &id, &error)?

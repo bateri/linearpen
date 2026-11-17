@@ -195,10 +195,7 @@ fn shown(issue: &Issue) -> String {
     field("Status", plain(&issue.state.name));
     field(
         "Priority",
-        match issue.priority {
-            linear::Priority::None => "-".to_owned(),
-            other => other.name().to_owned(),
-        },
+        crate::text::summary::priority_words(issue.priority).to_owned(),
     );
     field(
         "Assignee",
@@ -422,7 +419,7 @@ pub fn teams(access: &Access, team: Option<&str>, json: bool) -> Result<String, 
             .iter()
             .map(|member| {
                 if member.me {
-                    format!("{} (you, or me)", member.name)
+                    format!("{} (you: me)", member.name)
                 } else {
                     member.name.clone()
                 }

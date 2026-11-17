@@ -213,6 +213,20 @@ fn a_name_that_is_not_there_stops_the_update_with_the_names_there_are_and_sends_
         );
         assert_eq!(memory.wrote(), 0, "{flag}");
     }
+    // The names there are come from Linear: an escape in one does not reach the terminal.
+    let memory = Memory::new(|name, body| match name {
+        "NewIssueOptions" => ok(&OPTIONS.replace(
+            r#""name": "Customer""#,
+            r#""name": "Cust\u001b[31momer\nX""#,
+        )),
+        other => (world().answer)(other, body),
+    });
+    let done = run_with(&memory, &["update", "ACM-1", "--label", "nope"], "");
+    assert_eq!(done.status, 1, "{}", done.err);
+    assert!(!done.err.contains('\u{1b}'), "{:?}", done.err);
+    assert!(done.err.contains("Cust [31momer X"), "{:?}", done.err);
+    assert_eq!(done.err.lines().count(), 1, "{:?}", done.err);
+    assert_eq!(memory.wrote(), 0);
 }
 
 #[test]
@@ -326,6 +340,14 @@ fn a_comment_is_posted_once_in_the_words_on_stdin_and_a_blank_one_is_not() {
     let done = run_with(&lost_memory, &["comment", "ACM-412", "--body", "hi"], "");
     assert_eq!(done.status, 3);
     assert_eq!(lost_memory.of("CommentCreate").len(), 1);
+    // A write that never left the machine was not made: 1, not 3.
+    let offline = Memory::new(|name, _| match name {
+        "Issue" => ok(ISSUE),
+        _ => Err(Error::Unreachable("the connection was refused".to_owned())),
+    });
+    let done = run_with(&offline, &["comment", "ACM-412", "--body", "hi"], "");
+    assert_eq!(done.status, 1, "{}", done.err);
+    assert!(!done.err.contains("not known"), "{}", done.err);
     // An issue Linear does not have is told before anything is written.
     let memory = world();
     let done = run_with(&memory, &["comment", "ACM-9", "--body", "hi"], "");
@@ -541,7 +563,7 @@ fn teams_tells_the_teams_and_the_names_of_one() {
     for part in [
         "ACM  Acme",
         "Statuses\n  Backlog\n  Todo",
-        "  Ada (you, or me)",
+        "  Ada (you: me)",
         "  12  Cycle 12  (running)",
         "  M (3)",
         "  Billing",

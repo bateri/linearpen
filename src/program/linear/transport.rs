@@ -95,13 +95,29 @@ pub fn reply_of(stdout: &str) -> Result<Reply, Error> {
     })
 }
 
+// What an `Unreachable` says where the request never left the machine: no curl, no host, no
+// connection, no TLS. Nothing was sent then, so a write that failed so was not made.
+const NO_CURL: &str = "curl is not installed (Linear is spoken to with curl)";
+const NOT_STARTED: &str = "curl did not start: ";
+const NO_HOST: &str = "the host name was not found";
+const NO_CONNECTION: &str = "the connection was refused";
+const NO_TLS: &str = "the TLS connection failed";
+
+/// Whether the words of an `Unreachable` say that the request never left the machine, so that a
+/// write that failed so was not made. Every other `Unreachable` (a request that ran out of time, a
+/// curl that was stopped) may have been sent, and what it asked may have been done.
+#[must_use]
+pub fn never_sent(why: &str) -> bool {
+    [NO_CURL, NO_HOST, NO_CONNECTION, NO_TLS].contains(&why) || why.starts_with(NOT_STARTED)
+}
+
 /// What a `curl` that ended with `code` was unable to do, in a few words.
 fn why(code: Option<i32>) -> String {
     match code {
-        Some(5 | 6) => "the host name was not found".to_owned(),
-        Some(7) => "the connection was refused".to_owned(),
+        Some(5 | 6) => NO_HOST.to_owned(),
+        Some(7) => NO_CONNECTION.to_owned(),
         Some(28) => "the request ran out of time".to_owned(),
-        Some(35 | 60) => "the TLS connection failed".to_owned(),
+        Some(35 | 60) => NO_TLS.to_owned(),
         Some(code) => format!("curl ended with status {code}"),
         None => "curl was stopped".to_owned(),
     }
@@ -119,9 +135,9 @@ impl Transport for Curl {
             .spawn()
             .map_err(|why| {
                 Error::Unreachable(if why.kind() == std::io::ErrorKind::NotFound {
-                    "curl is not installed (Linear is spoken to with curl)".to_owned()
+                    NO_CURL.to_owned()
                 } else {
-                    format!("curl did not start: {}", why.kind())
+                    format!("{NOT_STARTED}{}", why.kind())
                 })
             })?;
         if let Some(mut stdin) = child.stdin.take() {
@@ -141,6 +157,18 @@ impl Transport for Curl {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_request_that_never_left_the_machine_is_told_from_one_that_may_have() {
+        for code in [5, 6, 7, 35, 60] {
+            assert!(never_sent(&why(Some(code))), "{code}");
+        }
+        for code in [Some(28), Some(52), Some(56), None] {
+            assert!(!never_sent(&why(code)), "{code:?}");
+        }
+        assert!(never_sent(NO_CURL));
+        assert!(never_sent(&format!("{NOT_STARTED}permission denied")));
+    }
 
     #[test]
     fn the_key_is_a_line_of_the_config_and_the_body_is_quoted() {

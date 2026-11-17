@@ -15,7 +15,9 @@ pub struct Summary<'a> {
     pub all: &'a Listing,
 }
 
-fn priority_words(priority: Priority) -> &'static str {
+/// The priority as the lists say it: `-` for none.
+#[must_use]
+pub fn priority_words(priority: Priority) -> &'static str {
     match priority {
         Priority::None => "-",
         Priority::Urgent => "Urgent",

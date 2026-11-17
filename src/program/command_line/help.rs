@@ -61,7 +61,8 @@ may be repeated):
   --label L         the name of a label
   --project P       none, or the name of a project
 
-  --json            print JSON instead of text (docs/cli.md says its fields)
+  --json            print JSON instead of text; its fields are in
+                    https://github.com/bateri/linearpen/blob/main/docs/cli.md
 
 The open issues are listed; to find a closed one, search for it.
 ";
@@ -73,7 +74,8 @@ usage: linearpen show KEY-N [--json]
 
 Prints its title, status, priority, assignee, labels, team, project, cycle, estimate, due date,
 link and branch name, its description, the issues it is a part of, made of, or tied to, and its
-comments. With --json the same, as JSON (docs/cli.md says its fields).
+comments. With --json the same, as JSON; its fields are in
+https://github.com/bateri/linearpen/blob/main/docs/cli.md
 ";
 
 pub const CREATE: &str = "\
@@ -141,7 +143,8 @@ usage: linearpen teams [KEY] [--json]
 
 Without a key: the teams, by key and name. With one: the statuses, labels, people, projects and
 cycles of that team and the sizes it estimates by, as they are written in the options of create,
-update and list. With --json the same, as JSON (docs/cli.md says its fields).
+update and list. With --json the same, as JSON; its fields are in
+https://github.com/bateri/linearpen/blob/main/docs/cli.md
 ";
 
 /// The words of a command, `linearpen help COMMAND`.
