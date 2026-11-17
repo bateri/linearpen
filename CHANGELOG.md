@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-17
+
 ### Added
 
 - **Use linearpen from the command line.** You no longer need the interface to look at or change an
