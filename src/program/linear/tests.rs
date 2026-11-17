@@ -355,7 +355,7 @@ fn only_create_change_and_comment_name_the_mutations() {
         }
     }
     // Nothing else posts a body to Linear but `run`, which reads the operation before it sends it,
-    // and the function that makes the issue is called from the session alone.
+    // and the functions that write are called from the session and from the commands that write alone.
     for (path, text) in &found {
         let name = path.file_name().unwrap().to_str().unwrap();
         if name == "tests.rs" || name == "page_tests.rs" {

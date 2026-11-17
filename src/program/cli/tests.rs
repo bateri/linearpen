@@ -542,3 +542,81 @@ fn teams_tells_the_teams_and_the_names_of_one() {
     assert_eq!(names["key"], "ACM");
     assert_eq!(names["estimates"][2]["label"], "M");
 }
+
+#[test]
+fn none_takes_a_value_away_in_an_update_and_is_a_filter_in_a_list() {
+    let memory = world();
+    let done = run_with(
+        &memory,
+        &[
+            "update",
+            "ACM-1",
+            "--assignee",
+            "none",
+            "--project",
+            "none",
+            "--cycle",
+            "none",
+            "--estimate",
+            "none",
+            "--due",
+            "none",
+        ],
+        "",
+    );
+    assert_eq!(done.status, 0, "{}", done.err);
+    let body: serde_json::Value = serde_json::from_str(&memory.of("IssueBatchUpdate")[0]).unwrap();
+    assert_eq!(
+        body["variables"]["input"],
+        serde_json::json!({
+            "assigneeId": null, "projectId": null, "cycleId": null, "estimate": null, "dueDate": null
+        })
+    );
+    let memory = Memory::new(|name, body| match name {
+        "AllIssues" => ok(
+            r#"{"data":{"viewer":{"id":"u","name":"Ada","organization":{"name":"Acme","urlKey":"acme"}},"issues":{"nodes":[],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}"#,
+        ),
+        _ => world().post(&Key::new("k").unwrap(), body),
+    });
+    let done = run_with(
+        &memory,
+        &[
+            "list",
+            "--all",
+            "--assignee",
+            "me",
+            "--assignee",
+            "NONE",
+            "--project",
+            "none",
+        ],
+        "",
+    );
+    assert_eq!(done.status, 0, "{}", done.err);
+    let body: serde_json::Value = serde_json::from_str(&memory.of("AllIssues")[0]).unwrap();
+    let filter = body["variables"]["filter"].to_string();
+    for part in [
+        "\"isMe\"",
+        "\"assignee\":{\"null\":true}",
+        "\"project\":{\"null\":true}",
+    ] {
+        assert!(filter.contains(part), "{part}: {filter}");
+    }
+    // The people and projects are not asked for where only me and none are said.
+    assert!(memory.of("FilterOptions").is_empty() && memory.of("ListProjects").is_empty());
+}
+
+#[test]
+fn a_create_that_linear_says_it_did_not_make_is_a_no_and_not_a_not_known() {
+    let memory = Memory::new(|name, body| match name {
+        "IssueCreate" => ok(r#"{"data":{"issueCreate":{"success":false,"issue":null}}}"#),
+        _ => world().post(&Key::new("k").unwrap(), body),
+    });
+    let done = run_with(&memory, &["create", "--team", "ACM", "--title", "x"], "");
+    assert_eq!(
+        (done.status, memory.of("Issue").len()),
+        (1, 0),
+        "{}",
+        done.err
+    );
+}

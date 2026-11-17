@@ -59,9 +59,9 @@ pub fn plain(text: &str) -> String {
     plain.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// `text` as lines: the line breaks are kept (`\r\n` and a lone `\r` are one), and a tab, and every
-/// other control character, an escape that a terminal reads as a command among them, is made a
-/// space (a tab stays, as it is no command). What Linear's descriptions and comments are printed
+/// `text` as lines: the line breaks are kept (`\r\n` and a lone `\r` are one), and every other
+/// control character, a tab and an escape that a terminal reads as a command among them, is made a
+/// space. What Linear's descriptions and comments are printed
 /// through.
 #[must_use]
 pub fn lines(text: &str) -> String {
@@ -75,7 +75,7 @@ pub fn lines(text: &str) -> String {
                 }
                 out.push('\n');
             }
-            '\n' | '\t' => out.push(c),
+            '\n' => out.push(c),
             c if c.is_control() => out.push(' '),
             c => out.push(c),
         }
@@ -114,7 +114,7 @@ mod tests {
     fn lines_keep_their_breaks_and_lose_every_control_character_else() {
         assert_eq!(lines("a\r\nb\rc\nd"), "a\nb\nc\nd");
         assert_eq!(lines("x\u{1b}[31mred\u{7}\u{9b}"), "x [31mred  ");
-        assert_eq!(lines("a\tb"), "a\tb");
+        assert_eq!(lines("a\tb"), "a b");
         assert!(!lines("\u{1b}]52;c;AAAA\u{7}\n\u{85}").contains(['\u{1b}', '\u{7}', '\u{85}']));
     }
 

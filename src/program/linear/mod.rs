@@ -403,7 +403,7 @@ pub fn create(transport: &dyn Transport, key: &Key, input: &NewIssue) -> Result<
         Some(query::Create { input }),
     )?;
     data.created()
-        .ok_or_else(|| Error::Failed("Linear did not make the issue".to_owned()))
+        .ok_or_else(|| Error::Failed(NOT_MADE.to_owned()))
 }
 
 #[derive(Deserialize)]
@@ -470,6 +470,9 @@ fn send_batch(
 /// What a `Failed` of Linear's own errors begins with: Linear answered and said no.
 pub const SAID: &str = "Linear said: ";
 
+/// What `create` says where Linear answered with data and not with `success`: no.
+const NOT_MADE: &str = "Linear did not make the issue";
+
 /// What `change` says where Linear answered with data and not with `success`: no.
 const NOT_CHANGED: &str = "Linear did not change the issues";
 
@@ -479,7 +482,7 @@ const NOT_CHANGED: &str = "Linear did not change the issues";
 /// sent and say nothing of whether Linear acted on it.
 #[must_use]
 pub fn left_open(why: &str) -> bool {
-    !(why.starts_with(SAID) || why == NOT_CHANGED || why == NOT_POSTED)
+    !(why.starts_with(SAID) || why == NOT_CHANGED || why == NOT_POSTED || why == NOT_MADE)
 }
 
 #[cfg(test)]
