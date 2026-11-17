@@ -13,8 +13,8 @@ empty.
 
 An issue is given as its identifier (`ACM-412`) or as Linear's id of it, a UUID.
 
-When an agent is started on an issue (Work on), the program is run with `LINEARPEN_AGENT` set to
-Linear's id of that issue, and the commands of the agent's `linearpen` write less. The variable is
+When an agent is started on an issue (Work on), the agent is started with `LINEARPEN_AGENT` set, in its
+environment, to Linear's id of that issue, and the commands of the agent's `linearpen` write less. The variable is
 read as it is set, so one that is set and empty counts too.
 
 - `list`, `show`, `teams` and `--text` read as they do elsewhere.

@@ -1,5 +1,6 @@
 //! What a `linearpen` run in an agent's pane may write. A start of an agent (`work/`) sets
-//! `LINEARPEN_AGENT` to Linear's id of the issue it was started on, and a command run with that
+//! `LINEARPEN_AGENT`, in the environment the agent is started in, to Linear's id of the issue it was
+//! started on, and a command run with that
 //! variable set may change the status of that issue and comment on it, and write nothing else. It is
 //! a guard and not a lock: an agent that unsets the variable, or reads the key itself, goes round it;
 //! the agent's own questions are what keeps it from doing so. It is asked first by each command that

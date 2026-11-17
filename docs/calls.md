@@ -255,9 +255,12 @@ suggests for the issue (where that is a name `git` would take). The text of an i
 prompt (the agent's command line), and nothing a person typed is: only the file's path is, for
 `worktree` a sentence of the program's own that asks for one, and, where the issue's id is a UUID, that id
 and the path of the program in the sentence that says what the agent may write in Linear (its status
-and comments: `docs/cli.md`). The agent is run as `/usr/bin/env LINEARPEN_AGENT=<id> <agent> <prompt>`,
-with `<id>` empty where the id is no UUID; the id is the one thing of Linear's in the command. No flag that lets the agent do what it
-would ask about is ever added. The key is not in the file.
+and comments: `docs/cli.md`). The agent's command is `<agent> <prompt>` and no more. The variable
+`LINEARPEN_AGENT` is set to the id (empty where the id is no UUID, so that a value in the pen's own
+environment does not pass) in the environment of the `bateri split` or `bateri tab` that makes the
+pane, which is the environment bateri starts the agent in; no other call to `bateri` carries it. The
+id inside the prompt is the one thing of Linear's in a command line. No flag that lets the agent do
+what it would ask about is ever added. The key is not in the file.
 
 Once the pane is made, `start` keeps the agent, the folder, the place and (where `progress` was
 given) the status of the call in `$XDG_STATE_HOME/linearpen/prefs.json` (`0600`; a word that is not

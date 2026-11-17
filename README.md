@@ -267,11 +267,12 @@ How it starts one:
   watches. A folder with anything else in it is left, and nothing outside `work` is touched.
 - The agent is told that it may move its issue to another status and comment on it (`linearpen update`
   and `linearpen comment`) and write nothing else in Linear. This is a guard and not a lock: the agent
-  is run with `LINEARPEN_AGENT` set to the id of its issue, and a `linearpen` run with it set refuses
+  is started with `LINEARPEN_AGENT` set in its environment to the id of its issue, and a `linearpen`
+  run with it set refuses
   every other write (see [docs/cli.md](docs/cli.md)). An agent that unsets the variable or reads your
   key goes round it; what keeps it in bounds is the agent's own question before it runs a command.
-  What it writes is in Linear under your name. The id is the one thing of Linear's in the command,
-  and only where it is a UUID.
+  What it writes is in Linear under your name. The id is the one thing of Linear's in the command
+  line (in the sentence it is given), and only where it is a UUID.
 - No option that lets an agent skip its questions is ever given.
 
 ### The keyboard, and the mouse

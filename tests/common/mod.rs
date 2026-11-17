@@ -242,6 +242,17 @@ impl Home {
             .collect()
     }
 
+    /// The variable `LINEARPEN_AGENT` as each call of the stand-in `bateri` found it in its environment,
+    /// in order, a line each: the call's first word, then `LINEARPEN_AGENT=<value>` or
+    /// `LINEARPEN_AGENT unset`.
+    pub fn bateri_agent(&self) -> Vec<String> {
+        std::fs::read_to_string(format!("{}.agent", self.bateri_log().display()))
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_owned)
+            .collect()
+    }
+
     fn bateri_record(&self) -> Vec<Vec<String>> {
         let record = std::fs::read(self.bateri_log()).unwrap_or_default();
         let mut calls = Vec::new();

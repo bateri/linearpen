@@ -34,12 +34,29 @@ impl Ran {
 }
 
 pub trait Runner: Send + Sync {
-    /// Runs `program` (found in the `PATH`) with `args`, in `cwd` where it is given, to its end.
+    /// Runs `program` (found in the `PATH`) with `args`, in `cwd` where it is given, to its end, with
+    /// the variables `env` set in its environment (each set to its value, an empty one included,
+    /// over what this program's own environment holds).
     ///
     /// # Errors
     ///
     /// The program could not be started.
-    fn run(&self, program: &str, args: &[String], cwd: Option<&Path>) -> io::Result<Ran>;
+    fn run_with(
+        &self,
+        program: &str,
+        args: &[String],
+        cwd: Option<&Path>,
+        env: &[(&str, &str)],
+    ) -> io::Result<Ran>;
+
+    /// Runs `program` as `run_with` does, with no variable of its own set.
+    ///
+    /// # Errors
+    ///
+    /// The program could not be started.
+    fn run(&self, program: &str, args: &[String], cwd: Option<&Path>) -> io::Result<Ran> {
+        self.run_with(program, args, cwd, &[])
+    }
 }
 
 /// The system's: a child process.
@@ -62,8 +79,19 @@ pub(super) fn command_of(program: &str, args: &[String], cwd: Option<&Path>) -> 
 }
 
 impl Runner for System {
-    fn run(&self, program: &str, args: &[String], cwd: Option<&Path>) -> io::Result<Ran> {
-        let output = command_of(program, args, cwd).output()?;
+    fn run_with(
+        &self,
+        program: &str,
+        args: &[String],
+        cwd: Option<&Path>,
+        env: &[(&str, &str)],
+    ) -> io::Result<Ran> {
+        let mut command = command_of(program, args, cwd);
+        // After the key is taken out: a variable given is set whatever this environment holds.
+        for (name, value) in env {
+            command.env(name, value);
+        }
+        let output = command.output()?;
         Ok(Ran {
             ok: output.status.success(),
             out: String::from_utf8_lossy(&output.stdout).into_owned(),
@@ -103,6 +131,34 @@ mod tests {
             err: String::new(),
         };
         assert_eq!(quiet.reason("it failed"), "it failed");
+    }
+
+    #[test]
+    fn a_child_is_given_the_variables_a_run_names_and_still_not_the_key() {
+        let ran = System
+            .run_with(
+                "sh",
+                &[
+                    "-c".to_owned(),
+                    "printf '%s|%s|%s' \"$LINEARPEN_RUNNER_A\" \"${LINEARPEN_RUNNER_B-unset}\" \"${LINEAR_API_KEY-unset}\"".to_owned(),
+                ],
+                None,
+                &[("LINEARPEN_RUNNER_A", "x y"), ("LINEARPEN_RUNNER_B", "")],
+            )
+            .unwrap();
+        assert_eq!(ran.out, "x y||unset");
+        // Without them there is none.
+        let none = System
+            .run(
+                "sh",
+                &[
+                    "-c".to_owned(),
+                    "printf '%s' \"${LINEARPEN_RUNNER_A-unset}\"".to_owned(),
+                ],
+                None,
+            )
+            .unwrap();
+        assert_eq!(none.out, "unset");
     }
 
     #[test]

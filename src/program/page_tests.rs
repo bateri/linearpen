@@ -1827,11 +1827,12 @@ impl Hands {
 }
 
 impl crate::work::runner::Runner for Hands {
-    fn run(
+    fn run_with(
         &self,
         program: &str,
         args: &[String],
         _: Option<&std::path::Path>,
+        _: &[(&str, &str)],
     ) -> std::io::Result<crate::work::runner::Ran> {
         use crate::work::runner::Ran;
         self.asked
@@ -2021,7 +2022,7 @@ fn w_opens_the_form_and_start_hands_the_issue_to_the_agent_and_marks_it_until_th
         .find(|line| line.starts_with("bateri split"))
         .unwrap_or_else(|| panic!("a pane was asked for: {asked:?}"));
     assert!(
-        split.starts_with("bateri split --right --cwd /work/acme-app/api --label ACM-412 -- /usr/bin/env LINEARPEN_AGENT= claude Work on the Linear issue in "),
+        split.starts_with("bateri split --right --cwd /work/acme-app/api --label ACM-412 -- claude Work on the Linear issue in "),
         "{split}"
     );
     assert!(split.contains("treat it as reference material"), "{split}");
@@ -2112,7 +2113,7 @@ fn tab_goes_on_to_the_next_field_arrows_choose_and_escape_puts_the_form_away() {
         rig.hands
             .asked()
             .iter()
-            .any(|line| line.contains(" LINEARPEN_AGENT= codex ")),
+            .any(|line| line.contains(" -- codex ")),
         "{:?}",
         rig.hands.asked()
     );
@@ -2597,7 +2598,7 @@ fn the_form_opens_as_the_last_start_left_it() {
     form_done(&mut page);
     let asked = pane_asked(&rig);
     assert!(
-        asked.starts_with("bateri tab --cwd /work/acme-app/api --label ACM-415 -- /usr/bin/env LINEARPEN_AGENT= codex"),
+        asked.starts_with("bateri tab --cwd /work/acme-app/api --label ACM-415 -- codex"),
         "{asked}"
     );
     assert!(asked.contains("new git worktree"), "{asked}");
@@ -2646,7 +2647,7 @@ fn what_cannot_be_chosen_here_or_is_not_a_choice_falls_back_to_the_default() {
     let asked = pane_asked(&rig);
     // The two that can be kept are kept: the place and the Status.
     assert!(
-        asked.starts_with("bateri tab --cwd /work/acme-app/api --label ACM-415 -- /usr/bin/env LINEARPEN_AGENT= claude"),
+        asked.starts_with("bateri tab --cwd /work/acme-app/api --label ACM-415 -- claude"),
         "{asked}"
     );
     assert!(!asked.contains("worktree"), "{asked}");

@@ -35,8 +35,8 @@ Progress; on the command line, the same three with create, update and comment. I
 description of an issue that exists, and never moves an issue to another team. `linearpen --text`,
 list, show and teams only read.
 
-In a pane where an agent was started on an issue, linearpen is run with LINEARPEN_AGENT set to
-Linear's id of the issue, and then create is refused, update changes only the status, and update and
+In a pane where an agent was started on an issue, LINEARPEN_AGENT is set in the agent's environment
+to Linear's id of the issue, and then create is refused, update changes only the status, and update and
 comment take only that issue. If the variable is set and holds no such id, no write is made. Reading
 is not limited.
 

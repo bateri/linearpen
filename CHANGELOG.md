@@ -10,8 +10,8 @@
   description of an issue that exists.
 - **An agent can move its issue forward and say how it went.** Work on tells the agent how to set the
   status of its issue and comment on it with `linearpen update` and `linearpen comment`; in that
-  pane linearpen refuses any other write (a guard, not a lock). What the agent writes shows in Linear
-  under your name.
+  pane (the agent is started with `LINEARPEN_AGENT` set in its environment) linearpen refuses any
+  other write: a guard, not a lock. What the agent writes shows in Linear under your name.
 - **Drag an issue out of the list.** Drop it on a terminal pane, for example one running Claude Code,
   and its ID, title and link are typed there. Nothing runs until you press Enter.
 
