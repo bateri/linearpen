@@ -1,1 +1,1 @@
-{"data":{"issueCreate":{"success":true,"issue":{"id":"@ID@","identifier":"ACM-900"}}}}
+{"data":{"issueCreate":{"success":true,"issue":{"id":"@ID@","identifier":"ACM-900","url":"https://linear.app/acme/issue/ACM-900"}}}}

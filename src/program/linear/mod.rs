@@ -2,8 +2,9 @@
 //! things, the issue the person makes, the change the person makes to issues and the comment the
 //! person writes: the operations are in `query.rs`, all of them plain `query` but `IssueCreate`,
 //! `IssueBatchUpdate` and `CommentCreate`, and `run` refuses anything that is not listed there.
-//! `create`, `change` and `comment` are the only functions that send them, and each sends once. The way to Linear is `curl` (`transport.rs`). It knows nothing of the
-//! page; it takes and gives plain Rust values.
+//! `create`, `change`, `change_all` and `comment` are the only functions that send them, and each sends
+//! once; the page's session and the command line are the two that call them. The way to Linear is
+//! `curl` (`transport.rs`). It knows nothing of the page; it takes and gives plain Rust values.
 
 mod change;
 mod comment;
@@ -11,20 +12,21 @@ mod error;
 mod filter_options;
 mod filters;
 mod key;
+pub mod limits;
 mod names;
 mod new_issue;
 pub mod query;
 pub mod transport;
 pub mod types;
 
-pub use change::Change;
+pub use change::{Change, Changes};
 pub use comment::{NOT_POSTED, post as comment};
-pub use error::{Error, plain, tidy};
+pub use error::{Error, lines, plain, tidy};
 pub use filter_options::{FilterOptions, filter_options};
-pub use filters::Filters;
+pub use filters::{Filters, ME, NONE};
 pub use key::{Key, KeyError};
 pub use names::{Entry, names};
-pub use new_issue::{Created, NewIssue, Options, StateChoice, Team};
+pub use new_issue::{Created, CycleChoice, NewIssue, Options, StateChoice, Team};
 pub use transport::Transport;
 pub use types::{Issue, Priority, Viewer};
 
@@ -427,6 +429,27 @@ pub fn change(
     ids: &[String],
     change: &Change,
 ) -> Result<Vec<Issue>, Error> {
+    send_batch(transport, key, ids, change.input())
+}
+
+/// Makes several changes in the issues with Linear's ids `ids` in one request, so that they are all
+/// made or none: the same write as `change`, sent once, whatever comes back.
+pub fn change_all(
+    transport: &dyn Transport,
+    key: &Key,
+    ids: &[String],
+    changes: &Changes,
+) -> Result<Vec<Issue>, Error> {
+    send_batch(transport, key, ids, changes.input())
+}
+
+/// The one place `IssueBatchUpdate` is sent from.
+fn send_batch(
+    transport: &dyn Transport,
+    key: &Key,
+    ids: &[String],
+    input: change::Input<'_>,
+) -> Result<Vec<Issue>, Error> {
     if ids.is_empty() || ids.len() > BATCH_MOST {
         return Err(Error::Failed(format!(
             "from one to {BATCH_MOST} issues are changed at once"
@@ -436,10 +459,7 @@ pub fn change(
         transport,
         key,
         &query::ISSUE_BATCH_UPDATE,
-        Some(query::Batch {
-            ids,
-            input: change.input(),
-        }),
+        Some(query::Batch { ids, input }),
     )?;
     data.batch
         .filter(|payload| payload.success)

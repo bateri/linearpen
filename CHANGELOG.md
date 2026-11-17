@@ -4,6 +4,10 @@
 
 ### Added
 
+- **A command line.** `linearpen list`, `show`, `create`, `update`, `comment` and `teams` read and
+  write Linear without the interface, with names as Linear shows them and `--json` for scripts;
+  `linearpen help` says how. It writes the same three things the interface does, and never a
+  description of an issue that exists.
 - **Drag an issue out of the list.** Drop it on a terminal pane, for example one running Claude Code,
   and its ID, title and link are typed there. Nothing runs until you press Enter.
 

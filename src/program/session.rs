@@ -807,6 +807,7 @@ impl Session {
                 Ok(Created {
                     id: issue.id,
                     identifier: issue.identifier,
+                    url: issue.url,
                 })
             }
             // Linear has no such issue, or has another: the draft was not made.
@@ -1163,6 +1164,9 @@ mod tests {
             assignee_id: None,
             label_ids: Vec::new(),
             project_id: None,
+            cycle_id: None,
+            estimate: None,
+            due_date: None,
         }
     }
 
@@ -1185,7 +1189,8 @@ mod tests {
             made,
             Created {
                 id: "issue-900".to_owned(),
-                identifier: "ACM-900".to_owned()
+                identifier: "ACM-900".to_owned(),
+                url: String::new(),
             }
         );
         assert_eq!(sent.lock().unwrap().len(), 1);

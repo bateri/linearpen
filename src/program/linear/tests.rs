@@ -364,13 +364,32 @@ fn only_create_change_and_comment_name_the_mutations() {
         let posts = text.matches(".post(").count();
         let expected = usize::from(path.ends_with("linear/mod.rs"));
         assert_eq!(posts, expected, "{} posts to Linear", path.display());
+        // The two that call them: the session (the page's) and the commands that write.
+        let session = usize::from(path.ends_with("program/session.rs"));
+        let commands = usize::from(path.ends_with("program/cli/write.rs"));
         let makes = text.matches("linear::create(").count();
-        let expected = usize::from(path.ends_with("program/session.rs"));
-        assert_eq!(makes, expected, "{} makes an issue", path.display());
+        assert_eq!(
+            makes,
+            session + commands,
+            "{} makes an issue",
+            path.display()
+        );
         let changes = text.matches("linear::change(").count();
-        assert_eq!(changes, expected, "{} changes issues", path.display());
+        assert_eq!(changes, session, "{} changes issues", path.display());
+        let changes = text.matches("linear::change_all(").count();
+        assert_eq!(
+            changes,
+            commands,
+            "{} changes issues together",
+            path.display()
+        );
         let posts = text.matches("linear::comment(").count();
-        assert_eq!(posts, expected, "{} posts a comment", path.display());
+        assert_eq!(
+            posts,
+            session + commands,
+            "{} posts a comment",
+            path.display()
+        );
     }
 }
 
@@ -660,6 +679,9 @@ fn new_issue() -> NewIssue {
         assignee_id: None,
         label_ids: Vec::new(),
         project_id: None,
+        cycle_id: None,
+        estimate: None,
+        due_date: None,
     }
 }
 

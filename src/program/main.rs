@@ -5,7 +5,9 @@
 //! It reads, and writes three things: the issue the person makes in the form of the new issue, the
 //! change the person makes to issues (the status of the ones an agent is started on is such a
 //! change) and the comment the person writes under an issue. Linear is spoken to with `curl` and
-//! nothing else (`linear/`).
+//! nothing else (`linear/`). The commands of the command line (`linearpen list`, `show`, `create`,
+//! `update`, `comment`, `teams`: `cli/`) read the same, and `create`, `update` and `comment` write the
+//! same three things.
 //!
 //! The program asks Linear and keeps what it was told; the page (`src/view/`, in pencere's kit) is
 //! the client, drawn by the terminal, and asks the program for what it needs with the calls and the
@@ -14,6 +16,7 @@
 //! This file is the entry, and the one place that reads the environment: it reads the command line,
 //! says where the key and the state are, and prints the text where there is no view.
 //!
+//!   cli/      the commands of the command line; knows nothing of the page
 //!   linear/   what is asked of Linear and how the answers are read; knows nothing of the page
 //!   model/    the list: filtered, grouped and sorted; knows nothing of the page
 //!   state/    the key and the files kept between runs; knows nothing of the page
@@ -21,6 +24,7 @@
 //!   work/     handing issues to an agent in a pane of bateri; knows nothing of the page
 
 mod api;
+mod cli;
 mod command_line;
 mod icons;
 mod linear;
@@ -63,8 +67,16 @@ struct Failed {
     status: u8,
 }
 
-/// The issues as text: both lists, from Linear, with `note` under them.
-fn summary(note: Option<&str>) -> Result<String, Failed> {
+/// The key and the way to Linear that a run reads from the environment.
+struct Connection {
+    transport: Curl,
+    key: linear::Key,
+    /// Where the key came from, in words.
+    source: String,
+}
+
+/// The key and the transport, or why there are none: a key that cannot be found ends with 2.
+fn connect() -> Result<Connection, Failed> {
     let paths = Paths::resolve(&lookup);
     let found = credentials::find(lookup("LINEAR_API_KEY").as_deref(), paths.config.as_deref())
         .map_err(|problem| Failed {
@@ -77,28 +89,59 @@ fn summary(note: Option<&str>) -> Result<String, Failed> {
             file.display()
         );
     }
-    let transport =
-        Curl::new(lookup("LINEARPEN_API_URL").unwrap_or_else(|| DEFAULT_URL.to_owned()));
+    Ok(Connection {
+        transport: Curl::new(lookup("LINEARPEN_API_URL").unwrap_or_else(|| DEFAULT_URL.to_owned())),
+        source: found.source.words(),
+        key: found.key,
+    })
+}
+
+/// The issues as text: both lists, from Linear, with `note` under them.
+fn summary(note: Option<&str>) -> Result<String, Failed> {
+    let Connection {
+        transport,
+        key,
+        source,
+    } = connect()?;
     let failed = |error: Error| Failed {
         words: match error {
-            Error::Refused => format!(
-                "linearpen: Linear did not accept the key from {}",
-                found.source.words()
-            ),
+            Error::Refused => format!("linearpen: Linear did not accept the key from {source}"),
             other => format!("linearpen: {other}"),
         },
         status: 1,
     };
     let mine =
-        linear::fetch(&transport, &found.key, &Scope::Mine, &Filters::default()).map_err(failed)?;
-    let all =
-        linear::fetch(&transport, &found.key, &Scope::All, &Filters::default()).map_err(failed)?;
+        linear::fetch(&transport, &key, &Scope::Mine, &Filters::default()).map_err(failed)?;
+    let all = linear::fetch(&transport, &key, &Scope::All, &Filters::default()).map_err(failed)?;
     Ok(Summary {
         viewer: &mine.viewer,
         mine: &mine.listing,
         all: &all.listing,
     }
     .text(note))
+}
+
+/// Runs a command of the command line, and says how the program ends.
+fn run_command(command: &command_line::Command) -> u8 {
+    let connection = match connect() {
+        Ok(connection) => connection,
+        Err(failed) => {
+            eprintln!("{}", failed.words);
+            return failed.status;
+        }
+    };
+    let done = cli::run(
+        &cli::Access {
+            transport: &connection.transport,
+            key: &connection.key,
+            key_source: &connection.source,
+        },
+        command,
+        &mut std::io::stdin().lock(),
+    );
+    print!("{}", done.out);
+    eprint!("{}", done.err);
+    done.status
 }
 
 /// Prints the text, and says how the program ends.
@@ -159,6 +202,7 @@ fn session() -> Arc<Session> {
 fn main() -> ExitCode {
     let line = match command_line::read(std::env::args().skip(1)) {
         Asked::Run(line) => line,
+        Asked::Do(command) => return ExitCode::from(run_command(&command)),
         Asked::Say(words) => {
             print!("{words}");
             return ExitCode::SUCCESS;

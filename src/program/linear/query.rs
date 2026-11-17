@@ -249,16 +249,17 @@ pub const NEW_ISSUE_OPTIONS: Operation = Operation {
 };
 
 /// One of the three things the pen writes: the issue the person made in the form. Sent by
-/// `linear::create` and by nothing else.
+/// `linear::create` and by nothing else (it is called from the session and from the command line).
 pub const ISSUE_CREATE: Operation = Operation {
     name: "IssueCreate",
     text: "mutation IssueCreate($input: IssueCreateInput!) { issueCreate(input: $input) { \
-           success issue { id identifier } } }",
+           success issue { id identifier url } } }",
 };
 
 /// The other thing the pen writes: the change the person made to one issue or to several (one
 /// operation for both, so there is one way to change). What it may carry is `Change`'s and nothing
-/// else (`change.rs`). Sent by `linear::change` and by nothing else.
+/// else (`change.rs`). Sent by `linear::change` and `linear::change_all`, which share one function that
+/// sends it.
 pub const ISSUE_BATCH_UPDATE: Operation = Operation {
     name: "IssueBatchUpdate",
     text: concat!(

@@ -25,10 +25,11 @@ fn priority_words(priority: Priority) -> &'static str {
     }
 }
 
-fn line(issue: &Issue, widest: usize) -> String {
+/// What follows an issue's identifier on a line: its priority, the day it changed, its title, its
+/// labels and the person it is given to.
+fn rest(issue: &Issue) -> String {
     let mut out = format!(
-        "    {:<widest$}  {:<6}  {:<6}  {}",
-        issue.identifier,
+        "{:<6}  {:<6}  {}",
         priority_words(issue.priority),
         short_date(&issue.updated_at),
         plain(&issue.title)
@@ -43,7 +44,42 @@ fn line(issue: &Issue, widest: usize) -> String {
     out
 }
 
-fn section(out: &mut String, title: &str, listing: &Listing, empty: &str) {
+fn line(issue: &Issue, widest: usize) -> String {
+    format!("    {:<widest$}  {}", issue.identifier, rest(issue))
+}
+
+/// The issues one to a line, each with its state (where a list is not grouped by it), the way the
+/// lists have them: the identifiers and the states are as wide as the widest.
+#[must_use]
+pub fn stated_lines(issues: &[Issue]) -> String {
+    let id_width = issues
+        .iter()
+        .map(|issue| issue.identifier.chars().count())
+        .max()
+        .unwrap_or(0);
+    let states: Vec<String> = issues
+        .iter()
+        .map(|issue| plain(&issue.state.name))
+        .collect();
+    let state_width = states
+        .iter()
+        .map(|name| name.chars().count())
+        .max()
+        .unwrap_or(0);
+    let mut out = String::new();
+    for (issue, state) in issues.iter().zip(&states) {
+        let _ = writeln!(
+            out,
+            "{:<id_width$}  {state:<state_width$}  {}",
+            issue.identifier,
+            rest(issue)
+        );
+    }
+    out
+}
+
+/// One list: its title and size, then its issues in the groups of their states.
+pub fn section(out: &mut String, title: &str, listing: &Listing, empty: &str) {
     let _ = writeln!(out, "{title} ({})", listing.issues.len());
     if listing.truncated {
         let _ = writeln!(
@@ -171,6 +207,24 @@ All issues (2)
 a note
 ";
         assert_eq!(text, expected);
+    }
+
+    #[test]
+    fn issues_one_to_a_line_have_their_state_and_are_as_wide_as_the_widest() {
+        let a = issue("ACM-7", "Plan", "In Progress", "started", 2.0, "2026-11-09");
+        let b = issue(
+            "ACM-412",
+            "Ship \u{1b}[31mit",
+            "Todo",
+            "unstarted",
+            0.0,
+            "2026-10-01",
+        );
+        assert_eq!(
+            stated_lines(&[a, b]),
+            "ACM-7    In Progress  -       Nov 9   Plan\nACM-412  Todo         -       Oct 1   Ship [31mit\n"
+        );
+        assert_eq!(stated_lines(&[]), "");
     }
 
     #[test]

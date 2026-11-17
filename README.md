@@ -49,6 +49,29 @@ linearpen            # the interface
 linearpen --text     # your issues as text, whatever the terminal is
 ```
 
+### Command line
+
+The same program does what you ask of it without the interface, to read an issue in a script or
+to change many at once. A name is written as Linear shows it (capital letters do not matter); where
+a name is none of the team's, or is more than one, nothing is sent and the names there are come
+back.
+
+```sh
+linearpen list --team ACM --status "In Progress" --assignee me
+linearpen show ACM-412
+linearpen create --team ACM --title "Fix the login" --priority high --label bug
+linearpen update ACM-412 ACM-413 --status Done --unlabel wip
+git diff | linearpen comment ACM-412 --body -
+linearpen teams ACM        # the names a team's issues can be given
+```
+
+`list`, `show` and `teams` only read; `create`, `update` and `comment` write what the three things
+below say. Each takes `--json`, whose fields are in [docs/cli.md](docs/cli.md), and
+`linearpen help COMMAND` tells its options. A command ends with 0 when it is done, 1 where Linear could
+not do it or has nothing by a name, 2 where the command is not understood or there is no key, and 3
+where a write was sent and it is not known whether Linear made it: look in Linear before running it
+again.
+
 ### The key
 
 linearpen asks Linear with a personal API key that has Read permission, Create issues too if you
@@ -279,7 +302,7 @@ or `Space` then presses.
 ## It writes three things
 
 linearpen tells Linear a new issue, a change to the issues you have and a comment you wrote, and
-nothing else. It has three mutations, `IssueCreate` (sent when you press Create in the form),
+nothing else, from the interface and from the command line (`create`, `update`, `comment`). It has three mutations, `IssueCreate` (sent when you press Create in the form),
 `IssueBatchUpdate` (sent when you choose a status, a priority, an assignee, a label, a project, a
 cycle, an estimate, a due date or a title, for one issue or for those you selected; and sent once more,
 only for the status, when you start an agent with `Status` set to move the issue that has not begun)

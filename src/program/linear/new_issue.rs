@@ -122,6 +122,13 @@ pub struct NewIssue {
     pub label_ids: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub project_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cycle_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub estimate: Option<u32>,
+    /// The day it is due, written `2026-11-15`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub due_date: Option<String>,
 }
 
 fn priority_number<S: Serializer>(priority: &Priority, out: S) -> Result<S::Ok, S::Error> {
@@ -133,6 +140,9 @@ fn priority_number<S: Serializer>(priority: &Priority, out: S) -> Result<S::Ok, 
 pub struct Created {
     pub id: String,
     pub identifier: String,
+    /// Where Linear shows it; empty where the answer has none.
+    #[serde(default)]
+    pub url: String,
 }
 
 // What the wire holds. Nothing here is offered as it is: `teams` and `Options::of` make the values
