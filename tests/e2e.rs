@@ -36,7 +36,7 @@ fn the_view_is_opened_and_the_page_boots() {
     let heard = answers(&log);
     assert_eq!(heard.len(), 1, "{log}");
     let boot = heard[0].result();
-    assert_eq!(boot["version"], "0.1.0");
+    assert_eq!(boot["version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(boot["key"], "environment");
     assert!(boot["problem"].is_null());
 }
