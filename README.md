@@ -91,7 +91,8 @@ used first, and kept nowhere. A key file that other users can read is still read
 <img src="docs/issue.png" width="720" alt="linearpen: an issue open beside the list">
 
 The head of the page has the list button, the filter, Refresh and New issue, each in its own place
-whatever the page is doing. The list is **My issues** (what is assigned to you) or any other list
+whatever the page is doing (in a pane too narrow for the list and an issue beside it, the head goes
+with the list). The list is **My issues** (what is assigned to you) or any other list
 you go to: **All issues** (the open issues of the workspace, each saying whose it is), what you
 starred in Linear, the open issues or the running cycle of a team you are in (in the order of your own
 list of teams), a saved view, a project. Each is grouped by state with the backlog folded, and asked of Linear again every five minutes. The list

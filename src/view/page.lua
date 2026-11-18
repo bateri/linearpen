@@ -710,11 +710,30 @@ local function keyboard_from_control(event)
 	return u:focus(nil), kind == "key" and event.key == "escape" and plain
 end
 
+-- Where the issue or a form has the pane, the head is not on the page and the keyboard is not left in
+-- it: a pane made narrow while the filter or the row of the filters had it gives it back to the page
+-- before the event is heard. The reply, or nil.
+local function keyboard_from_head()
+	if S.screen ~= "list" or not S.covered then
+		return nil
+	end
+	if filters.is_open() then
+		filters.close()
+		return u:focus(nil)
+	end
+	if head.typing() then
+		return head.leave()
+	end
+	return nil
+end
+
 local function handle(event)
 	local kind = event.type
 	-- What is written in the comment is kept before the event can take the field from the page.
 	comment.keep()
+	local left = keyboard_from_head()
 	local freed, ends = keyboard_from_control(event)
+	freed = b.merge(left, freed)
 	if ends then
 		return kit.take(freed)
 	end

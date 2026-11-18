@@ -4279,6 +4279,50 @@ fn in_a_narrow_pane_an_issue_opened_with_the_pointer_from_the_filter_takes_the_k
 
 #[test]
 #[ignore = "opens the kit's interpreter: make test-page"]
+fn a_pane_made_narrow_while_the_filter_or_its_row_has_the_keyboard_takes_the_keyboard_out_of_it() {
+    for row in [false, true] {
+        let (_linear, _session, mut page) = open_lists(WIDE);
+        open_the_issue(&mut page);
+        page.press("/").expect("/");
+        page.type_text("bug").expect("the filter is typed");
+        page.wait_for(WITHIN, |page| page.says("4 of 14"))
+            .unwrap_or_else(|why| panic!("the filter takes the words: {why:?}: {}", said(&page)));
+        if row {
+            // The keyboard goes from the field to the row of the filters (Enter leaves the field).
+            page.press("enter").expect("enter");
+            page.advance(0.3).expect("a moment");
+            page.press("f").expect("f");
+            page.advance(0.3).expect("a moment");
+        }
+        // The pane is made narrow (a split beside it): the issue has it, and the head is not there.
+        page.resize(PANE.0, PANE.1).expect("the pane is narrower");
+        page.advance(0.3).expect("a moment");
+        assert!(page.bounds("panel-close").is_some(), "{}", said(&page));
+        assert!(page.bounds("filter-box").is_none(), "{}", said(&page));
+        // A letter is not written in the field that is not on the page; and one Esc closes the issue,
+        // the first key after the row of the filters went too.
+        if !row {
+            page.type_text("z").expect("a letter");
+            page.advance(0.3).expect("a moment");
+        }
+        page.press("escape").expect("escape");
+        page.wait_for(WITHIN, |page| page.bounds("panel-close").is_none())
+            .unwrap_or_else(|why| {
+                panic!(
+                    "row {row}: one Esc closes the issue: {why:?}: {}",
+                    said(&page)
+                )
+            });
+        assert!(
+            page.says("4 of 14"),
+            "row {row}: the filter is as it was: {}",
+            said(&page)
+        );
+    }
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
 fn in_a_narrow_pane_the_palette_over_the_issue_offers_nothing_of_the_head() {
     let (_linear, _session, mut page) = open_lists(PANE);
     open_the_issue(&mut page);
