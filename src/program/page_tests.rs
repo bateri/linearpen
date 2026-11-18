@@ -1827,11 +1827,12 @@ impl Hands {
 }
 
 impl crate::work::runner::Runner for Hands {
-    fn run(
+    fn run_with(
         &self,
         program: &str,
         args: &[String],
         _: Option<&std::path::Path>,
+        _: &[(&str, &str)],
     ) -> std::io::Result<crate::work::runner::Ran> {
         use crate::work::runner::Ran;
         self.asked
@@ -1932,6 +1933,7 @@ pub(crate) fn rig_polling(
             path: vec![bin.path().to_owned()],
             in_bateri,
             folder: Some(PathBuf::from("/work/acme-app/api")),
+            exe: Some(PathBuf::from("/opt/bin/linearpen")),
         },
         Arc::clone(&hands) as Arc<dyn crate::work::runner::Runner>,
     )

@@ -21,6 +21,7 @@ pub mod worktree;
 use std::path::{Path, PathBuf};
 
 use crate::linear::Issue;
+use crate::state::draft;
 use agents::Agent;
 use bateri::Place;
 use runner::Runner;
@@ -36,7 +37,17 @@ pub struct Setup {
     pub in_bateri: bool,
     /// The folder the pen was started in.
     pub folder: Option<PathBuf>,
+    /// The program the pen is, as the agent is told to run it; where it is not known the agent is
+    /// told `linearpen`.
+    pub exe: Option<PathBuf>,
 }
+
+/// The variable that tells a `linearpen` run in an agent's pane that it was started for an agent,
+/// and for which issue (Linear's id of it): the command line then writes nothing but that issue's
+/// status and comments (`cli/guard.rs`). A start sets it in the environment of the `bateri` that makes
+/// the pane, and bateri starts the pane's program in that environment, so the agent's own command is
+/// as it is for any run; `main.rs` reads it.
+pub const AGENT_VARIABLE: &str = "LINEARPEN_AGENT";
 
 /// The variables that hold the address of the pane the pen runs in: the first is in the shells
 /// bateri holds on its own machine, the second is what `ssh` carries to a server, whose shells have
@@ -60,6 +71,7 @@ impl Setup {
                 .iter()
                 .any(|name| get(name).is_some_and(|url| !url.is_empty())),
             folder,
+            exe: None,
         }
     }
 
@@ -185,13 +197,25 @@ pub fn start(env: &Env<'_>, request: &Request<'_>) -> Result<Started, Refused> {
         .ok_or_else(|| Refused::Failed("there is no folder to keep the issue in".to_owned()))?;
     let context = handoff::write(state, &handoff::stamp(env.now), issue)
         .map_err(|why| Refused::Failed(format!("the issue could not be written: {why}")))?;
-    let prompt = handoff::prompt(&context, worktree);
+    // The one thing of Linear's in the prompt is the id of the issue, and only where it is a UUID. The
+    // variable is set for the pane in either case (empty where there is no id), so that one in the
+    // pen's own environment does not go to the agent.
+    let id = draft::is_uuid(&issue.id).then_some(issue.id.as_str());
+    let prompt = handoff::prompt(
+        &context,
+        worktree,
+        id.map(|issue| handoff::Writes {
+            exe: env.setup.exe.as_deref(),
+            issue,
+        }),
+    );
     let pane = bateri::launch(
         env.runner,
         request.place,
         &here,
         &issue.identifier,
         &request.agent.command(&prompt),
+        &[(AGENT_VARIABLE, id.unwrap_or_default())],
     )
     .map_err(|no| {
         // Nothing runs there, so the file made for it goes. (Where a pane may be there, it is

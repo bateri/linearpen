@@ -1,7 +1,8 @@
 //! The change the person makes to issues: what it can be, and so everything that can be sent. The
 //! `input` of `IssueBatchUpdate` is made of a `Change` and of nothing else, and a `Change` has no
-//! member for the description or for the team: neither is written by any way there is. One change is
-//! one field; to change two, the person changes twice.
+//! member for the description or for the team: neither is written by any way there is. A `Change` is
+//! one field; a `Changes` is several of them made together, in one request, of which every field is
+//! there once.
 
 use serde::Serialize;
 
@@ -74,17 +75,46 @@ impl Change {
     #[must_use]
     pub fn input(&self) -> Input<'_> {
         let mut input = Input::default();
-        match self {
-            Self::State(id) => input.state_id = Some(id),
-            Self::Priority(priority) => input.priority = Some(priority.number()),
-            Self::Assignee(who) => input.assignee_id = Some(who.as_deref()),
-            Self::AddLabel(id) => input.added_label_ids = vec![id],
-            Self::RemoveLabel(id) => input.removed_label_ids = vec![id],
-            Self::Project(project) => input.project_id = Some(project.as_deref()),
-            Self::Cycle(cycle) => input.cycle_id = Some(cycle.as_deref()),
-            Self::Estimate(points) => input.estimate = Some(*points),
-            Self::DueDate(day) => input.due_date = Some(day.as_deref()),
-            Self::Title(title) => input.title = Some(title),
+        // Nothing is in a new input to be in the way of the one change.
+        let _ = input.put(self);
+        input
+    }
+}
+
+/// Why changes cannot be made together: a field given two values, or a label added and taken away.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Conflict(pub String);
+
+/// One or more changes made together, none of them a field that another of them also gives a value:
+/// they go in one `input`, so that all of them are made or none. Like a `Change` it has no member
+/// for the description or for the team.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Changes(Vec<Change>);
+
+impl Changes {
+    /// The changes made together.
+    ///
+    /// # Errors
+    /// Where there is none, where a field of one kind is given twice, or where a label is both added
+    /// and taken away.
+    pub fn new(changes: Vec<Change>) -> Result<Self, Conflict> {
+        if changes.is_empty() {
+            return Err(Conflict("there is nothing to change".to_owned()));
+        }
+        let mut input = Input::default();
+        for change in &changes {
+            input.put(change)?;
+        }
+        Ok(Self(changes))
+    }
+
+    /// What is sent: the fields of all of them.
+    #[must_use]
+    pub fn input(&self) -> Input<'_> {
+        let mut input = Input::default();
+        for change in &self.0 {
+            // `new` has seen that they do not conflict.
+            let _ = input.put(change);
         }
         input
     }
@@ -116,6 +146,72 @@ pub struct Input<'a> {
     due_date: Option<Option<&'a str>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     title: Option<&'a str>,
+}
+
+impl<'a> Input<'a> {
+    /// Gives the field of `change` its value, if no other change gave it one.
+    fn put(&mut self, change: &'a Change) -> Result<(), Conflict> {
+        let twice = |field: &str| Conflict(format!("the {field} is given two values"));
+        match change {
+            Change::State(id) => {
+                if self.state_id.replace(id).is_some() {
+                    return Err(twice("status"));
+                }
+            }
+            Change::Priority(priority) => {
+                if self.priority.replace(priority.number()).is_some() {
+                    return Err(twice("priority"));
+                }
+            }
+            Change::Assignee(who) => {
+                if self.assignee_id.replace(who.as_deref()).is_some() {
+                    return Err(twice("assignee"));
+                }
+            }
+            Change::AddLabel(id) => {
+                if self.removed_label_ids.contains(&id.as_str()) {
+                    return Err(Conflict("a label is both added and taken away".to_owned()));
+                }
+                if !self.added_label_ids.contains(&id.as_str()) {
+                    self.added_label_ids.push(id);
+                }
+            }
+            Change::RemoveLabel(id) => {
+                if self.added_label_ids.contains(&id.as_str()) {
+                    return Err(Conflict("a label is both added and taken away".to_owned()));
+                }
+                if !self.removed_label_ids.contains(&id.as_str()) {
+                    self.removed_label_ids.push(id);
+                }
+            }
+            Change::Project(project) => {
+                if self.project_id.replace(project.as_deref()).is_some() {
+                    return Err(twice("project"));
+                }
+            }
+            Change::Cycle(cycle) => {
+                if self.cycle_id.replace(cycle.as_deref()).is_some() {
+                    return Err(twice("cycle"));
+                }
+            }
+            Change::Estimate(points) => {
+                if self.estimate.replace(*points).is_some() {
+                    return Err(twice("estimate"));
+                }
+            }
+            Change::DueDate(day) => {
+                if self.due_date.replace(day.as_deref()).is_some() {
+                    return Err(twice("due date"));
+                }
+            }
+            Change::Title(title) => {
+                if self.title.replace(title).is_some() {
+                    return Err(twice("title"));
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -239,5 +335,87 @@ mod tests {
             Some(Change::Title("one two three".into()))
         );
         assert_eq!(Change::title(" \n\t "), None);
+    }
+
+    #[test]
+    fn several_changes_are_one_input_with_each_field_once() {
+        let changes = Changes::new(vec![
+            Change::State("s-done".into()),
+            Change::Priority(Priority::High),
+            Change::AddLabel("l-a".into()),
+            Change::AddLabel("l-b".into()),
+            Change::AddLabel("l-a".into()),
+            Change::RemoveLabel("l-c".into()),
+            Change::Assignee(None),
+            Change::Estimate(Some(3)),
+        ])
+        .unwrap();
+        assert_eq!(
+            serde_json::to_value(changes.input()).unwrap(),
+            json!({
+                "stateId": "s-done",
+                "priority": 2,
+                "assigneeId": null,
+                "addedLabelIds": ["l-a", "l-b"],
+                "removedLabelIds": ["l-c"],
+                "estimate": 3,
+            })
+        );
+    }
+
+    #[test]
+    fn changes_that_cannot_be_made_together_are_refused() {
+        for bad in [
+            vec![],
+            vec![Change::State("a".into()), Change::State("b".into())],
+            vec![Change::Title("a".into()), Change::Title("b".into())],
+            vec![Change::Cycle(None), Change::Cycle(Some("c".into()))],
+            vec![
+                Change::AddLabel("l".into()),
+                Change::RemoveLabel("l".into()),
+            ],
+            vec![
+                Change::RemoveLabel("l".into()),
+                Change::AddLabel("l".into()),
+            ],
+        ] {
+            assert!(Changes::new(bad.clone()).is_err(), "{bad:?}");
+        }
+    }
+
+    /// What the program may not write is in no body it sends, however many fields are changed.
+    #[test]
+    fn no_set_of_changes_carries_a_description_or_a_team() {
+        let every: Vec<Change> = all().into_iter().map(|(change, _)| change).collect();
+        // One of each kind of field (the labels in both ways).
+        let mut once: Vec<Change> = Vec::new();
+        for change in every {
+            let kind = std::mem::discriminant(&change);
+            if matches!(change, Change::RemoveLabel(_)) {
+                continue;
+            }
+            if !once.iter().any(|kept| std::mem::discriminant(kept) == kind) {
+                once.push(change);
+            }
+        }
+        once.push(Change::RemoveLabel("l-old".into()));
+        let changes = Changes::new(once).unwrap();
+        let body = serde_json::to_string(&crate::linear::query::Batch {
+            ids: &["issue-1".to_owned()],
+            input: changes.input(),
+        })
+        .unwrap()
+        .to_ascii_lowercase();
+        for word in ["description", "teamid", "team"] {
+            assert!(!body.contains(word), "sends {word}: {body}");
+        }
+        assert_eq!(
+            serde_json::to_value(changes.input())
+                .unwrap()
+                .as_object()
+                .unwrap()
+                .len(),
+            10
+        );
     }
 }

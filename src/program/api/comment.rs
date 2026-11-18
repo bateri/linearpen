@@ -9,12 +9,10 @@ use serde::{Deserialize, Serialize};
 
 use super::issue::{CommentMessage, check_id, comment_of};
 use super::{Failure, call};
+use crate::linear::limits::BODY_MOST;
 use crate::linear::{Error, NOT_POSTED};
 use crate::session::Session;
 use crate::state::draft;
-
-/// The most characters of a comment that are posted.
-pub const BODY_MOST: usize = 10_000;
 
 /// The issue, by Linear's id or its identifier, and the words: exactly these two.
 #[derive(Debug, Deserialize)]

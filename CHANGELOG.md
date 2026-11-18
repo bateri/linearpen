@@ -8,6 +8,24 @@
   as pixels there, with the mouse and the keys; a terminal with no Kitty graphics, and a multiplexer,
   keeps what linearpen printed. The keys are those of a keyboard with no ⌘: Ctrl is what ⌘ is
   (copy in a field is Ctrl+Shift+C; Ctrl+C ends linearpen).
+
+## [0.2.0] - 2026-11-17
+
+### Added
+
+- **Use linearpen from the command line.** You no longer need the interface to look at or change an
+  issue: `linearpen list` prints your issues, `linearpen show ACM-412` prints one with its
+  description and comments, and `update`, `create` and `comment` change them. Statuses, labels and
+  people are written by the names you see in Linear, as in
+  `linearpen update ACM-412 --status "In Review" --label bug`. If a name does not match, linearpen
+  sends nothing and lists the names that would. Add `--json` when a script reads the output, and
+  run `linearpen help` for the rest.
+- **The agent can report back.** When you start Claude, Codex or Cursor on an issue with Work on,
+  it is told it may move that issue to another status and leave a comment on it once it is done or
+  stuck. That is all it can write: from the agent's pane, linearpen refuses to change any other
+  issue or anything else. This stops an agent from doing more than you asked, for example because a
+  comment on the issue told it to. It is a guard, not a lock, and the agent still asks you before it
+  runs a command. What the agent writes appears in Linear under your name.
 - **Drag an issue out of the list.** Drop it on a terminal pane, for example one running Claude Code,
   and its ID, title and link are typed there. Nothing runs until you press Enter.
 

@@ -51,6 +51,29 @@ linearpen            # the interface
 linearpen --text     # your issues as text, whatever the terminal is
 ```
 
+### Command line
+
+The same program does what you ask of it without the interface, to read an issue in a script or
+to change many at once. A name is written as Linear shows it (capital letters do not matter); where
+a name is none of the team's, or is more than one, nothing is sent and the names there are come
+back.
+
+```sh
+linearpen list --team ACM --status "In Progress" --assignee me
+linearpen show ACM-412
+linearpen create --team ACM --title "Fix the login" --priority high --label bug
+linearpen update ACM-412 ACM-413 --status Done --unlabel wip
+git diff | linearpen comment ACM-412 --body -
+linearpen teams ACM        # the names a team's issues can be given
+```
+
+`list`, `show` and `teams` only read; `create`, `update` and `comment` write what the three things
+below say. Each takes `--json`, whose fields are in [docs/cli.md](docs/cli.md), and
+`linearpen help COMMAND` tells its options. A command ends with 0 when it is done, 1 where Linear could
+not do it or has nothing by a name, 2 where the command is not understood or there is no key, and 3
+where a write was sent and it is not known whether Linear made it: look in Linear before running it
+again.
+
 ### The key
 
 linearpen asks Linear with a personal API key that has Read permission, Create issues too if you
@@ -244,6 +267,14 @@ How it starts one:
   begins and after each start, the folders under `work` that it made and that are older than that
   are removed, unless it is the file of a pane that this run of linearpen started and still
   watches. A folder with anything else in it is left, and nothing outside `work` is touched.
+- The agent is told that it may move its issue to another status and comment on it (`linearpen update`
+  and `linearpen comment`) and write nothing else in Linear. This is a guard and not a lock: the agent
+  is started with `LINEARPEN_AGENT` set in its environment to the id of its issue, and a `linearpen`
+  run with it set refuses
+  every other write (see [docs/cli.md](docs/cli.md)). An agent that unsets the variable or reads your
+  key goes round it; what keeps it in bounds is the agent's own question before it runs a command.
+  What it writes is in Linear under your name. The id is the one thing of Linear's in the command
+  line (in the sentence it is given), and only where it is a UUID.
 - No option that lets an agent skip its questions is ever given.
 
 ### The keyboard, and the mouse
@@ -281,7 +312,7 @@ or `Space` then presses.
 ## It writes three things
 
 linearpen tells Linear a new issue, a change to the issues you have and a comment you wrote, and
-nothing else. It has three mutations, `IssueCreate` (sent when you press Create in the form),
+nothing else, from the interface and from the command line (`create`, `update`, `comment`). It has three mutations, `IssueCreate` (sent when you press Create in the form),
 `IssueBatchUpdate` (sent when you choose a status, a priority, an assignee, a label, a project, a
 cycle, an estimate, a due date or a title, for one issue or for those you selected; and sent once more,
 only for the status, when you start an agent with `Status` set to move the issue that has not begun)
@@ -320,9 +351,11 @@ reach `git` before `git check-ref-format` has passed it, and no text of Linear g
 ## Work on it
 
 You need Rust and git. linearpen is built and tested with [pencere](https://github.com/bateri/pencere)
-at the commit its `Cargo.lock` names, which `make` fetches into `.cache/pencere` and builds there:
-`make fake-host` the stand-in terminal the tests play linearpen in, and `make dev` the `pencere`
-command that runs the page in a pane.
+at the commit its `Cargo.lock` names, which `make` fetches into `~/.cache/pencere-build/<commit>`
+(`make pencere-dir` says where; `PENCERE_HOME` moves it) and builds there: `make fake-host` the
+stand-in terminal the tests play linearpen in, and `make dev` the `pencere` command that runs the
+page in a pane. Every pen and every worktree built on the same commit shares that one checkout and
+its build.
 
 ```sh
 make fake-host      # the stand-in terminal, built once (and again when Cargo.lock moves pencere)

@@ -2,8 +2,9 @@
 //! things, the issue the person makes, the change the person makes to issues and the comment the
 //! person writes: the operations are in `query.rs`, all of them plain `query` but `IssueCreate`,
 //! `IssueBatchUpdate` and `CommentCreate`, and `run` refuses anything that is not listed there.
-//! `create`, `change` and `comment` are the only functions that send them, and each sends once. The way to Linear is `curl` (`transport.rs`). It knows nothing of the
-//! page; it takes and gives plain Rust values.
+//! `create`, `change`, `change_all` and `comment` are the only functions that send them, and each sends
+//! once; the page's session and the command line are the two that call them. The way to Linear is
+//! `curl` (`transport.rs`). It knows nothing of the page; it takes and gives plain Rust values.
 
 mod change;
 mod comment;
@@ -11,20 +12,21 @@ mod error;
 mod filter_options;
 mod filters;
 mod key;
+pub mod limits;
 mod names;
 mod new_issue;
 pub mod query;
 pub mod transport;
 pub mod types;
 
-pub use change::Change;
+pub use change::{Change, Changes};
 pub use comment::{NOT_POSTED, post as comment};
-pub use error::{Error, plain, tidy};
+pub use error::{Error, lines, plain, tidy};
 pub use filter_options::{FilterOptions, filter_options};
-pub use filters::Filters;
+pub use filters::{Filters, ME, NONE};
 pub use key::{Key, KeyError};
 pub use names::{Entry, names};
-pub use new_issue::{Created, NewIssue, Options, StateChoice, Team};
+pub use new_issue::{Created, CycleChoice, NewIssue, Options, StateChoice, Team};
 pub use transport::Transport;
 pub use types::{Issue, Priority, Viewer};
 
@@ -366,11 +368,41 @@ struct IssueData {
     issue: Option<Issue>,
 }
 
+/// What `fetch_issue` says where Linear answers with no issue.
+const NO_SUCH_ISSUE: &str = "Linear has no such issue";
+
 /// One issue with its description and its first comments.
 pub fn fetch_issue(transport: &dyn Transport, key: &Key, id: &str) -> Result<Issue, Error> {
     let data: IssueData = run(transport, key, &query::ISSUE, Some(Lookup { id }))?;
     data.issue
-        .ok_or_else(|| Error::Failed("Linear has no such issue".to_owned()))
+        .ok_or_else(|| Error::Failed(NO_SUCH_ISSUE.to_owned()))
+}
+
+/// Whether `error`, of `fetch_issue`, says that Linear has no issue by that id: its own "Entity not
+/// found: Issue", or an answer with no issue in it. Any other error says nothing of whether there is
+/// one.
+#[must_use]
+pub fn no_such_issue(error: &Error) -> bool {
+    matches!(error, Error::Failed(why)
+        if why == NO_SUCH_ISSUE || why.to_ascii_lowercase().contains("entity not found: issue"))
+}
+
+/// Whether the issue of the draft `id` was made, where the answer to `create` did not say: Linear is
+/// asked for the issue by that id, which it took as the issue's own (`issue(id:)` takes an identifier
+/// too, so only the issue of this draft is the answer). `Some` where it is there, `None` where Linear
+/// has no such issue or has another, and an error where the asking came to nothing either. The
+/// asking is a read, not a second write.
+pub fn made(transport: &dyn Transport, key: &Key, id: &str) -> Result<Option<Created>, Error> {
+    match fetch_issue(transport, key, id) {
+        Ok(issue) if issue.id.eq_ignore_ascii_case(id) => Ok(Some(Created {
+            id: issue.id,
+            identifier: issue.identifier,
+            url: issue.url,
+        })),
+        Ok(_) => Ok(None),
+        Err(error) if no_such_issue(&error) => Ok(None),
+        Err(error) => Err(error),
+    }
 }
 
 /// The teams an issue can be made in, by name.
@@ -401,7 +433,7 @@ pub fn create(transport: &dyn Transport, key: &Key, input: &NewIssue) -> Result<
         Some(query::Create { input }),
     )?;
     data.created()
-        .ok_or_else(|| Error::Failed("Linear did not make the issue".to_owned()))
+        .ok_or_else(|| Error::Failed(NOT_MADE.to_owned()))
 }
 
 #[derive(Deserialize)]
@@ -427,6 +459,27 @@ pub fn change(
     ids: &[String],
     change: &Change,
 ) -> Result<Vec<Issue>, Error> {
+    send_batch(transport, key, ids, change.input())
+}
+
+/// Makes several changes in the issues with Linear's ids `ids` in one request, so that they are all
+/// made or none: the same write as `change`, sent once, whatever comes back.
+pub fn change_all(
+    transport: &dyn Transport,
+    key: &Key,
+    ids: &[String],
+    changes: &Changes,
+) -> Result<Vec<Issue>, Error> {
+    send_batch(transport, key, ids, changes.input())
+}
+
+/// The one place `IssueBatchUpdate` is sent from.
+fn send_batch(
+    transport: &dyn Transport,
+    key: &Key,
+    ids: &[String],
+    input: change::Input<'_>,
+) -> Result<Vec<Issue>, Error> {
     if ids.is_empty() || ids.len() > BATCH_MOST {
         return Err(Error::Failed(format!(
             "from one to {BATCH_MOST} issues are changed at once"
@@ -436,10 +489,7 @@ pub fn change(
         transport,
         key,
         &query::ISSUE_BATCH_UPDATE,
-        Some(query::Batch {
-            ids,
-            input: change.input(),
-        }),
+        Some(query::Batch { ids, input }),
     )?;
     data.batch
         .filter(|payload| payload.success)
@@ -450,6 +500,9 @@ pub fn change(
 /// What a `Failed` of Linear's own errors begins with: Linear answered and said no.
 pub const SAID: &str = "Linear said: ";
 
+/// What `create` says where Linear answered with data and not with `success`: no.
+const NOT_MADE: &str = "Linear did not make the issue";
+
 /// What `change` says where Linear answered with data and not with `success`: no.
 const NOT_CHANGED: &str = "Linear did not change the issues";
 
@@ -459,7 +512,7 @@ const NOT_CHANGED: &str = "Linear did not change the issues";
 /// sent and say nothing of whether Linear acted on it.
 #[must_use]
 pub fn left_open(why: &str) -> bool {
-    !(why.starts_with(SAID) || why == NOT_CHANGED || why == NOT_POSTED)
+    !(why.starts_with(SAID) || why == NOT_CHANGED || why == NOT_POSTED || why == NOT_MADE)
 }
 
 #[cfg(test)]

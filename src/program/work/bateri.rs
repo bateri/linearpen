@@ -70,7 +70,9 @@ pub struct NoPane {
     pub maybe: bool,
 }
 
-/// Makes the pane that runs `program` in `folder`, and says its id.
+/// Makes the pane that runs `program` in `folder`, and says its id. `env` is set in the environment of
+/// the `bateri` that is run, and so in the pane's: bateri starts the pane's program in the
+/// environment of the one that asked for it. Only this call carries it, not `ls` or `wait`.
 ///
 /// # Errors
 ///
@@ -81,11 +83,12 @@ pub fn launch(
     folder: &Path,
     label: &str,
     program: &[String],
+    env: &[(&str, &str)],
 ) -> Result<String, NoPane> {
     let words = arguments(place, folder, label, program);
     let none = |why: String| NoPane { why, maybe: false };
     let ran = runner
-        .run(PROGRAM, &words, None)
+        .run_with(PROGRAM, &words, None, env)
         .map_err(|why| none(format!("bateri could not be run: {why}")))?;
     if !ran.ok {
         return Err(none(ran.reason("bateri did not make the pane")));

@@ -161,7 +161,13 @@ mod tests {
     struct Isolated;
 
     impl Runner for Isolated {
-        fn run(&self, program: &str, args: &[String], cwd: Option<&Path>) -> std::io::Result<Ran> {
+        fn run_with(
+            &self,
+            program: &str,
+            args: &[String],
+            cwd: Option<&Path>,
+            _: &[(&str, &str)],
+        ) -> std::io::Result<Ran> {
             let mut command = super::super::runner::command_of(program, args, cwd);
             let output = isolate(&mut command).output()?;
             Ok(Ran {

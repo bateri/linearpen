@@ -7,8 +7,9 @@ use std::sync::Arc;
 use pencere::Options;
 use serde::{Deserialize, Deserializer, Serialize};
 
-use super::create::{TITLE_MOST, check_ref};
+use super::create::check_ref;
 use super::{Failure, call};
+use crate::linear::limits::{POINTS_MOST, TITLE_MOST, whole_points};
 use crate::linear::{BATCH_MOST, Change, Error, Priority};
 use crate::session::{Changed, Session};
 
@@ -59,16 +60,6 @@ struct ChangedMessage {
 #[derive(Debug, Serialize)]
 struct ChangeMessage {
     issues: Vec<ChangedMessage>,
-}
-
-/// The most points an estimate can be: Linear's scales end far below it.
-const POINTS_MOST: u32 = 1_000;
-
-/// `points` as a whole number of points, from 0 to `POINTS_MOST`, or nothing.
-#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-fn whole_points(points: f64) -> Option<u32> {
-    (points.fract() == 0.0 && (0.0..=f64::from(POINTS_MOST)).contains(&points))
-        .then_some(points as u32)
 }
 
 /// The change the params name, and the issues, or why they are not one.

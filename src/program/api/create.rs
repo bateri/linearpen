@@ -8,17 +8,10 @@ use pencere::Options;
 use serde::{Deserialize, Serialize};
 
 use super::{Failure, call};
+use crate::linear::limits::{DESCRIPTION_MOST, LABELS_MOST, REF_MOST, TITLE_MOST, is_ref};
 use crate::linear::{Created, Error, NewIssue, Priority, StateChoice, Team};
 use crate::session::Session;
 use crate::state::draft;
-
-/// The longest title, in characters (Linear's own limit), the longest description, and the most
-/// labels one issue is given.
-pub(super) const TITLE_MOST: usize = 255;
-const DESCRIPTION_MOST: usize = 50_000;
-const LABELS_MOST: usize = 50;
-/// The longest id or key taken (Linear's ids are UUIDs, 36 characters).
-const REF_MOST: usize = 64;
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -86,12 +79,7 @@ struct OptionsMessage {
 
 /// Whether `text` is an id or a key of Linear: letters, digits, dashes and underscores.
 pub(super) fn check_ref(what: &str, text: &str) -> Result<(), Failure> {
-    if text.is_empty()
-        || text.chars().count() > REF_MOST
-        || !text
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-    {
+    if !is_ref(text) {
         return Err(Failure::BadParams(format!(
             "{what} is an id of Linear: up to {REF_MOST} letters, digits, dashes and underscores"
         )));
@@ -297,6 +285,9 @@ fn input_of(params: Make) -> Result<NewIssue, Failure> {
         assignee_id: params.assignee,
         label_ids,
         project_id: params.project,
+        cycle_id: None,
+        estimate: None,
+        due_date: None,
     })
 }
 
@@ -326,7 +317,7 @@ fn create(session: &Session, params: Make) -> Result<CreatedMessage, Failure> {
             "there is no key to ask Linear with".to_owned(),
         ));
     }
-    let Created { id, identifier } = session.create(&input).map_err(told)?;
+    let Created { id, identifier, .. } = session.create(&input).map_err(told)?;
     Ok(CreatedMessage { id, identifier })
 }
 

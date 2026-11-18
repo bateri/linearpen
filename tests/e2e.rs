@@ -36,7 +36,7 @@ fn the_view_is_opened_and_the_page_boots() {
     let heard = answers(&log);
     assert_eq!(heard.len(), 1, "{log}");
     let boot = heard[0].result();
-    assert_eq!(boot["version"], "0.1.0");
+    assert_eq!(boot["version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(boot["key"], "environment");
     assert!(boot["problem"].is_null());
 }
@@ -749,6 +749,17 @@ fn an_agent_is_started_in_a_pane_that_is_given_the_file_of_the_issue_and_not_its
     );
     assert_eq!(&call[4..8], ["--label", "ACM-412", "--", "claude"]);
     assert_eq!(call.len(), 9, "{call:?}");
+    // The variable the command line reads is in the environment of the `bateri` that made the pane, and
+    // in that of no other call; this issue's id is no UUID, so it is empty (and the prompt says nothing
+    // of writing), which is also what overwrites a value the pen's own environment might hold.
+    let agent = home.bateri_agent();
+    assert_eq!(agent[0], "split LINEARPEN_AGENT=", "{agent:?}");
+    assert!(
+        agent[1..]
+            .iter()
+            .all(|line| line.ends_with("LINEARPEN_AGENT unset")),
+        "{agent:?}"
+    );
     let prompt = &call[8];
     assert!(prompt.contains(context.to_str().unwrap()), "{prompt}");
     assert_eq!(
@@ -765,6 +776,21 @@ fn an_agent_is_started_in_a_pane_that_is_given_the_file_of_the_issue_and_not_its
             .any(|word| word.contains("--focus") || word.contains(common::KEY)),
         "{call:?}"
     );
+}
+
+// A pen that was itself started for an agent (or by a shell that holds the variable) does not pass its
+// value on: the start sets the variable for the pane it makes, empty where the issue has no UUID.
+#[test]
+fn a_start_overwrites_the_variable_a_pen_was_run_with_and_not_only_sets_it_where_there_is_none() {
+    let home = Home::new();
+    let heard = home.ask(
+        &in_bateri()
+            .env("LINEARPEN_AGENT", "0c9e0f1e-6d1b-4d7a-9a56-3b1c0a5e7f10")
+            .call("start", hand("issue-412")),
+    );
+    assert_eq!(heard[0].result()["pane"], "p41");
+    let agent = home.bateri_agent();
+    assert_eq!(agent[0], "split LINEARPEN_AGENT=", "{agent:?}");
 }
 
 #[test]
