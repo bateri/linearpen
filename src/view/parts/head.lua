@@ -6,7 +6,8 @@
 -- whatever the list is called: a long name is cut in its button); where the pane has no room for both
 -- the filter has a row of its own. Refresh and New issue leave for the line of keys as the pane
 -- narrows. Under them, where there is something to say, the row of the filters of the list
--- (`filters.lua`).
+-- (`filters.lua`). Where the issue or a form takes a pane too narrow for the list beside it, the head
+-- is not drawn (`page.lua`): it is the list's.
 
 local kit = require("../lib/kit")
 local commands = require("./commands")

@@ -7,11 +7,12 @@ local kit = require("../lib/kit")
 local commands = require("./commands")
 local head = require("./head")
 
-local u, act = kit.u, kit.act
+local u, S, act = kit.u, kit.S, kit.act
 
 local palette = {}
 
-local P = { open = false, items = nil, state = nil, serial = 0 }
+-- `filters` is whether the words typed can be a filter: the head is on the page.
+local P = { open = false, items = nil, state = nil, serial = 0, filters = true }
 palette.state = P
 
 local LIMIT = 40
@@ -21,7 +22,8 @@ local function as_filter(query)
 	return { key = "go:" .. query, title = string.format("Filter issues by “%s”", query), hint = "Issues", text = query }
 end
 
--- The page's own way of finding: the commands that fuzzily match, then the query as a filter.
+-- The page's own way of finding: the commands that fuzzily match, then the query as a filter (where
+-- the head is on the page: where the issue or a form has the pane, the filter is not there to take it).
 local function found(query, items)
 	local rows = {}
 	if query == "" then
@@ -33,7 +35,9 @@ local function found(query, items)
 	for _, match in fuzzy.filter(query, items, { text = "title", limit = LIMIT }) do
 		rows[#rows + 1] = match.item
 	end
-	rows[#rows + 1] = as_filter(query)
+	if P.filters then
+		rows[#rows + 1] = as_filter(query)
+	end
 	return rows
 end
 
@@ -45,6 +49,7 @@ function palette.show()
 	-- The commands that can be done now, made as the palette opens (while the page has the keyboard,
 	-- which is what most of them need) and kept until it closes.
 	P.items = commands.items()
+	P.filters = not S.covered
 	-- A palette of its own each time: the host keeps the text of a field of the same name, and one
 	-- opened again would begin with the words of the last.
 	P.serial += 1
@@ -64,7 +69,7 @@ function palette.view(root)
 		items = P.items,
 		state = P.state,
 		label = "Command palette",
-		hint = "Find a command, or filter the issues",
+		hint = P.filters and "Find a command, or filter the issues" or "Find a command",
 		filter = found,
 		rows = kit.card_rows(),
 		footer = {

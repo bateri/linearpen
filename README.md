@@ -127,7 +127,7 @@ Enter or `o` opens an
 issue beside the list (from the filter too), with its description, its comments, its cycle, its
 project and who has it, and the issues round it: its parent, its sub-issues and what it is tied to
 (blocks, blocked by, related, duplicate of), each a line that a press opens; Space scrolls it, and
-`Open in Linear` (`⇧O`, from the list too) puts it in your browser. In a pane too narrow for both, the issue takes the pane: there the arrows scroll it, and
+`Open in Linear` (`⇧O`, from the list too) puts it in your browser. In a pane too narrow for both, the issue takes the whole pane, the list's name and filter with it: there the arrows scroll it, and
 `j` and `k` go to the issue after and the one before. A pane with too little room for Refresh and New
 issue leaves their buttons out; `⌘R` and `c` do what they say all the same.
 

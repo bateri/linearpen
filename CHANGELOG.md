@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **In a narrow pane, an issue or a form has the pane to itself.** When an issue, New issue or Work
+  on fills a narrow pane, the list's name and the filter no longer sit above it, and their keys
+  (`g`, `1`, `2`, `/`, `f`) wait until you are back at the list. Close it and they are there as you
+  left them.
+
 ## [0.3.0] - 2026-11-18
 
 ### Added

@@ -63,10 +63,14 @@ end
 commands.when.shown_idle = function()
 	return commands.when.idle() and not S.alone
 end
--- What the head does (the list that is shown, the filter): the head is on the page where the issue has
--- the whole pane too, and so are its keys.
+-- What the head does (the list that is shown, the filter, the row of the filters): the head is the
+-- list's, and where the issue has the whole pane it is not on the page, and its keys do nothing. (Where
+-- a form has it, no key of the list is the form's anyway.)
 commands.when.headed = function()
-	return commands.when.list()
+	return commands.when.list() and not S.alone
+end
+commands.when.headed_idle = function()
+	return commands.when.idle() and not S.alone
 end
 -- The one issue the copies, Open in Linear, the title and the comment are of: the issue read where one is
 -- open, else the one selected or the one under the cursor, where none of several is. (The copies are
@@ -127,15 +131,16 @@ commands.when.postable = function()
 		and comment.typing()
 		and comment.sendable(detail.id)
 end
--- The filters can be let go of where some are set. (Shift and F is a letter of the words of a field.)
+-- The filters can be let go of where some are set and their row is on the page. (Shift and F is a
+-- letter of the words of a field.)
 commands.when.narrowed = function()
-	return commands.when.idle() and filters.any()
+	return commands.when.headed_idle() and filters.any()
 end
 -- The words of the field can be searched for in all of Linear where the person is typing them, or
 -- where nothing held matches them (the card says so, with the key): not in a form or a comment, and
 -- not where the words are a filter of a list with issues in it (the key is a comment's, then).
 commands.when.searchable = function()
-	return commands.when.list()
+	return commands.when.headed()
 		and not comment.typing()
 		and head.words() ~= ""
 		and (head.typing() or head.unmatched())
@@ -251,15 +256,15 @@ local function side(width)
 	return panel.view(width)
 end
 
--- The head, the whole width of the page, and under it the list and, beside it (or, in a pane too narrow
--- for both, over it) the issue or a form.
+-- The head, the whole width of the page, and under it the list and, beside it, the issue or a form. In
+-- a pane too narrow for both, the issue or the form has the pane to itself: the head is the list's, and
+-- it goes with the list (`commands.when.headed`).
 local function listing()
-	local over = S.panel_open and S.width < 760
 	local page = b.div():col():grow(1):min_h(0)
-	page:child(head.view())
-	if over then
+	if S.covered then
 		return page:child(b.div():row():grow(1):min_h(0):child(side(S.width)))
 	end
+	page:child(head.view())
 	local left = b.div():col():grow(1):min_w(0):min_h(0)
 	local banner = problem()
 	if banner ~= nil then
@@ -288,9 +293,10 @@ local function render(size, now, reduce_motion)
 	S.writing = S.screen == "list" and comment.typing()
 	S.panel_open = S.screen == "list" and (panel.is_open() or S.form_open)
 	S.room = (S.panel_open and S.width >= 760) and S.width - panel.width(S.width) or S.width
-	-- The issue has the whole pane (it is too narrow for the list beside it): the list and its head
-	-- are not on the page, and no key is theirs.
-	S.alone = S.screen == "list" and panel.is_open() and not S.form_open and S.width < 760
+	-- The issue or a form has the whole pane (it is too narrow for the list beside it): the list and its
+	-- head are not on the page, and no key is theirs.
+	S.covered = S.panel_open and S.width < 760
+	S.alone = S.covered and panel.is_open() and not S.form_open
 	local root = b.div():size_full():col():bg("background"):color("foreground"):family("terminal")
 	if S.screen == "boot" then
 		root:child(booting())

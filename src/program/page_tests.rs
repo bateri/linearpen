@@ -2240,12 +2240,27 @@ fn where_bateri_makes_no_pane_the_form_stays_and_says_so() {
 #[ignore = "opens the kit's interpreter: make test-page"]
 fn in_an_80_by_24_pane_the_form_takes_the_pane_and_keeps_start_inside_it() {
     let (_rig, mut page) = open_rig(PANE, true, &["claude", "codex"]);
+    let before = head_places(&page);
+    assert!(
+        before
+            .iter()
+            .any(|(name, at)| *name == "lists" && at.is_some()),
+        "{before:?}"
+    );
     // The button is in the issue's detail, which has the pane and room for it.
     open_the_issue(&mut page);
     let button = page.bounds("work").expect("the button is laid out");
     assert!(button.x + button.w <= PANE.0 + 0.5, "{button:?}");
     open_form(&mut page);
     assert!(!page.says("ACM-398"), "the list gives way: {}", said(&page));
+    // (The head is the list's: it is not over the form, as it is not over the issue.)
+    for name in ["lists", "filter-box"] {
+        assert!(
+            page.bounds(name).is_none(),
+            "{name} is not on the page: {}",
+            said(&page)
+        );
+    }
     for name in ["work-close", "work-start"] {
         let at = page
             .bounds(name)
@@ -2255,6 +2270,11 @@ fn in_an_80_by_24_pane_the_form_takes_the_pane_and_keeps_start_inside_it() {
             "{name}: {at:?}"
         );
     }
+    // Esc puts the form away (it took the issue's place): the list is back under the head as it was.
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| !page.says("Open in"))
+        .unwrap_or_else(|why| panic!("the form is put away: {why:?}: {}", said(&page)));
+    head_is_as_it_was(&page, &before, "with the form put away");
 }
 
 /// What `bateri ls --json` says of the pane p41 when it last wrote `ago` seconds ago.
@@ -3036,6 +3056,52 @@ fn in_an_80_by_24_pane_the_form_takes_the_pane_and_keeps_create_inside_it() {
     page.press("escape").expect("escape");
     page.wait_for(WITHIN, |page| page.says("ACM-412"))
         .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn in_a_narrow_pane_the_form_of_a_new_issue_has_the_pane_without_the_head_and_esc_brings_it_back() {
+    let (_linear, _session, mut page) = open_lists(PANE);
+    // Words in the filter, kept when the keyboard leaves it (Enter opens the issue, Esc closes it).
+    page.press("/").expect("/");
+    page.type_text("bug").expect("the filter is typed");
+    page.wait_for(WITHIN, |page| page.says("4 of 14"))
+        .unwrap_or_else(|why| panic!("the filter takes the words: {why:?}: {}", said(&page)));
+    page.press("enter").expect("enter opens the issue");
+    page.wait_for(WITHIN, |page| page.bounds("panel-close").is_some())
+        .unwrap_or_else(|why| panic!("the issue opens: {why:?}: {}", said(&page)));
+    page.press("escape").expect("escape closes the issue");
+    page.wait_for(WITHIN, |page| page.bounds("panel-close").is_none())
+        .unwrap_or_else(|why| panic!("the issue is closed: {why:?}: {}", said(&page)));
+    let before = head_places(&page);
+    assert!(
+        before
+            .iter()
+            .any(|(name, at)| *name == "lists" && at.is_some()),
+        "{before:?}"
+    );
+    open_new(&mut page);
+    // The form is all there is: the list it was opened over and the head of that list are not on
+    // the page (their keys are not the form's).
+    for name in ["lists", "filter-box"] {
+        assert!(
+            page.bounds(name).is_none(),
+            "{name} is not on the page: {}",
+            said(&page)
+        );
+    }
+    assert!(!page.says("4 of 14"), "{}", said(&page));
+    let close = page.bounds("new-close").expect("Close is laid out");
+    assert!(
+        close.y < 48.0,
+        "the form begins at the top of the pane: {close:?}"
+    );
+    // Esc puts the form away: the head is back where it was, with the words of the filter.
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| page.bounds("new-close").is_none())
+        .unwrap_or_else(|why| panic!("the form is put away: {why:?}: {}", said(&page)));
+    head_is_as_it_was(&page, &before, "with the form put away");
+    assert!(page.says("4 of 14"), "the filter stays: {}", said(&page));
 }
 
 #[test]
@@ -4136,37 +4202,128 @@ fn in_a_narrow_pane_no_key_does_something_to_a_line_that_is_not_shown() {
 
 #[test]
 #[ignore = "opens the kit's interpreter: make test-page"]
-fn in_a_narrow_pane_the_keys_of_the_head_work_while_the_issue_has_the_pane() {
+fn in_a_narrow_pane_the_issue_has_the_pane_without_the_head_and_the_keys_of_the_head_do_nothing() {
+    let (_linear, _session, mut page) = open_lists(PANE);
+    // Words in the filter, and the issue the cursor is on opened from it with Enter.
+    page.press("/").expect("/");
+    page.type_text("bug").expect("the filter is typed");
+    page.wait_for(WITHIN, |page| page.says("4 of 14"))
+        .unwrap_or_else(|why| panic!("the filter takes the words: {why:?}: {}", said(&page)));
+    page.press("enter").expect("enter opens the issue");
+    page.wait_for(WITHIN, |page| page.says("API key"))
+        .unwrap_or_else(|why| panic!("the description comes: {why:?}: {}", said(&page)));
+    page.advance(0.4).expect("a moment");
+    // The head is the list's: the list button, the filter and what it lets through are not on the
+    // page, and the line of keys does not say what Esc would do to them (it closes the issue).
+    for name in ["lists", "filter-box"] {
+        assert!(
+            page.bounds(name).is_none(),
+            "{name} is not on the page: {}",
+            said(&page)
+        );
+    }
+    assert!(!page.says("4 of 14"), "{}", said(&page));
+    assert!(!page.says("clear the filter"), "{}", said(&page));
+    // Its keys do nothing: another list, the card of lists, the filter, the row of the filters.
+    for key in ["2", "g", "/", "f"] {
+        page.press(key).expect(key);
+        page.advance(0.3).expect("a moment");
+        assert!(
+            page.bounds("panel-close").is_some() && !page.says("The workspace"),
+            "{key} leaves the issue as it is: {}",
+            said(&page)
+        );
+    }
+    // One Esc closes the issue (the keyboard is in no field, no row is open), and the head is back as
+    // it was: the same list, the same words in the filter.
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| page.bounds("panel-close").is_none())
+        .unwrap_or_else(|why| panic!("one Esc closes the issue: {why:?}: {}", said(&page)));
+    assert!(
+        page.words_in("lists")
+            .iter()
+            .any(|word| word == "My issues"),
+        "{:?}",
+        page.words_in("lists")
+    );
+    assert!(page.says("4 of 14"), "the filter stays: {}", said(&page));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn in_a_narrow_pane_an_issue_opened_with_the_pointer_from_the_filter_takes_the_keyboard_out_of_it()
+{
+    let (_linear, _session, mut page) = open_lists(PANE);
+    page.press("/").expect("/");
+    page.type_text("bug").expect("the filter is typed");
+    page.wait_for(WITHIN, |page| page.says("4 of 14") && page.says("ACM-398"))
+        .unwrap_or_else(|why| panic!("the filter takes the words: {why:?}: {}", said(&page)));
+    page.double_click("row:i:issue-398")
+        .expect("the line is pressed twice");
+    page.wait_for(WITHIN, |page| page.bounds("panel-close").is_some())
+        .unwrap_or_else(|why| panic!("the issue opens: {why:?}: {}", said(&page)));
+    page.advance(0.4).expect("a moment");
+    assert!(page.bounds("filter-box").is_none(), "{}", said(&page));
+    // A letter is not written in the filter that is not on the page, and one Esc closes the issue.
+    page.type_text("z").expect("a letter");
+    page.advance(0.3).expect("a moment");
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| page.bounds("panel-close").is_none())
+        .unwrap_or_else(|why| panic!("one Esc closes the issue: {why:?}: {}", said(&page)));
+    assert!(
+        page.says("4 of 14"),
+        "the filter is as it was: {}",
+        said(&page)
+    );
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn in_a_narrow_pane_the_palette_over_the_issue_offers_nothing_of_the_head() {
     let (_linear, _session, mut page) = open_lists(PANE);
     open_the_issue(&mut page);
     page.advance(0.4).expect("a moment");
-    // The head (the list button and the filter) is on the page over the issue, and so are its keys.
-    page.press("2").expect("2");
-    page.wait_for(WITHIN, |page| {
-        page.words_in("lists")
-            .iter()
-            .any(|word| word == "All issues")
-    })
-    .unwrap_or_else(|why| panic!("2 shows all issues: {why:?}: {}", said(&page)));
-    page.press("1").expect("1");
-    page.wait_for(WITHIN, |page| {
+    // (The palette has the issue's commands.)
+    page.press("mod+k").expect("mod+k");
+    page.wait_for(WITHIN, |page| page.says("Do it"))
+        .unwrap_or_else(|why| panic!("the palette opens: {why:?}: {}", said(&page)));
+    page.type_text("rename").expect("the query is typed");
+    page.wait_for(WITHIN, |page| page.says("Rename"))
+        .unwrap_or_else(|why| panic!("the issue's command is offered: {why:?}: {}", said(&page)));
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| !page.says("Do it"))
+        .unwrap_or_else(|why| panic!("the palette closes: {why:?}: {}", said(&page)));
+    page.advance(0.4).expect("a moment");
+    // Neither another list nor words for the filter, which are not on the page.
+    page.press("mod+k").expect("mod+k");
+    page.wait_for(WITHIN, |page| page.says("Do it"))
+        .unwrap_or_else(|why| panic!("the palette opens: {why:?}: {}", said(&page)));
+    page.type_text("show all").expect("the query is typed");
+    page.advance(0.4).expect("a moment");
+    assert!(
+        !page.says("Show all issues") && !page.says("Filter issues by"),
+        "{}",
+        said(&page)
+    );
+    page.press("enter").expect("enter");
+    page.advance(0.4).expect("a moment");
+    if page.says("Do it") {
+        page.press("escape").expect("escape");
+        page.wait_for(WITHIN, |page| !page.says("Do it"))
+            .unwrap_or_else(|why| panic!("the palette closes: {why:?}: {}", said(&page)));
+        page.advance(0.4).expect("a moment");
+    }
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| page.bounds("panel-close").is_none())
+        .unwrap_or_else(|why| panic!("Esc closes the issue: {why:?}: {}", said(&page)));
+    assert!(
         page.words_in("lists")
             .iter()
             .any(|word| word == "My issues")
-    })
-    .unwrap_or_else(|why| panic!("1 shows mine: {why:?}: {}", said(&page)));
-    page.press("g").expect("g");
-    page.wait_for(WITHIN, |page| page.says("The workspace"))
-        .unwrap_or_else(|why| panic!("g opens the card of lists: {why:?}: {}", said(&page)));
-    page.press("escape").expect("escape");
-    page.wait_for(WITHIN, |page| !page.says("The workspace"))
-        .unwrap_or_else(|why| panic!("the card closes: {why:?}: {}", said(&page)));
-    // (The card glides away: the keys are the page's when it has gone.)
-    page.advance(0.6).expect("a moment");
-    page.press("/").expect("/");
-    page.type_text("bug").expect("the filter is typed");
-    page.wait_for(WITHIN, |page| page.says(" of 14"))
-        .unwrap_or_else(|why| panic!("the filter takes the words: {why:?}: {}", said(&page)));
+            && !page.says(" of 14"),
+        "the list and the filter are as they were: {}",
+        said(&page)
+    );
 }
 
 #[test]

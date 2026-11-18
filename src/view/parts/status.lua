@@ -262,9 +262,10 @@ function status.view()
 	if not typing and not alone and commands.enabled(commands.get("filters")) then
 		start[#start + 1] = { key = "filters", words = hint({ "filters" }, "filter"), priority = 3, press = true }
 	end
-	if S.scope == "search" then
+	-- (Where the issue has the pane, Esc closes it: the search and the filter are the list's.)
+	if not alone and S.scope == "search" then
 		start[#start + 1] = { key = "clear", words = hint({ "back" }, "back"), priority = 5 }
-	elseif head.field.value ~= "" then
+	elseif not alone and head.field.value ~= "" then
 		start[#start + 1] = { key = "clear", words = hint({ "back" }, "clear the filter"), priority = 5 }
 	end
 	-- A key that has a button is on the button; where the head has none (the page has too little room)
