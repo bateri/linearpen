@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-18
+
 ### Added
 
 - **A terminal that speaks Kitty graphics is drawn on, as bateri does.** linearpen shows its issues
