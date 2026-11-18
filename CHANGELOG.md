@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-18
+
 ### Changed
 
 - **In a narrow pane, an issue or a form has the pane to itself.** When an issue, New issue or Work
