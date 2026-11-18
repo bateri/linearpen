@@ -1,12 +1,22 @@
 # Releasing
 
-linearpen is released as five files on a GitHub release tagged `v<x.y.z>` here: the program for
-macOS on Apple silicon (`arm64`) and for Linux on `arm64` and `x86_64`, named
-`linearpen-<version>-<target>`, a `SHA256SUMS` that names the three, and an `app.json` with its
-signature `app.json.sig`, which a terminal that follows linearpen reads (pencere's `apps.md`). There is no Intel Mac file:
-bateri, the terminal that shows the page, runs on Apple silicon only.
-Every step a machine can check is in `tools/release.mjs`, behind the `make` targets below. This
-file is the order of the steps and the reasons for them.
+linearpen is released as nine files on a GitHub release tagged `v<x.y.z>` here: the program for
+macOS on Apple silicon (`arm64`) and for Linux on `arm64` and `x86_64`, two for each, named
+`linearpen-<version>-<target>` and `linearpen-no-terminal-<version>-<target>`, a `SHA256SUMS` that
+names the six, and an `app.json` with its signature `app.json.sig`, which a terminal that follows
+linearpen reads (pencere's `apps.md`). There is no Intel Mac file: bateri, the terminal that shows
+the page, runs on Apple silicon only. Every step a machine can check is in `tools/release.mjs`,
+behind the `make` targets below. This file is the order of the steps and the reasons for them.
+
+## Two files for each target
+
+The two differ in the drawing. `linearpen-<version>-<target>` has the drawing in it: in a terminal that speaks Kitty
+graphics but does not host pencere, it draws the page as pictures. `install.sh` installs this
+one: it has the name the files of `linearpen` have always had, so `LINEARPEN_VERSION` and the README's
+install line keep taking it. `linearpen-no-terminal-<version>-<target>` is built without the drawing
+(`--no-default-features`) and is the smaller. bateri draws the page itself and has no use for
+the drawing, so `app.json`, which has one file for a target (pencere's `apps.md`, Section 4.4), names
+this one for each target, and bateri and kablo, which read `app.json`, install it.
 
 ## Versions and the changelog
 
@@ -19,8 +29,9 @@ release only moves that section under a version and a date; it does not write it
 
 ## What a release needs
 
-Each of the three files is the Rust program with its page (`src/view/`) and pictures
-(`src/assets/`) carried in it, built by cargo for one target. So a release needs:
+Each of the six programs is the Rust program with its page (`src/view/`) and pictures
+(`src/assets/`) carried in it, built by cargo for one target, once with the drawing and once
+without, in the profile of what is shipped (`--profile dist`). So a release needs:
 
 - Rust 1.99, the toolchain the gate runs with, on a machine of each target: a Mac on Apple silicon,
   and Linux on `arm64` and on `x86_64`, each with its target added (`rustup target add
@@ -54,10 +65,12 @@ From a clean `main`:
    The first release, `0.1.0`, is the version `Cargo.toml` already says: while the changelog has no
    released section, `prepare` takes that version as it is (and refuses a lower one).
 2. From that commit, on a clean tree, on a machine of each target: `make dist
-   TARGET=<target>`, which builds `dist/release/linearpen-0.2.0-<target>`. Gather the three in
-   `dist/release` on the machine that releases, then `make sums` writes `SHA256SUMS`, and with
-   `pencere dist` the `app.json` and `app.json.sig`: what the program needs of a terminal is not
-   typed, `pencere dist` starts the file of this machine's target and reads what it says, and the
+   TARGET=<target>`, which builds `dist/release/linearpen-0.2.0-<target>` and then
+   `dist/release/linearpen-no-terminal-0.2.0-<target>`: two builds, so a target takes twice as long as a
+   single build. Gather the six in `dist/release` on the machine that releases, then `make sums` has
+   `pencere dist` write `SHA256SUMS`, the `app.json` and `app.json.sig`: what the program needs of a
+   terminal is not typed, `pencere dist` starts the file without the drawing of this machine's
+   target and reads what it says, and the
    earlier releases that `app.json` lists come from the `app.json` of the release before (the
    latest on GitHub; `DIST_FLAGS="--previous <file>"` names another, `--previous none` is for the
    first release, `0.1.0`: there is no release before it to list). The file names carry the version, so a `dist/release` built before the version moved is refused; nothing can
@@ -67,7 +80,7 @@ From a clean `main`:
    tests play linearpen in), then the release checks, then makes the annotated tag `v0.2.0` with the
    changelog section as its message. Nothing is pushed.
 4. `make publish` pushes `main` and the tag in one atomic push, then makes the GitHub release
-   with the changelog section as its notes and the five files.
+   with the changelog section as its notes and the nine files.
 5. Check it: `gh release view v0.2.0`.
    Then `install.sh` (the README's Install) installs it: `curl -fsSL
    https://raw.githubusercontent.com/bateri/linearpen/main/install.sh | sh`.
@@ -86,13 +99,14 @@ tag is on `origin` and the release is not: make it by hand with `gh release crea
 - a branch other than `main`, a working tree that is not clean, a `main` that has diverged from
   `origin/main`;
 - a tag that already exists, here or on `origin`, or a release that already exists on GitHub;
-- a `dist/release` that is not exactly the three files of this version, `SHA256SUMS`, `app.json` and
-  `app.json.sig`, with the sum of each as listed, or whose executable for this machine does not say
-  this version;
+- a `dist/release` that is not exactly the six programs of this version (two for each target),
+  `SHA256SUMS`, `app.json` and `app.json.sig`, with the sum of each as listed, or whose two
+  executables for this machine do not say this version, or in which the two programs of a target are
+  one file or the wrong way round (the one without the drawing is the smaller);
 - an `app.json` that its signature does not belong to (by the key it names), that is signed with
   another key than the "bateri" key (a published release cannot be taken back, and every bateri
-  would turn it away), that is of another app or version, that does not name exactly the three targets at addresses ending in the files'
-  names, or whose sums are not those of `SHA256SUMS`.
+  would turn it away), that is of another app or version, that does not name exactly the three targets at addresses ending in
+  the names of the files without the drawing, or whose sums are not those of `SHA256SUMS`.
 
 ## Who releases
 

@@ -8,6 +8,7 @@
   as pixels there, with the mouse and the keys; a terminal with no Kitty graphics, and a multiplexer,
   keeps what linearpen printed. The keys are those of a keyboard with no ⌘: Ctrl is what ⌘ is
   (copy in a field is Ctrl+Shift+C; Ctrl+C ends linearpen).
+- **Each release has two files for a machine.** A small one, which bateri and kablo install, and one that draws in any terminal that speaks Kitty graphics, which `install.sh` installs.
 
 ## [0.2.0] - 2026-11-17
 

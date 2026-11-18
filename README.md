@@ -10,8 +10,8 @@ comment; those are the three things it writes to Linear, and never the descripti
 
 ## Install
 
-linearpen is one file, with nothing to install beside it, for macOS on Apple silicon and Linux on
-arm64 and x86_64. It talks to Linear with `curl`, which it finds on the `PATH`:
+linearpen is one file for each system, with nothing to install beside it, for macOS on Apple
+silicon and Linux on arm64 and x86_64. It talks to Linear with `curl`, which it finds on the `PATH`:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/bateri/linearpen/main/install.sh | sh
@@ -26,6 +26,10 @@ The installer takes the newest [release](https://github.com/bateri/linearpen/rel
 `LINEARPEN_VERSION=0.1.0`), checks it against the release's `SHA256SUMS`, and puts it in
 `~/.local/bin` (`LINEARPEN_INSTALL=<dir>` puts it elsewhere). A file a browser downloads is
 quarantined by macOS; one curl downloads is not.
+
+A release has two files for each system, and the one to download by hand is
+`linearpen-<version>-<target>`. The `linearpen-no-terminal-<version>-<target>` one is smaller and is
+what bateri and kablo install; it does not draw in a terminal by itself.
 
 The Linux files are linked statically, so that one runs on any distribution. To build it from its
 source instead, with Rust and `curl`:
