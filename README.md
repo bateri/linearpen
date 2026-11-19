@@ -3,9 +3,9 @@
 Your Linear issues in a terminal pane, and an agent started on the one you open: a list grouped
 by state, an issue beside it with its description and comments, and Claude, Codex or Cursor
 working on it in the pane next to it. You can write a new issue in it too, change
-the status, priority, assignee, labels, project and title of the issues you have, and leave a
-comment, and add files to them (pictures, PDFs, anything up to 100 MiB); those are the only things it
-writes to Linear, and it never changes the words of a description.
+the status, priority, assignee, labels, project and title of the issues you have, edit their
+description, leave a comment and edit your own, and add files to them (pictures, PDFs, anything up to
+100 MiB); those are the only things it writes to Linear.
 
 <img src="docs/list.png" width="720" alt="linearpen: the issues assigned to you, grouped by state">
 
@@ -70,6 +70,8 @@ linearpen create --team ACM --title "Fix the login" --priority high --label bug
 linearpen update ACM-412 ACM-413 --status Done --unlabel wip
 git diff | linearpen comment ACM-412 --body -
 linearpen comment ACM-412 --body "It looks like this" --attach shot.png
+linearpen comment ACM-412 --edit last --body "It looks like this, on Safari only"
+linearpen update ACM-412 --description - < description.md   # the whole description, in place of the one there
 linearpen show ACM-412 --files files    # the files of the issue, saved as files in files
 linearpen teams ACM        # the names a team's issues can be given
 ```
@@ -202,8 +204,8 @@ change a value stay with the selection.
 <img src="docs/edit-many.png" width="720" alt="linearpen: three issues selected, which the status key changes together">
 
 The change is sent once. Where no answer comes it is not sent again by the program: it tells you, and
-asks Linear what the issue holds now. The words of the description and the team are never written
-(files are added to the end of a description: see Files below).
+asks Linear what the issue holds now. A change never writes the description (that is Edit description,
+below) nor the team, which is never written.
 
 A line can be dragged out of the page: into a terminal's pane it brings the issue as one line
 (`ACM-412 Add rate limiting to the public API https://linear.app/...`), put at the cursor and not run
@@ -225,6 +227,24 @@ the page says so under the field and the words stay, and where no answer came it
 may have been posted, and asks Linear for the issue instead of sending it again.
 
 <img src="docs/comment.png" width="720" alt="linearpen: a comment being written under the comments of an issue">
+
+### Edit a description or a comment
+
+`Edit description` (`e`), under the description of the issue that is open, makes it a field that holds
+it whole, as Linear holds it now (the page shows at most 20 000 characters of a description, and never
+edits what it shows). A comment you wrote has `Edit comment` at the end of its line; `⌘⇧M` edits the
+last one you wrote. Linear lets only the one who wrote a comment edit it, so other comments have none.
+`⌘Enter` or `Save` writes your words, `Esc` leaves the field with the words in it and a second `Esc`
+(or `Cancel`) lets the edit go. The words stay for the issue while you look at others, and are never
+sent by themselves. While a description is edited, `Attach file` puts files at the end of it, with Save.
+
+Just before it writes, linearpen reads the words from Linear again. Where someone changed them while you
+were editing, nothing is written and the page says so, with your words still in the field: `Save` again
+puts yours in the place of theirs, `Cancel` shows theirs. A save whose answer was lost says so, and
+saving again is safe: words Linear holds already are not sent again. A comment that is edited says
+`edited` after its day.
+
+<img src="docs/edit-description.png" width="720" alt="linearpen: the description of an issue being edited, with Save and Cancel under it">
 
 ### Files
 
@@ -305,7 +325,7 @@ Linear workspace, so look at the issue after the first time.
 On the command line the same: `show` prints each file where it stands as `[image N: name]` or
 `[file N: name]` and lists them at the end; `--files DIR` saves the ones on Linear as files (up to
 100 MiB each, 100 files and 1 GiB in all) and tells where; `--attach PATH` adds a file to a comment (`comment`), to the new issue
-(`create`) or to the end of the description (`update KEY-N --attach PATH`, which is all that update does),
+(`create`) or to the end of the description (`update KEY-N --attach PATH`, which only `--description` goes with),
 as many times as there are files (ten at most). See [docs/cli.md](docs/cli.md). An agent started with Work on
 uses the same commands, and the file of an issue that has files says how many and gives the command that
 saves them where it can read them.

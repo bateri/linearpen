@@ -1,9 +1,9 @@
-//! The one write to a description: files at its end. The pen writes no description (`Change`
-//! has no member for one); to put a file in the description of an issue that is there it reads the
-//! description whole from Linear at that moment, adds the lines of the files after a blank line,
-//! and sends that and nothing else, to that one issue. A description that could not be read is not
-//! written. Sent once, whatever comes back; what is done of an answer that did not come is
-//! `Session::describe`'s.
+//! Files at the end of a description. `Change` has no member for a description: to put a file in the
+//! description of an issue that is there the pen reads the description whole from Linear at that
+//! moment, adds the lines of the files after a blank line, and sends that and nothing else, to that
+//! one issue. A description that could not be read is not written. Sent once, whatever comes back;
+//! what is done of an answer that did not come is `Session::describe`'s. The other write of a
+//! description, the words the person edited, is `edit.rs`'s, and goes by `write` too.
 
 use serde::Serialize;
 
@@ -11,11 +11,24 @@ use super::images;
 use super::types::Issue;
 use super::{Error, Key, Transport, fetch_issue, send_batch};
 
-/// The `input` of the `IssueBatchUpdate` this sends: the description, and no other member (it is the
-/// only way the pen makes one with a description, and nothing else makes this).
+/// The `input` of the `IssueBatchUpdate` a description is written with: the description, and no
+/// other member (nothing else makes this, and `Change` makes none with a description).
 #[derive(Debug, Serialize)]
 struct Description<'a> {
     description: &'a str,
+}
+
+/// Sends `text` as the description of the one issue with Linear's id `id`, and nothing else: the one
+/// function that writes a description (`add_files` and `edit::save` call it). The issue as Linear says
+/// it is after, where it told it.
+pub(super) fn write(
+    transport: &dyn Transport,
+    key: &Key,
+    id: &str,
+    text: &str,
+) -> Result<Vec<Issue>, Error> {
+    let ids = [id.to_owned()];
+    send_batch(transport, key, &ids, Description { description: text })
 }
 
 /// Where `add_files` failed: before anything was sent (the description could not be read, or the
@@ -49,8 +62,6 @@ pub fn add_files(
     if new.chars().count() > images::DESCRIPTION_MOST {
         return Err(Step::TooLong);
     }
-    let ids = [read.id.clone()];
-    let written =
-        send_batch(transport, key, &ids, Description { description: &new }).map_err(Step::Write)?;
+    let written = write(transport, key, &read.id, &new).map_err(Step::Write)?;
     Ok(written.into_iter().next().unwrap_or(read))
 }

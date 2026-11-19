@@ -288,7 +288,12 @@ fn shown(issue: &Issue, marked: &Marked, saved: bool) -> String {
                 .user
                 .as_ref()
                 .map_or_else(|| "Someone".to_owned(), |who| plain(&who.display_name));
-            let _ = writeln!(out, "  {who}, {}", short_date(&comment.created_at));
+            let edited = if comment.edited_at.is_some() {
+                " (edited)"
+            } else {
+                ""
+            };
+            let _ = writeln!(out, "  {who}, {}{edited}", short_date(&comment.created_at));
             for line in lines(body.trim_end()).lines() {
                 let _ = writeln!(out, "    {line}");
             }

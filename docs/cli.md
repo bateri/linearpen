@@ -12,8 +12,9 @@ the words are on stderr and stdout is empty.
 An issue is given as its identifier (`ACM-412`) or as Linear's id of it, a UUID.
 
 An agent that Work on started uses the same `linearpen` as anyone: it has no variable of its own and
-no command it may not run: it makes any write the key allows (a comment, a change, a new issue, files
-added to a description), and what it asks the person before running is for its own permission prompts.
+no command it may not run: it makes any write the key allows (a comment, the edit of a comment of the
+key's person, a change, a new issue, a description written anew or files added to one), and what it
+asks the person before running is for its own permission prompts.
 The context file Work on writes for it tells whether its issue has files and how to have them
 (`show --files`).
 
@@ -93,9 +94,28 @@ line before: `![name](address)` for a picture (PNG, JPEG, GIF, WebP) and `[name]
 file. It goes at the end of the comment, at the end of the description of the issue made, or, for
 `update`, at the end of the description Linear holds now (it is read whole, so that nothing in it is lost,
 and only the lines of the files are added). `update --attach` is for one issue and is the only option of
-its update. If a file cannot be put in storage, nothing is written and the command ends with 1. Where the
+its update but `--description` (see Editing words). If a file cannot be put in storage, nothing is written and the command ends with 1. Where the
 write itself was sent and its answer was lost, the command ends with 3, as for any write; look in Linear
 before running it again. The text it prints is what it printed before, with `with 2 files` at the end.
+
+## Editing words
+
+`update KEY-N --description TEXT` (or `-` for the words on stdin) writes the description of one issue
+whole, in the place of the one Linear holds: what is not in the words given is gone, so read it first
+(`show KEY-N --json`). It is the only option of its update, but `--attach`, whose files go at the end of
+the words. The issue is read just before it is written, and where Linear holds the words given already
+nothing is sent. It prints the issue's line with `description written`.
+
+`comment KEY-N --edit last --body TEXT` puts the words in the place of the last comment you wrote on the
+issue (of the first fifty Linear tells with it; where it has more, give the comment's id), and
+`--edit ID` in the place of the comment with that id (`show --json` gives each comment's `id` and
+whether it is `mine`). Linear lets only the one who wrote a comment edit it: linearpen asks Linear whose
+it is first, and a comment that is not yours ends with 1 and nothing written. `--edit` takes no
+`--attach`. It prints `ACM-412: comment edited`; with `--json`, as `comment --json`, the comment as it is
+now.
+
+Each is sent once, as any write is; where its answer was lost the command ends with 3, and running it
+again is safe: words Linear holds already are not sent again.
 
 ## `list --json`
 
@@ -147,13 +167,16 @@ An `<issue>` with these fields besides:
   "parent": { "identifier": "ACM-400", "title": "Billing limits", "state": { "name": "Todo", "kind": "unstarted" } },
   "children": [ <neighbour> ],
   "ties": [ { "tie": "blocked_by", "issue": <neighbour> } ],
-  "comments": [ { "author": "Deniz", "created_at": "2026-11-06T09:12:00.000Z", "body": "markdown" } ],
+  "comments": [ { "id": "5c1c2a58-7d5e-4c0b-9b43-1c8f0f6f2d11", "author": "Deniz", "mine": false,
+                  "created_at": "2026-11-06T09:12:00.000Z", "edited_at": null, "body": "markdown" } ],
   "comments_truncated": false,
   "files": [ <file> ]
 }
 ```
 
-`parent` is `null` where there is none; `<neighbour>` is `{ identifier, title, state }`. `tie` is
+`parent` is `null` where there is none; `<neighbour>` is `{ identifier, title, state }`. A comment's `id` is
+what `comment --edit` takes, `mine` is whether the key's person wrote it (only they may edit it), and
+`edited_at` is when it was last edited (`null` where it was not). `tie` is
 `blocks`, `blocked_by`, `related`, `duplicate_of` or `duplicated_by`. The first 50 comments, oldest
 first, are given, and `comments_truncated` says there are more in Linear. `<file>` is described under
 Files, above.
@@ -167,7 +190,8 @@ Files, above.
 ## `comment --json`
 
 ```json
-{ "issue": "ACM-412", "comment": { "author": "Ada", "created_at": "2026-11-10T10:00:00.000Z", "body": "markdown" } }
+{ "issue": "ACM-412", "comment": { "id": "6d2e0f1e-6d1b-4d7a-9a56-3b1c0a5e7f11", "author": "Ada", "mine": true,
+  "created_at": "2026-11-10T10:00:00.000Z", "edited_at": null, "body": "markdown" } }
 ```
 
 ## `teams --json`

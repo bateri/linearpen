@@ -7,7 +7,7 @@ mod help;
 mod scan;
 
 pub use commands::{
-    Command, Comment, Create, CycleAsk, Fields, List, ListScope, Setting, Update, Words,
+    Command, Comment, Create, CycleAsk, Edited, Fields, List, ListScope, Setting, Update, Words,
 };
 use help::USAGE;
 
@@ -138,15 +138,18 @@ mod tests {
             "title",
             "agent",
             "a comment",
+            "a description you edit",
+            "a comment of yours you edit",
             "create, update and comment",
-            "never changes the words of a description",
-            "only adds files after them",
             "never moves an issue to another team",
+            "never deletes or archives anything",
             "list, show and teams only read",
         ] {
             assert!(says(named), "the help does not name {named}");
         }
         assert!(!says("one thing") && !says("nothing else is changed"));
+        // The words of a description are written now, where the person edits them.
+        assert!(!says("never changes the words of a description"));
         assert!(!says("`--text` only reads"));
     }
 

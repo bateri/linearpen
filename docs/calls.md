@@ -20,21 +20,24 @@ was to be posted and Linear did not post it, or it is not known whether it did: 
 nothing was sent after it, and the words say which and why), `describe-failed` (files were to
 be added to a description and it was not written, or it is not known whether it was: the words say
 which of three it is: the description could not be read, the files would make it too long (nothing was
-written in either), or the write was sent and failed), `save-failed` (a file of Linear was to be saved and was not: the words say why) and
+written in either), or the write was sent and failed), `save-failed` (a file of Linear was to be saved and was not: the words say why),
+`edit-failed` (the words of a description or of a comment were to be written, or an edit of them
+begun, and were not, or it is not known whether they were: the words say why) and
 `pdf-failed` (a PDF could not be read for its pages and words: the words say why). The
 words of an error are for the person and never hold the key, nor the address a file is sent to
 (Linear signs it).
 
-The pen writes three things: the issue the person makes (`create`), the change the person makes to
+The pen writes four things: the issue the person makes (`create`), the change the person makes to
 issues (`change`): one of their status, priority, assignee, labels, project, cycle, estimate, due date
-or title, and the comment the person writes on an issue (`comment`). The files the person adds (any
-kind, at most 100 MiB each) go in Linear's storage first (`FileUpload`, and the file sent to the place
-Linear named) and are named in what is written: the end of a comment, of a new issue's description, or
-of the description of an issue that is there (`describe`: the one way a description is written, and
-only to put files at its end). A picture (PNG, JPEG, GIF or WebP, by its first bytes) is named as a
-picture, `![name](address)`, and any other file as a link, `[name](address)`.
-The description is otherwise never written, and the team never. One more call writes, and only as
-`change` does: `start`
+or title, the comment the person writes on an issue (`comment`), and the words the person edits: the
+description of an issue, or a comment of theirs (`edit-save`, after `edit-open`). The files the person
+adds (any kind, at most 100 MiB each) go in Linear's storage first (`FileUpload`, and the file sent to
+the place Linear named) and are named in what is written: the end of a comment, of a new issue's
+description, or of the description of an issue that is there (`describe`, which writes the description
+only to put files at its end, and `edit-save`). A picture (PNG, JPEG, GIF or WebP, by its first bytes)
+is named as a picture, `![name](address)`, and any other file as a link, `[name](address)`.
+A description is written whole only by `edit-save`, and the team never; a comment that is not the
+person's is never written. One more call writes, and only as `change` does: `start`
 moves the issue, if it has not begun, to its team's first state of work in progress, where the
 person chose that (`progress`), once the agent's pane is made. Nothing else here changes anything in
 Linear.
@@ -168,7 +171,8 @@ of the issue (a row's `id`) or its identifier: up to 64 letters, digits, dashes 
              "issue": { "id": "issue-389", "identifier": "ACM-389",
                         "title": "Cache the pricing table at the edge",
                         "state": { "name": "In Review", "kind": "started" } } }],
-  "comments": [{ "author": "Deniz", "at": "Nov 6", "body": "Redis is already there." }],
+  "comments": [{ "id": "c-77", "author": "Deniz", "at": "Nov 6", "mine": false, "edited": false,
+                 "body": "Redis is already there." }],
   "more": false
 }
 ```
@@ -182,7 +186,9 @@ address a text names on its own). `description` is null where there is none. Com
 `more` says there is more in Linear than is told (more comments, or a text cut at 20 000 characters
 for the description and 2 000 for a comment). `assignee` is `"you"`, a name or null; `cycle` is the
 words that tell the cycle, its name where it has one, else `Cycle 12` (null where it is in none).
-`at` is the day as the list writes it. `teamId`, `stateId`, `assigneeId`, `projectId`, `cycleId` and
+`at` is the day as the list writes it, `id` Linear's id of the comment (what an edit names), `mine`
+whether the person whose key it is wrote it (Linear lets only them edit it: a comment of a bot or an
+integration is no one's) and `edited` whether it was edited after it was written. `teamId`, `stateId`, `assigneeId`, `projectId`, `cycleId` and
 each label's `id` are Linear's ids of what the issue is of and in (null where there is none), `estimate`
 the points (a whole number, null where there are none) and `dueDate` the day it is due (`2026-11-15`,
 or null): what a menu marks as the issue's own and what `change` names. They are the same as in a
@@ -284,8 +290,8 @@ command that saves them, `linearpen show <id> --files <folder>/files` with the f
 The text of an issue is never in the
 prompt (the agent's command line): the file's path is, for `worktree` a sentence of the program's
 own that asks for one, where the issue's id is a UUID, that id and the path of the program in the
-sentence that says what `linearpen` can write in Linear for the agent (its status, comments, files
-and new issues: `docs/cli.md`), and, last, the person's own words (`prompt`). The prompt is one word of the command line: no shell reads
+sentence that says what `linearpen` can write in Linear for the agent (its status, comments and the
+edit of its own, files, its description and new issues: `docs/cli.md`), and, last, the person's own words (`prompt`). The prompt is one word of the command line: no shell reads
 it, and the person's words never begin it. The agent's command is `<agent> <prompt>` and no more, and
 the `bateri` call that makes the pane carries nothing of the pen's in its environment. The id inside
 the prompt is the one thing of Linear's in a command line. No flag that lets the agent do
@@ -420,7 +426,8 @@ Changes one field of one issue or of several, in Linear. Params:
 - `ids`: Linear's ids of the issues (a row's `id`), from one to 50 (Linear's own limit of a batch);
   up to 64 letters, digits, dashes and underscores each. One said twice is one.
 - **Exactly one** of these, which is the field that is changed (two, or none, is `bad-params`; so is
-  any member this call does not take, `description` and `team` among them: neither is written):
+  any member this call does not take, `description` and `team` among them: the description is
+  `edit-save`'s, and the team is never written):
   `status` (the id of a state, from `new_options`' `allStates`), `priority` (`none`, `urgent`,
   `high`, `medium` or `low`), `assignee` (the id of a person, or `null` for no one), `addLabel` and
   `removeLabel` (the id of one label the issues get or lose), `project` (the id of a project, or
@@ -486,7 +493,8 @@ Posts a comment on an issue, in Linear, in the words the person wrote. Params:
   under (a UUID version 4, as for `create`'s drafts).
 
 ```json
-{ "comment": { "author": "Ada", "at": "Nov 12", "body": "Looks right to me" } }
+{ "comment": { "id": "c-78", "author": "Ada", "at": "Nov 12", "mine": true, "edited": false,
+               "body": "Looks right to me" } }
 ```
 
 The answer is the comment as Linear says it is, in the form the comments of `issue` have. It is put
@@ -507,6 +515,68 @@ answer whole, so it may have posted it: look at the comments before writing it a
 answer could not be read, `Linear could not be reached: ...; it may have been posted: look at the
 comments before writing it again` where no answer came, else Linear's own words (`Linear did not
 post it: ...`).
+
+### `edit-open`
+
+Begins an edit of the words of an issue: the description, or a comment of the person's. The program
+reads it from Linear now, whole (what `issue` tells is cut, and is never what is edited), holds that
+text as what the edit began from, and gives it. Params: `{ "issue": "issue-412" }` for the description,
+`{ "issue": "issue-412", "comment": "c-77" }` for a comment of it; `issue` as for `issue`, `comment`
+Linear's id of the comment (up to 64 letters, digits, dashes and underscores). Nothing is written.
+
+```json
+{ "text": "The public API has no limit per key.\n\n- A limit per key" }
+```
+
+`text` is the description (empty where there is none) or the comment's body, as Linear holds them.
+Opening the same again reads it again, and that text is what the edit began from from then on.
+
+Errors: `bad-params`, `no-key`, `refused`, `unreachable`, `failed`, and `edit-failed`: `This comment is
+not yours: Linear lets only the one who wrote it edit it` (Linear does not say the comment is the
+person's), `That comment is not on this issue`, and `It is over 100000 characters: edit it in Linear`.
+
+### `edit-save`
+
+Writes the person's words over what an edit began from (`edit-open`). Params:
+
+```json
+{ "issue": "issue-412", "comment": "c-77", "text": "Redis is there for the sessions.",
+  "files": [{ "handle": "0123456789abcdef0123456789abcdef", "name": "shot.png" }] }
+```
+
+- `issue` and `comment` as for `edit-open` (no `comment` is the description).
+- `text`: the words, as they were written (Markdown), at most 100 000 characters with the lines of the
+  files; they are not changed, and they are a variable of the request. A description may be empty (it
+  is then none); a comment has something in it besides white space.
+- `files`: for a description only (`bad-params` with a comment), as for `comment`'s: they are put in
+  Linear's storage first and their lines come at the end of the words, after a blank line. Where one
+  cannot be sent nothing is written (`upload-failed`).
+
+Before anything is written the program reads it from Linear again. Where Linear holds the words given
+already, nothing is sent (a Save before it whose answer was lost had made them). Where it holds another
+text than the edit began from, someone changed it meanwhile: nothing is written, the words say so, and
+what Linear holds now is what the edit is checked against from then on, so that the person, told,
+saves again to put theirs in its place. Else the words are sent **once**, and nothing else: a
+description as the one member of an `IssueBatchUpdate` of that one issue (`change` never carries one),
+a comment's as the body of a `CommentUpdate` of that comment, which Linear said is the person's.
+
+```json
+{ "issue": { "id": "issue-412", "identifier": "ACM-412", "description": "...", "comments": [] } }
+```
+
+`issue` is the issue as `issue` tells it, asked of Linear after it was written and kept for `issue`
+(null where it could not be asked for: the page asks for it again).
+
+Where no answer came, or what came cannot be read, the issue is asked for, so that what `issue` tells
+is what Linear holds, and the call fails; saving again is safe (the words Linear holds already are not
+sent). Errors: `bad-params`, `no-key`, `refused`, `upload-failed`, and `edit-failed`: `Someone changed
+it in Linear while you were editing, so nothing was saved: Save again to put yours in its place, or
+Cancel to see theirs`, `It could not be read again from Linear, so nothing was saved (...)`, `This edit
+was not begun here: Cancel, then edit it again` (no `edit-open` came first, or it was let go), the
+words of `edit-open`'s for a comment that is not the person's, `Linear did not save it: this key cannot
+edit`, `Linear did not answer whole, so it may have saved it: Save again to make sure`, `Linear could
+not be reached: ...; it may have been saved: Save again to make sure`, and Linear's own words (`Linear
+did not save it: ...`).
 
 ### `picture`
 
@@ -622,7 +692,7 @@ not push out the page that is being read. Errors: `bad-params`, `pdf-failed` (`T
 
 ### `describe`
 
-Adds files at the end of the description of an issue: the one way the pen writes a description.
+Adds files at the end of the description of an issue, as it is in Linear (`edit-save` writes it whole).
 Params: `{ "id": "issue-412", "files": [{ "handle": "...", "name": "shot.png" }] }`, from one to ten
 (as for `comment`'s `files`). The files are put in Linear's storage first; then the program reads
 the description **whole** from Linear (what the page holds of it is never used, and it is cut for the

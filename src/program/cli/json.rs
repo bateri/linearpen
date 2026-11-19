@@ -143,18 +143,26 @@ pub struct Tied {
     pub issue: Neighbour,
 }
 
+/// A comment: Linear's id of it (what `comment --edit` takes), who wrote it, whether the person did
+/// (they alone may edit it), when it was written and last edited, and its words.
 #[derive(Debug, Serialize)]
 pub struct Said {
+    pub id: String,
     pub author: Option<String>,
+    pub mine: bool,
     pub created_at: String,
+    pub edited_at: Option<String>,
     pub body: String,
 }
 
 impl Said {
     pub fn of(comment: &Comment) -> Self {
         Self {
+            id: comment.id.clone(),
             author: comment.user.as_ref().map(|who| who.display_name.clone()),
+            mine: comment.mine(),
             created_at: comment.created_at.clone(),
+            edited_at: comment.edited_at.clone(),
             body: comment.body.clone(),
         }
     }

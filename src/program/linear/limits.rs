@@ -11,6 +11,9 @@ pub const LABELS_MOST: usize = 50;
 pub const REF_MOST: usize = 64;
 /// The most characters of a comment that are posted.
 pub const BODY_MOST: usize = 10_000;
+/// The longest text an edit takes and gives, in characters: a description or a comment is edited
+/// whole, and one that is longer is edited in Linear.
+pub const EDIT_MOST: usize = 100_000;
 /// The most points an estimate can be: Linear's scales end far below it.
 pub const POINTS_MOST: u32 = 1_000;
 

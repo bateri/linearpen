@@ -401,22 +401,40 @@ impl Issue {
     }
 }
 
-/// Who wrote a comment (a comment of a bot or of someone gone has none).
+/// Who wrote a comment (a comment of a bot or of someone gone has none), and whether it is the
+/// person whose key it is: only they may edit it.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Author {
     pub display_name: String,
+    #[serde(default)]
+    pub is_me: bool,
 }
 
 /// A comment of an issue. The text is untrusted.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Comment {
+    /// Linear's id of it: what an edit names.
+    #[serde(default)]
+    pub id: String,
     #[serde(default)]
     pub body: String,
     pub created_at: String,
+    /// When its author last edited it, where they did.
+    #[serde(default)]
+    pub edited_at: Option<String>,
     #[serde(default)]
     pub user: Option<Author>,
+}
+
+impl Comment {
+    /// Whether the person whose key it is wrote it: a comment of a bot, of an integration or of someone
+    /// gone is no one's.
+    #[must_use]
+    pub fn mine(&self) -> bool {
+        self.user.as_ref().is_some_and(|user| user.is_me)
+    }
 }
 
 /// The first comments of an issue, and whether there are more.

@@ -222,16 +222,10 @@ fn create_prints_the_identifier_and_the_link_and_a_lost_answer_is_found_by_the_d
 #[test]
 fn what_is_not_understood_ends_with_two_and_help_and_teams_work() {
     let home = Home::new();
-    let ran = linearpen(
-        &home,
-        &["update", "ACM-412", "--description", "x"],
-        &[],
-        None,
-    );
+    let ran = linearpen(&home, &["update", "ACM-412", "--team", "WEB"], &[], None);
     assert_eq!(ran.status, Some(2));
     assert!(
-        ran.stderr
-            .contains("never changes the words of an issue's description, or its team"),
+        ran.stderr.contains("never moves an issue to another team"),
         "{}",
         ran.stderr
     );
@@ -804,4 +798,140 @@ fn update_with_files_adds_them_to_the_whole_description_read_from_linear_just_no
     );
     assert_eq!(lost.status, Some(3), "{}", lost.stderr);
     assert_eq!(sent(&home, "IssueBatchUpdate").len(), 1);
+}
+
+#[test]
+fn update_description_writes_the_words_whole_and_alone_to_the_one_issue() {
+    let home = Home::new();
+    let ran = linearpen(
+        &home,
+        &["update", "ACM-412", "--description", "-"],
+        &[],
+        Some("New words\n\n- one\n"),
+    );
+    assert_eq!(ran.status, Some(0), "{}", ran.stderr);
+    let batches = sent(&home, "IssueBatchUpdate");
+    assert_eq!(batches.len(), 1);
+    assert_eq!(writes(&home), 1);
+    assert_eq!(
+        batches[0]["variables"]["ids"],
+        serde_json::json!(["issue-412"])
+    );
+    assert_eq!(
+        batches[0]["variables"]["input"],
+        serde_json::json!({"description": "New words\n\n- one"})
+    );
+    assert!(ran.stdout.starts_with("ACM-412  "), "{}", ran.stdout);
+    assert!(
+        ran.stdout.ends_with("description written\n"),
+        "{}",
+        ran.stdout
+    );
+    // Not with another field: nothing is asked of Linear.
+    let home = Home::new();
+    let ran = linearpen(
+        &home,
+        &[
+            "update",
+            "ACM-412",
+            "--description",
+            "x",
+            "--status",
+            "Done",
+        ],
+        &[],
+        None,
+    );
+    assert_eq!(ran.status, Some(2), "{}", ran.stderr);
+    assert!(home.calls().is_empty());
+}
+
+#[test]
+fn comment_edit_last_puts_the_words_in_the_place_of_the_persons_last_comment() {
+    let home = Home::new();
+    let ran = linearpen(
+        &home,
+        &["comment", "ACM-412", "--edit", "last", "--body", "-"],
+        &[("STANDIN_ISSUE", "mine")],
+        Some("Keep a fallback, and log it.\n"),
+    );
+    assert_eq!(ran.status, Some(0), "{}", ran.stderr);
+    assert_eq!(ran.stdout, "ACM-412: comment edited\n");
+    assert!(
+        sent(&home, "CommentCreate").is_empty(),
+        "no comment is posted"
+    );
+    let edited = sent(&home, "CommentUpdate");
+    assert_eq!(edited.len(), 1);
+    assert_eq!(writes(&home), 1);
+    assert_eq!(edited[0]["variables"]["id"], "c-mert");
+    assert_eq!(
+        edited[0]["variables"]["input"],
+        serde_json::json!({"body": "Keep a fallback, and log it."})
+    );
+    // Linear is asked whose the comment is before it is written.
+    assert_eq!(sent(&home, "Comment").len(), 1);
+}
+
+#[test]
+fn comment_edit_of_someone_elses_comment_or_of_none_writes_nothing() {
+    let home = Home::new();
+    let ran = linearpen(
+        &home,
+        &[
+            "comment", "ACM-412", "--edit", "c-mert", "--body", "Mine now",
+        ],
+        &[("STANDIN_COMMENT", "theirs")],
+        None,
+    );
+    assert_eq!(ran.status, Some(1), "{}", ran.stderr);
+    assert!(ran.stderr.contains("not yours"), "{}", ran.stderr);
+    assert_eq!(writes(&home), 0);
+    // No comment on the issue is the person's.
+    let home = Home::new();
+    let ran = linearpen(
+        &home,
+        &["comment", "ACM-412", "--edit", "last", "--body", "x"],
+        &[],
+        None,
+    );
+    assert_eq!(ran.status, Some(1), "{}", ran.stderr);
+    assert!(
+        ran.stderr.contains("no comment on ACM-412"),
+        "{}",
+        ran.stderr
+    );
+    assert_eq!(writes(&home), 0);
+}
+
+#[test]
+fn comment_edit_whose_answer_is_lost_ends_with_three_and_is_not_sent_again() {
+    let home = Home::new();
+    let ran = linearpen(
+        &home,
+        &["comment", "ACM-412", "--edit", "c-mert", "--body", "New"],
+        &[("STANDIN_EDIT", "lost")],
+        None,
+    );
+    assert_eq!(ran.status, Some(3), "{}", ran.stderr);
+    assert_eq!(sent(&home, "CommentUpdate").len(), 1);
+}
+
+#[test]
+fn show_json_tells_each_comment_by_its_id_and_whether_it_is_the_persons() {
+    let home = Home::new();
+    let ran = linearpen(
+        &home,
+        &["show", "ACM-412", "--json"],
+        &[("STANDIN_ISSUE", "mine")],
+        None,
+    );
+    assert_eq!(ran.status, Some(0), "{}", ran.stderr);
+    let shown: serde_json::Value = serde_json::from_str(&ran.stdout).unwrap();
+    let comments = shown["comments"].as_array().unwrap();
+    assert_eq!(comments[0]["id"], "c-deniz");
+    assert_eq!(comments[0]["mine"], false);
+    assert_eq!(comments[1]["id"], "c-mert");
+    assert_eq!(comments[1]["mine"], true);
+    assert!(comments[1]["edited_at"].is_null());
 }

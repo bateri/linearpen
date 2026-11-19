@@ -21,6 +21,7 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use crate::linear::edit::{self, Target};
 use crate::linear::types::{Comment, StateKind};
 use crate::linear::{
     self, Change, Created, Entry, Error, FilterOptions, Filters, Issue, Key, Listing, NewIssue,
@@ -37,6 +38,12 @@ pub const REFRESH_EVERY: Duration = Duration::from_secs(300);
 
 /// How many opened issues are kept before they are let go of.
 const DETAILS_KEPT: usize = 64;
+/// The most edits whose texts are held at once: an edit begun before the most were let go is begun
+/// again (`NOT_BEGUN`).
+const EDITS_KEPT: usize = 64;
+
+/// What `edit_save` says of an edit whose text is not held (it was never read, or was let go).
+pub const NOT_BEGUN: &str = "the edit was not begun here";
 
 /// The agent an issue was handed to, and the pane it works in.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -144,6 +151,10 @@ pub struct State {
     /// Issues opened, as Linear told them (with their description and comments), by id: they are
     /// kept for the run, so that an issue seen again is not asked for again.
     details: HashMap<String, Issue>,
+    /// The texts the edits the person began are of, by the issue (as the page named it) and what is
+    /// edited: what Linear held when each was read for the edit, which it must hold still for the
+    /// edit to be written (`edit_save`).
+    edits: HashMap<(String, Target), String>,
     /// The teams an issue can be made in, and what each offers, as Linear last said: they are let go
     /// whenever the lists are asked for again.
     teams: Option<Vec<Team>>,
@@ -536,6 +547,7 @@ impl Session {
                 working: HashMap::new(),
                 held: Vec::new(),
                 details: HashMap::new(),
+                edits: HashMap::new(),
                 teams: None,
                 choices: HashMap::new(),
                 filter_options: None,
@@ -883,7 +895,7 @@ impl Session {
     }
 
     /// Posts `body` as a comment of the issue `issue` (Linear's id of it, or its identifier) under
-    /// `id`, a UUID the caller made: the program's third write. It is sent once, whatever comes back.
+    /// `id`, a UUID the caller made: the program's write of a comment. It is sent once, whatever comes back.
     /// What Linear answers is put among the comments of the issue kept, so that the issue asked for
     /// next has it. Where it did not come back whole (no answer, or what cannot be read) the issue is
     /// asked for, so that what is shown is what Linear holds, and the failure is told (not known, for
@@ -987,6 +999,68 @@ impl Session {
                 Err(linear::Step::Write(Error::Unsure))
             }
             Err(linear::Step::Write(failure)) => Err(linear::Step::Write(failure)),
+        }
+    }
+
+    /// What is edited (the description of the issue `issue`, Linear's id of it or its identifier, or a
+    /// comment of the person's on it) as Linear holds it now, whole: the text an edit begins from. It is
+    /// held, so that the edit is written only where Linear holds it still (`edit_save`); a second read
+    /// of the same takes its place.
+    pub fn edit_open(&self, issue: &str, target: &Target) -> Result<String, Error> {
+        let key = self.key()?;
+        let now = edit::current(self.transport(), &key, issue, target)?;
+        let mut state = self.shared.lock();
+        if state.edits.len() >= EDITS_KEPT {
+            state.edits.clear();
+        }
+        state
+            .edits
+            .insert((issue.to_owned(), target.clone()), now.text.clone());
+        Ok(now.text)
+    }
+
+    /// Writes `text` over what is edited, where Linear holds what the edit began from (`edit_open`):
+    /// the program's write of the words of a description, and of a comment. It is read again first and
+    /// sent once. Where Linear holds another text, nothing is sent: what it holds is the text the edit
+    /// is checked against from here (the person, told, saves again to put theirs in its place). The
+    /// issue as Linear holds it after is asked for and kept, and given (none where it could not be).
+    /// Where the write was sent and no answer came, or what came cannot be read, the issue is asked for
+    /// too and the failure is told (not known, for an answer that cannot be read): saving again is
+    /// safe, for a text Linear holds already is not sent.
+    pub fn edit_save(
+        &self,
+        issue: &str,
+        target: &Target,
+        text: &str,
+    ) -> Result<Option<Issue>, edit::Step> {
+        let key = self.key().map_err(edit::Step::Read)?;
+        let held = (issue.to_owned(), target.clone());
+        let base = self
+            .shared
+            .lock()
+            .edits
+            .get(&held)
+            .cloned()
+            .ok_or_else(|| edit::Step::Read(Error::Failed(NOT_BEGUN.to_owned())))?;
+        match edit::save(self.transport(), &key, issue, target, &base, text) {
+            Ok(()) => {
+                self.shared.lock().edits.remove(&held);
+                Ok(self.detail_fresh(issue).ok())
+            }
+            Err(edit::Step::Changed(now)) => {
+                self.shared.lock().edits.insert(held, now.clone());
+                let _ = self.detail_fresh(issue);
+                Err(edit::Step::Changed(now))
+            }
+            Err(edit::Step::Write(failure @ Error::Unreachable(_))) => {
+                let _ = self.detail_fresh(issue);
+                Err(edit::Step::Write(failure))
+            }
+            Err(edit::Step::Write(Error::Failed(why))) if linear::left_open(&why) => {
+                let _ = self.detail_fresh(issue);
+                Err(edit::Step::Write(Error::Unsure))
+            }
+            Err(other) => Err(other),
         }
     }
 

@@ -8,6 +8,7 @@
 mod change;
 mod comment;
 mod create;
+mod edit;
 mod filters;
 mod issue;
 mod issues;
@@ -52,6 +53,9 @@ enum Failure {
     /// The files were to be added to a description and Linear did not write it (or it is not
     /// known whether it did): the words say why.
     DescribeFailed(String),
+    /// The words of a description or of a comment were to be written over it, and were not (or it is
+    /// not known whether they were): the words say why.
+    EditFailed(String),
     /// A file of Linear was to be saved, and was not: the words say why.
     SaveFailed(String),
     /// A PDF could not be read for its pages and words: the words say why.
@@ -70,6 +74,7 @@ impl From<Failure> for ViewError {
             Failure::CommentFailed(words) => Self::with_message("comment-failed", words),
             Failure::UploadFailed(words) => Self::with_message("upload-failed", words),
             Failure::DescribeFailed(words) => Self::with_message("describe-failed", words),
+            Failure::EditFailed(words) => Self::with_message("edit-failed", words),
             Failure::SaveFailed(words) => Self::with_message("save-failed", words),
             Failure::PdfFailed(words) => Self::with_message("pdf-failed", words),
             Failure::Linear(error) => Self::with_message(error.kind(), error.to_string()),
@@ -123,6 +128,7 @@ pub fn serve(options: Options, session: &Arc<Session>) -> Options {
     let options = create::calls(options, session);
     let options = change::calls(options, session);
     let options = comment::calls(options, session);
+    let options = edit::calls(options, session);
     let options = pictures::calls(options, session);
     let options = filters::calls(options, session);
     issues::topic(options, session)

@@ -11,6 +11,7 @@ local comment = require("./parts/comment")
 local commands = require("./parts/commands")
 local context = require("./parts/context")
 local data = require("./parts/data")
+local edit = require("./parts/edit")
 local filters = require("./parts/filters")
 local head = require("./parts/head")
 local help = require("./parts/help")
@@ -57,7 +58,20 @@ local function attach_key()
 	if comment.typing() then
 		return "comment:" .. detail.id
 	end
+	-- (The edit of a comment takes no file: a file goes in a comment of its own.)
+	if edit.typing() and not edit.typing_description() then
+		return nil
+	end
 	return "describe:" .. detail.id
+end
+
+-- Where a paste of files goes: the place of `attach_key`. A comment that is edited takes none, and says so.
+local function paste_key()
+	local key = attach_key()
+	if key == nil and edit.typing() and not edit.typing_description() then
+		kit.toast("A file goes in a comment of its own")
+	end
+	return key
 end
 
 -- The key of the place a kind of Attach file (`comment`, `new` or `describe`) is of: its own, whatever the
@@ -220,6 +234,30 @@ commands.when.describable = function()
 		and not comment.typing()
 		and not head.typing()
 		and attach.describable()
+end
+-- The words of the issue open can be edited: Linear has told it, and no edit of it is open. The last
+-- comment of the person's is edited where there is one.
+commands.when.describable_words = function()
+	local detail = panel.detail()
+	return commands.when.idle() and detail ~= nil and edit.of(detail.id) == nil
+end
+commands.when.comment_editable = function()
+	local detail = panel.detail()
+	return commands.when.list() and detail ~= nil and edit.of(detail.id) == nil and edit.last_mine(detail) ~= nil
+end
+-- Save the edit: one is open on the issue open and can be saved, and the keyboard is not in another field
+-- (⌘Enter there is that field's: the comment is posted, the words searched for).
+commands.when.edit_savable = function()
+	local detail = panel.detail()
+	return S.screen == "list"
+		and not modal()
+		and not work.is_open()
+		and not new.is_open()
+		and not change.editing()
+		and not comment.typing()
+		and not head.typing()
+		and detail ~= nil
+		and edit.saveable(detail.id)
 end
 -- Save the file, Open the PDF: a card of the issue open has the keyboard, or is the only one there is.
 commands.when.file_openable = function()
@@ -434,7 +472,7 @@ local function render(size, now, reduce_motion)
 	S.new_open = S.screen == "list" and new.is_open()
 	S.form_open = S.work_open or S.new_open
 	S.editing = S.screen == "list" and change.editing()
-	S.writing = S.screen == "list" and comment.typing()
+	S.writing = S.screen == "list" and (comment.typing() or edit.typing())
 	S.panel_open = S.screen == "list" and (panel.is_open() or S.form_open)
 	S.room = (S.panel_open and S.width >= 760) and S.width - panel.width(S.width) or S.width
 	-- The issue or a form has the whole pane (it is too narrow for the list beside it): the list and its
@@ -516,6 +554,12 @@ local function command(id)
 	elseif id == "comment_send" then
 		local detail = panel.detail()
 		return detail ~= nil and comment.send(detail.id) or true
+	elseif id == "edit_description" then
+		return panel.edit_words("description")
+	elseif id == "edit_comment" then
+		return panel.edit_words("comment")
+	elseif id == "edit_save" then
+		return edit.save(panel.id())
 	elseif id == "attach_file" then
 		local key = attach_key()
 		return key ~= nil and attach.choose(key) or true
@@ -661,6 +705,9 @@ local function press(id)
 		if reply == nil then
 			reply = attach.press(id, attach_key_of)
 		end
+		if reply == nil then
+			reply = edit.press(id)
+		end
 		if reply ~= nil then
 			return reply
 		end
@@ -697,6 +744,9 @@ local function on_action(action)
 	end
 	if reply == nil then
 		reply = change.action(action)
+	end
+	if reply == nil then
+		reply = edit.action(action)
 	end
 	if reply ~= nil then
 		return reply
@@ -739,6 +789,10 @@ local function back()
 		work.close()
 	elseif filters.is_open() then
 		filters.close()
+	elseif edit.cancelable() then
+		-- (The edit of the issue open is let go before the issue is put away; where its words were
+		-- changed, it asks first.)
+		return edit.ask_cancel(panel.id())
 	elseif attach.cancel() then
 		-- (The files chosen for the description are let go before the issue is put away.)
 		return true
@@ -817,6 +871,9 @@ local function key(event)
 		return work.key(event)
 	end
 	local typed = comment.key(event)
+	if typed == nil then
+		typed = edit.key(event)
+	end
 	if typed ~= nil then
 		return typed
 	end
@@ -940,8 +997,10 @@ end
 
 local function handle(event)
 	local kind = event.type
-	-- What is written in the comment is kept before the event can take the field from the page.
+	-- What is written in the comment and in an edit is kept before the event can take the field from the
+	-- page.
 	comment.keep()
+	edit.keep()
 	local left = keyboard_from_head()
 	local freed, ends = keyboard_from_control(event)
 	freed = b.merge(left, freed)
@@ -964,9 +1023,11 @@ local function handle(event)
 	if kind == "editor_ready" then
 		reply = b.merge(reply, new.ready(event))
 		reply = b.merge(reply, comment.ready(event))
+		reply = b.merge(reply, edit.ready(event))
 		reply = b.merge(reply, work.ready(event))
 	elseif kind == "edit" then
 		reply = b.merge(reply, comment.edited(event))
+		reply = b.merge(reply, edit.edited(event))
 		reply = b.merge(reply, work.edited(event))
 	end
 	for _, action in actions do
@@ -979,7 +1040,7 @@ local function handle(event)
 		S.cursor = nil
 	elseif kind == "files" then
 		-- Files were pasted, dropped or chosen in the Open panel: they are put where they go.
-		reply = b.merge(reply, attach.files(event, { paste = attach_key, drop = drop_key }))
+		reply = b.merge(reply, attach.files(event, { paste = paste_key, drop = drop_key }))
 	elseif kind == "saving" then
 		-- The person chose where a file of Linear is saved: the program writes it there.
 		reply = b.merge(reply, pictures.saving(event))
@@ -1042,6 +1103,7 @@ return {
 	settle = function()
 		local moved = list.settle()
 		moved = attach.settle() or moved
+		moved = edit.settle() or moved
 		return u:settle() or moved
 	end,
 	handle = handle,

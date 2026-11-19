@@ -418,7 +418,7 @@ fn the_pane_is_made_with_no_variable_and_the_agent_is_run_as_ever() {
         "bateri split --right --cwd /work/acme-app/api --label ACM-412 --"
     );
     // The id is in the prompt, once in each command and in no other place.
-    assert_eq!(line.matches(UUID).count(), 4, "{line}");
+    assert_eq!(line.matches(UUID).count(), 6, "{line}");
     let file = prompt
         .strip_prefix("Work on the Linear issue in ")
         .and_then(|rest| rest.split_once(". It was written").map(|(file, _)| file))

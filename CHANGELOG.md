@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Edit descriptions and comments.** `Edit description` (`E`) and `Edit comment` on your own comments
+  (`Cmd Shift M` edits your last one) turn the words into a field; `Save` (`Cmd Enter`) writes them. If
+  someone changed them in Linear meanwhile, nothing is overwritten until you save again.
+- **The same on the command line.** `linearpen update KEY-N --description -` writes a description, and
+  `linearpen comment KEY-N --edit last --body -` edits your last comment; an agent started with Work on is
+  told both.
+
 ## [0.5.0] - 2026-11-19
 
 ### Added

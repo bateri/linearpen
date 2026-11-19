@@ -1,8 +1,9 @@
 //! What is asked of Linear: every operation of the program, as constant text. The pen reads, and
-//! writes three things: the issue the person makes, the change the person makes to issues and the
-//! comment the person writes; and for the pictures the person adds it asks Linear where to put one
+//! writes four things: the issue the person makes, the change the person makes to issues (the words of
+//! a description among them, as the person edits them), the comment the person writes and the edit of
+//! a comment of theirs; and for the pictures the person adds it asks Linear where to put one
 //! (`FileUpload`). Every operation is a plain `query` except `IssueCreate`, `IssueBatchUpdate`,
-//! `CommentCreate` and `FileUpload`, and `ALLOWED_MUTATIONS`
+//! `CommentCreate`, `CommentUpdate` and `FileUpload`, and `ALLOWED_MUTATIONS`
 //! is the one list of what may be a `mutation`: the client refuses to send any other (`mod.rs`), and
 //! the tests scan `ALL` for one. Nothing from outside is put into the text: what varies goes in the
 //! `variables` of the request.
@@ -11,10 +12,11 @@ use serde::Serialize;
 
 /// The mutations the program may send, by name: the one list of what it may write. Anything else
 /// that is a `mutation` is refused before it is sent, however it is named.
-pub const ALLOWED_MUTATIONS: [&str; 4] = [
+pub const ALLOWED_MUTATIONS: [&str; 5] = [
     "IssueCreate",
     "IssueBatchUpdate",
     "CommentCreate",
+    "CommentUpdate",
     "FileUpload",
 ];
 
@@ -204,6 +206,14 @@ pub const FILTER_OPTIONS: Operation = Operation {
            issueLabels(first: 250) { nodes { name color } } }",
 };
 
+/// A comment: its id, its words, when it was written and edited, and who wrote it (and whether that is
+/// the person, who alone may edit it).
+macro_rules! comment_fields {
+    () => {
+        "id body createdAt editedAt user { displayName isMe }"
+    };
+}
+
 /// An issue another issue is tied to, as much as names it and opens it.
 macro_rules! neighbor_fields {
     () => {
@@ -226,8 +236,9 @@ pub const ISSUE: Operation = Operation {
         neighbor_fields!(),
         " } } } inverseRelations(first: 50) { nodes { type issue { ",
         neighbor_fields!(),
-        " } } } comments(first: 50) { nodes { body createdAt user { displayName } } \
-         pageInfo { hasNextPage endCursor } } } }"
+        " } } } comments(first: 50) { nodes { ",
+        comment_fields!(),
+        " } pageInfo { hasNextPage endCursor } } } }"
     ),
 };
 
@@ -254,7 +265,7 @@ pub const NEW_ISSUE_OPTIONS: Operation = Operation {
          issueLabels(first: 100, filter: { team: { null: true } }) { nodes { id name color isGroup } } }",
 };
 
-/// One of the three things the pen writes: the issue the person made in the form. Sent by
+/// One of the four things the pen writes: the issue the person made in the form. Sent by
 /// `linear::create` and by nothing else (it is called from the session and from the command line).
 pub const ISSUE_CREATE: Operation = Operation {
     name: "IssueCreate",
@@ -276,12 +287,40 @@ pub const ISSUE_BATCH_UPDATE: Operation = Operation {
     ),
 };
 
-/// The third thing the pen writes: a comment on an issue, in the words the person wrote (the issue's
-/// description and its team are written by nothing). Sent by `linear::comment` and by nothing else.
+/// The third thing the pen writes: a comment on an issue, in the words the person wrote (and nothing
+/// else rides with it). Sent by `linear::comment` and by nothing else.
 pub const COMMENT_CREATE: Operation = Operation {
     name: "CommentCreate",
-    text: "mutation CommentCreate($input: CommentCreateInput!) { commentCreate(input: $input) { \
-           success comment { id body createdAt user { displayName } } } }",
+    text: concat!(
+        "mutation CommentCreate($input: CommentCreateInput!) { commentCreate(input: $input) { \
+         success comment { ",
+        comment_fields!(),
+        " } } }"
+    ),
+};
+
+/// One comment, by Linear's id: its words whole (the issue's own question cuts none, but tells only the
+/// first fifty), whose it is, and the issue it is on. What an edit begins from and is checked against.
+pub const COMMENT: Operation = Operation {
+    name: "Comment",
+    text: concat!(
+        "query Comment($id: String!) { comment(id: $id) { ",
+        comment_fields!(),
+        " issue { id identifier } } }"
+    ),
+};
+
+/// The words of a comment of the person's, as they edited them: the body and nothing else, to the one
+/// comment named. Sent by `linear::edit` and by nothing else; the program sends it only for a comment
+/// Linear says is the person's.
+pub const COMMENT_UPDATE: Operation = Operation {
+    name: "CommentUpdate",
+    text: concat!(
+        "mutation CommentUpdate($id: String!, $input: CommentUpdateInput!) { \
+         commentUpdate(id: $id, input: $input) { success comment { ",
+        comment_fields!(),
+        " } } }"
+    ),
 };
 
 /// The fourth: where Linear takes a picture the person adds (to a comment, a new issue or the end of
@@ -296,7 +335,7 @@ pub const FILE_UPLOAD: Operation = Operation {
 
 /// Every operation there is, for the test that scans for a `mutation`.
 #[cfg(test)]
-pub const ALL: [Operation; 21] = [
+pub const ALL: [Operation; 23] = [
     VERIFY,
     MY_ISSUES,
     ALL_ISSUES,
@@ -317,6 +356,8 @@ pub const ALL: [Operation; 21] = [
     ISSUE_CREATE,
     ISSUE_BATCH_UPDATE,
     COMMENT_CREATE,
+    COMMENT,
+    COMMENT_UPDATE,
     FILE_UPLOAD,
 ];
 
@@ -430,25 +471,16 @@ mod tests {
                 writes.push(operation.name);
             }
         }
-        // The pen writes three things and asks where to put a picture, and the list says which.
-        assert_eq!(
-            ALLOWED_MUTATIONS,
-            [
-                "IssueCreate",
-                "IssueBatchUpdate",
-                "CommentCreate",
-                "FileUpload"
-            ]
-        );
-        assert_eq!(
-            writes,
-            [
-                "IssueCreate",
-                "IssueBatchUpdate",
-                "CommentCreate",
-                "FileUpload"
-            ]
-        );
+        // The pen writes four things and asks where to put a picture, and the list says which.
+        let listed = [
+            "IssueCreate",
+            "IssueBatchUpdate",
+            "CommentCreate",
+            "CommentUpdate",
+            "FileUpload",
+        ];
+        assert_eq!(ALLOWED_MUTATIONS, listed);
+        assert_eq!(writes, listed);
     }
 
     /// A query added and left out of `ALL` would not be scanned: every `Operation` of this file is in it.
@@ -505,6 +537,19 @@ mod tests {
         not_allowed("Other", COMMENT_CREATE.text);
         not_allowed("IssueCreate", COMMENT_CREATE.text);
         not_allowed("CommentCreate", ISSUE_BATCH_UPDATE.text);
+        // The edit of a comment is listed, and is no other write; the way to take a comment away is not
+        // listed, and does not ride with it.
+        not_allowed("Other", COMMENT_UPDATE.text);
+        not_allowed("CommentCreate", COMMENT_UPDATE.text);
+        not_allowed("CommentUpdate", COMMENT_CREATE.text);
+        not_allowed(
+            "CommentUpdate",
+            "mutation CommentUpdate($id: String!, $input: CommentUpdateInput!) { commentUpdate(id: $id, input: $input) { success } } \
+             mutation CommentDelete($id: String!) { commentDelete(id: $id) { success } }",
+        );
+        assert!(COMMENT_UPDATE.allowed());
+        assert!(!COMMENT_UPDATE.reads_only());
+        assert!(COMMENT.reads_only());
         // The ways to take away what was said are not listed.
         not_allowed(
             "CommentCreate",

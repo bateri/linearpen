@@ -45,6 +45,18 @@ local TABLE = {
 	{ id = "read_up", title = "Scroll the issue up", group = "Issue", keys = { "shift+space" }, when = "reading" },
 	{ id = "work", title = "Work on the issue", group = "Issue", keys = { "w" }, when = "workable" },
 	{ id = "comment", title = "Leave a comment", group = "Issue", keys = { "shift+m" }, when = "commentable" },
+	-- The words of the issue open: its description, and the last comment the person wrote on it (each of
+	-- the person's comments has its own Edit comment too). ⌘Enter saves the edit while its field has the
+	-- keyboard, or while no other field has it.
+	{ id = "edit_description", title = "Edit the description", group = "Issue", keys = { "e" }, when = "describable_words" },
+	{
+		id = "edit_comment",
+		title = "Edit your last comment",
+		group = "Issue",
+		keys = { "mod+shift+m" },
+		when = "comment_editable",
+	},
+	{ id = "edit_save", title = "Save the edit", group = "Issue", keys = { "mod+enter" }, when = "edit_savable" },
 	{ id = "comment_send", title = "Post the comment", group = "Issue", keys = { "mod+enter" }, when = "postable" },
 	-- One key for the three places files are put: the comment while its field has the keyboard, the
 	-- issue that is being made while its form is open, else the description of the issue that is open.

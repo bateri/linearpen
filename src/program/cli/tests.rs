@@ -809,14 +809,15 @@ fn the_commands_the_prompt_gives_the_agent_are_ones_the_command_line_takes() {
         );
         // The commands are what is between the backticks.
         let spans: Vec<&str> = said.split('`').skip(1).step_by(2).collect();
-        assert_eq!(spans.len(), 5, "{said}");
+        assert_eq!(spans.len(), 7, "{said}");
         let read = |span: &str| {
             let words = shell_words(
                 &span
                     .replace("<status>", "In Review")
                     .replace("<title>", "A title")
                     .replace("PATH", "/tmp/shot.png")
-                    .replace("KEY", "ACM"),
+                    .replace("KEY", "ACM")
+                    .replace("--edit ID", "--edit 6d2e0f1e-6d1b-4d7a-9a56-3b1c0a5e7f11"),
             );
             assert_eq!(words[0], exe.unwrap_or("linearpen"), "{span}");
             match command_line::read(words[1..].iter().cloned()) {
@@ -839,13 +840,28 @@ fn the_commands_the_prompt_gives_the_agent_are_ones_the_command_line_takes() {
             panic!("not a comment: {}", spans[2]);
         };
         assert_eq!(with_picture.attach, ["/tmp/shot.png"]);
-        let Command::Update(describe) = read(spans[3]) else {
-            panic!("not an update: {}", spans[3]);
+        let Command::Comment(edit) = read(spans[3]) else {
+            panic!("not a comment: {}", spans[3]);
+        };
+        assert_eq!(
+            edit.edit,
+            Some(crate::command_line::Edited::Id(
+                "6d2e0f1e-6d1b-4d7a-9a56-3b1c0a5e7f11".to_owned()
+            ))
+        );
+        assert_eq!(edit.body, Some(crate::command_line::Words::Stdin));
+        let Command::Update(describe) = read(spans[4]) else {
+            panic!("not an update: {}", spans[4]);
         };
         assert_eq!(describe.issues, [MINE]);
         assert_eq!(describe.attach, ["/tmp/shot.png"]);
-        let Command::Create(create) = read(spans[4]) else {
-            panic!("not a create: {}", spans[4]);
+        let Command::Update(written) = read(spans[5]) else {
+            panic!("not an update: {}", spans[5]);
+        };
+        assert_eq!(written.issues, [MINE]);
+        assert_eq!(written.description, Some(crate::command_line::Words::Stdin));
+        let Command::Create(create) = read(spans[6]) else {
+            panic!("not a create: {}", spans[6]);
         };
         assert_eq!(create.title, "A title");
     }

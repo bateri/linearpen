@@ -1,15 +1,18 @@
-//! Linear: the questions the program asks it and how the answers are read. It reads, and writes three
-//! things, the issue the person makes, the change the person makes to issues and the comment the
-//! person writes, and it puts the pictures the person adds in Linear's storage: the operations are in
-//! `query.rs`, all of them plain `query` but `IssueCreate`, `IssueBatchUpdate`, `CommentCreate` and
-//! `FileUpload`, and `run` refuses anything that is not listed there. `create`, `change`,
-//! `change_all`, `comment`, `add_files` (the one other write of `IssueBatchUpdate`, the end of a
-//! description) and `upload` are the only functions that send them, and each sends once; the page's session and the command line are the two that call them. The way to Linear is
+//! Linear: the questions the program asks it and how the answers are read. It reads, and writes four
+//! things, the issue the person makes, the change the person makes to issues, the comment the person
+//! writes and the words the person edits (of a description, or of a comment of theirs), and it puts the
+//! pictures the person adds in Linear's storage: the operations are in `query.rs`, all of them plain
+//! `query` but `IssueCreate`, `IssueBatchUpdate`, `CommentCreate`, `CommentUpdate` and `FileUpload`,
+//! and `run` refuses anything that is not listed there. `create`, `change`, `change_all`, `comment`,
+//! `add_files`, `edit::save` (a description goes by `describe::write`, the one `IssueBatchUpdate`
+//! of one, and a comment's words by `CommentUpdate`) and `upload` are the only functions that send
+//! them, and each sends once; the page's session and the command line are the two that call them. The way to Linear is
 //! `curl` (`transport.rs`). It knows nothing of the page; it takes and gives plain Rust values.
 
 mod change;
 mod comment;
 mod describe;
+pub mod edit;
 mod error;
 mod filter_options;
 mod filters;
@@ -181,7 +184,7 @@ fn run<V: Serialize, T: DeserializeOwned>(
 ) -> Result<T, Error> {
     if !operation.allowed() {
         return Err(Error::Failed(format!(
-            "{} is not a query, and what this program writes is a new issue, the changes of issues, comments and the pictures of them",
+            "{} is not a query, and what this program writes is a new issue, the changes of issues, comments, the edits of descriptions and comments, and the pictures of them",
             operation.name
         )));
     }
@@ -520,7 +523,11 @@ const NOT_CHANGED: &str = "Linear did not change the issues";
 /// sent and say nothing of whether Linear acted on it.
 #[must_use]
 pub fn left_open(why: &str) -> bool {
-    !(why.starts_with(SAID) || why == NOT_CHANGED || why == NOT_POSTED || why == NOT_MADE)
+    !(why.starts_with(SAID)
+        || why == NOT_CHANGED
+        || why == NOT_POSTED
+        || why == NOT_MADE
+        || why == edit::NOT_EDITED)
 }
 
 #[cfg(test)]

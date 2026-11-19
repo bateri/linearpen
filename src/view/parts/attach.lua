@@ -134,7 +134,9 @@ function attach.add(key, files)
 	-- The tray is laid out below where the person is: the room is scrolled to show it (`settle`).
 	if #tray > 0 then
 		if string.sub(key, 1, 9) == "describe:" then
-			A.reveal = { zone = "describe-zone", mark = "describe-add" }
+			-- (While the description is edited the files go with Save, which is under them.)
+			local edited = act.edit_describing ~= nil and act.edit_describing(string.sub(key, 10))
+			A.reveal = { zone = "describe-zone", mark = edited and "edit-save" or "describe-add" }
 		elseif string.sub(key, 1, 8) == "comment:" then
 			A.reveal = { zone = "comment-box", mark = "comment-send" }
 		end
@@ -249,10 +251,16 @@ local function described(id)
 	return "describe:" .. id
 end
 
+-- Whether an edit of the description of the issue `id` is open: the files chosen for it go with its
+-- Save then, and Add to description and its Cancel are not on the page.
+local function edited(id)
+	return act.edit_describing ~= nil and act.edit_describing(id)
+end
+
 -- Whether files are waiting to be added to the description of the issue that is open.
 function attach.describable()
 	local id = act.panel_id()
-	return id ~= nil and attach.count(described(id)) > 0 and not A.sending[described(id)]
+	return id ~= nil and attach.count(described(id)) > 0 and not A.sending[described(id)] and not edited(id)
 end
 
 -- Sends the files chosen for the description of the issue open, and has them added at its end. The
@@ -288,7 +296,7 @@ end
 -- not being sent): then it is Cancel's, written on Cancel.
 function attach.cancelable()
 	local id = act.panel_id()
-	return id ~= nil and attach.count(described(id)) > 0 and not A.sending[described(id)]
+	return id ~= nil and attach.count(described(id)) > 0 and not A.sending[described(id)] and not edited(id)
 end
 
 -- Esc: what was chosen for the description of the issue open is let go. Whether there was any.
@@ -300,16 +308,32 @@ function attach.cancel()
 	return true
 end
 
--- Under the description: Attach file, and, where files were chosen, them with Add to description and
--- Cancel. The place has an id, which is where a drop on the description is the description's.
-function attach.zone(id, text)
+-- Under the description: Attach file and Edit description (`o.edit`, the edit's), and, where files were
+-- chosen, them with Add to description and Cancel. While the description is edited (`o.actions`, the
+-- edit's Save and Cancel), the files chosen go with Save, which is under them. The place has an id, which
+-- is where a drop on the description is the description's.
+function attach.zone(id, text, o)
+	o = o or {}
 	local key = described(id)
 	local sending = A.sending[key] == true
 	local zone = b.div():id("describe-zone"):col():gap(8):no_shrink()
 	zone:child(text)
+	if o.failure ~= nil then
+		zone:child(o.failure)
+	end
 	local row = b.div():row():items_center():gap(8):mt(10):no_shrink():child(attach.button("describe", sending))
+	if o.edit ~= nil then
+		row:child(o.edit)
+	end
 	zone:child(row)
 	local tray = attach.tray(key, sending)
+	if o.actions ~= nil then
+		if tray ~= nil then
+			zone:child(tray)
+		end
+		zone:child(o.actions)
+		return zone
+	end
 	if tray ~= nil then
 		zone:child(tray)
 		local said = b.spacer()
@@ -375,6 +399,11 @@ function attach.files(event, places)
 		local issue = string.match(key, "^comment:(.+)$")
 		if issue ~= nil and act.comment_focus ~= nil then
 			return act.comment_focus(issue)
+		end
+		-- And the field of the edit of the description, where they are its own.
+		local described_issue = string.match(key, "^describe:(.+)$")
+		if described_issue ~= nil and act.edit_focus ~= nil then
+			return act.edit_focus(described_issue) or true
 		end
 	end
 	return true

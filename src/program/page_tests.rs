@@ -108,6 +108,11 @@ pub(crate) struct Canned {
     /// How a comment is answered, and the inputs of the `CommentCreate` requests that were sent.
     comment: Mutex<Comment>,
     comments: Mutex<Vec<serde_json::Value>>,
+    /// The `CommentUpdate` requests that were sent, in order (`{ "id", "body" }`): `Issue` and
+    /// `Comment` tell each comment in its last words from then on, edited. Where `edit_lost` is set the
+    /// edit is made and its answer is not given.
+    comment_edits: Mutex<Vec<serde_json::Value>>,
+    edit_lost: Mutex<bool>,
     /// What each issue was changed to, in order: the lists and `Issue` answer with it from then on.
     edits: Mutex<std::collections::HashMap<String, Vec<serde_json::Value>>>,
     /// The team of an issue where it is not Acme's: the id and the key.
@@ -184,6 +189,8 @@ impl Canned {
             changes: Mutex::new(Vec::new()),
             comment: Mutex::new(Comment::Fine),
             comments: Mutex::new(Vec::new()),
+            comment_edits: Mutex::new(Vec::new()),
+            edit_lost: Mutex::new(false),
             edits: Mutex::new(std::collections::HashMap::new()),
             teams_of: Mutex::new(std::collections::HashMap::new()),
             ledger: Mutex::new(None),
@@ -295,6 +302,25 @@ impl Canned {
     /// The `CommentCreate` requests that were sent, in order: `{ "id", "issueId", "body" }`.
     pub(crate) fn commented(&self) -> Vec<serde_json::Value> {
         self.comments.lock().unwrap().clone()
+    }
+
+    /// The `CommentUpdate` requests that were sent, in order: `{ "id", "body" }`.
+    pub(crate) fn comment_edits(&self) -> Vec<serde_json::Value> {
+        self.comment_edits.lock().unwrap().clone()
+    }
+
+    /// From now on an edit of a comment is made and its answer never comes.
+    pub(crate) fn set_edit_lost(&self) {
+        *self.edit_lost.lock().unwrap() = true;
+    }
+
+    /// The comments of the issue `id` as `Issue` tells them, each in its last words.
+    fn comments_of(&self, id: &str) -> Vec<serde_json::Value> {
+        let value: serde_json::Value = serde_json::from_str(&self.detail_of(id)).unwrap();
+        value["data"]["issue"]["comments"]["nodes"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default()
     }
 
     /// The `IssueBatchUpdate` requests that were sent, in order: `{ "ids": [..], "input": {..} }`.
@@ -511,6 +537,18 @@ impl Canned {
         for edit in self.edits.lock().unwrap().get(id).into_iter().flatten() {
             if let Some(description) = edit.get("description") {
                 value["data"]["issue"]["description"] = description.clone();
+            }
+        }
+        // And a comment edited is in its last words.
+        for edit in self.comment_edits.lock().unwrap().iter() {
+            if let Some(nodes) = value["data"]["issue"]["comments"]["nodes"].as_array_mut() {
+                for comment in nodes
+                    .iter_mut()
+                    .filter(|comment| comment["id"] == edit["id"])
+                {
+                    comment["body"] = edit["body"].clone();
+                    comment["editedAt"] = serde_json::json!("2026-11-12T09:30:00.000Z");
+                }
             }
         }
         value.to_string()
@@ -810,6 +848,8 @@ impl Transport for Canned {
             "IssueCreate",
             "IssueBatchUpdate",
             "CommentCreate",
+            "CommentUpdate",
+            "Comment",
             "TeamIssues",
             "CycleIssues",
             "ViewIssues",
@@ -975,6 +1015,56 @@ impl Transport for Canned {
                         ),
                     }
                 }
+                "Comment" => {
+                    // The comment by its id, of the issues the tests open (ACM-412 and those set).
+                    let asked: serde_json::Value = serde_json::from_str(body).unwrap();
+                    let id = asked["variables"]["id"].as_str().unwrap_or_default();
+                    let mut issues: Vec<String> = vec!["issue-412".to_owned()];
+                    issues.extend(self.details.lock().unwrap().keys().cloned());
+                    for issue in issues {
+                        let found = self
+                            .comments_of(&issue)
+                            .into_iter()
+                            .find(|comment| comment["id"] == id);
+                        if let Some(mut comment) = found {
+                            let identifier = self.node_of(&issue).map_or_else(
+                                || "ACM-412".into(),
+                                |node| node["identifier"].clone(),
+                            );
+                            comment["issue"] =
+                                serde_json::json!({ "id": issue, "identifier": identifier });
+                            return reply(
+                                200,
+                                &serde_json::json!({ "data": { "comment": comment } }).to_string(),
+                            );
+                        }
+                    }
+                    reply(
+                        200,
+                        r#"{"data":null,"errors":[{"message":"Entity not found: Comment"}]}"#,
+                    )
+                }
+                "CommentUpdate" => {
+                    let asked: serde_json::Value = serde_json::from_str(body).unwrap();
+                    let id = asked["variables"]["id"].clone();
+                    let words = asked["variables"]["input"]["body"].clone();
+                    self.comment_edits
+                        .lock()
+                        .unwrap()
+                        .push(serde_json::json!({ "id": id, "body": words }));
+                    if *self.edit_lost.lock().unwrap() {
+                        return Err(LinearError::Unreachable("timed out".to_owned()));
+                    }
+                    reply(
+                        200,
+                        &serde_json::json!({ "data": { "commentUpdate": { "success": true,
+                            "comment": { "id": id, "body": words,
+                                "createdAt": "2026-11-10T09:30:00.000Z",
+                                "editedAt": "2026-11-12T09:30:00.000Z",
+                                "user": { "displayName": "Ada", "isMe": true } } } } })
+                        .to_string(),
+                    )
+                }
                 "IssueCreate" => {
                     let asked: serde_json::Value = serde_json::from_str(body).unwrap();
                     let input = asked["variables"]["input"].clone();
@@ -1101,6 +1191,26 @@ pub(crate) fn open_lists(size: (f32, f32)) -> (Arc<Canned>, Arc<Session>, Page) 
 }
 
 /// The words of the page, one string.
+/// From now on ACM-412 has a third comment, the person's own (Ada's), after the fixture's two: the one
+/// an edit of a comment is of.
+pub(crate) fn with_my_comment(linear: &Canned) {
+    let fixture: serde_json::Value = serde_json::from_str(ISSUE).unwrap();
+    let mut nodes = fixture["data"]["issue"]["comments"]["nodes"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    nodes.push(serde_json::json!({
+        "id": "c-ada", "body": "Started on it: a sliding window per key, in Redis.",
+        "createdAt": "2026-11-10T11:05:00.000Z", "editedAt": null,
+        "user": { "displayName": "Ada", "isMe": true }
+    }));
+    linear.set_detail(
+        "issue-412",
+        serde_json::json!({ "comments": { "nodes": nodes,
+            "pageInfo": { "hasNextPage": false, "endCursor": null } } }),
+    );
+}
+
 pub(crate) fn said(page: &Page) -> String {
     page.words().join("|")
 }
@@ -7189,4 +7299,277 @@ fn the_row_of_filters_opens_from_the_line_of_keys_and_a_press_elsewhere_puts_it_
     page.click("filters-clear").expect("Clear filters");
     page.wait_for(WITHIN, |page| !pressable(page, "filters:priority"))
         .unwrap_or_else(|why| panic!("they are let go of: {why:?}: {}", said(&page)));
+}
+
+// --- The edit of the words of an issue ------------------------------------------------------------------
+// Edit description (`e`) and Edit comment (⌘⇧M, the person's last comment) make the words a field that
+// holds them whole as Linear holds them now; Save writes the words alone, where Linear holds what the
+// edit began from; Esc leaves the field and then lets the edit go.
+
+/// The field of the first edit of the issue `id` the page begins.
+fn edit_editor(id: &str) -> String {
+    format!("edit-{id}-1")
+}
+
+/// The page over the fixtures with a comment of the person's on ACM-412, the issue open with its
+/// controls.
+fn open_with_my_comment() -> (Arc<Canned>, Arc<Session>, Page) {
+    let linear = Canned::new(Mode::Fine);
+    with_my_comment(&linear);
+    let session = session_over(&linear, Some("lin_api_test"), None);
+    let mut page = open(&session, WIDE, None, "ACM-412").expect("the page opens");
+    open_the_controls(&mut page);
+    (linear, session, page)
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn e_edits_the_description_whole_as_linear_holds_it_and_save_writes_the_words_alone() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    // Linear holds more than the page is told (20 000 characters): the edit is of all of it.
+    let long = format!("One API key, {}\n\nThe end of it.", "word ".repeat(4100));
+    linear.set_detail("issue-412", serde_json::json!({ "description": long }));
+    open_the_controls(&mut page);
+    assert!(page.says("Edit description"), "{}", said(&page));
+    assert!(palette_offers(&mut page, "Edit the description"));
+    page.press("e").expect("e");
+    page.wait_for(WITHIN, |page| typing_in(page, &edit_editor("issue-412")))
+        .unwrap_or_else(|why| panic!("the keyboard is in the field: {why:?}: {}", said(&page)));
+    assert_eq!(
+        page.editor_text(&edit_editor("issue-412")).as_deref(),
+        Some(long.as_str())
+    );
+    // Every key is the field's: a letter of a command is a word.
+    page.type_text(" Done s").expect("the words");
+    page.advance(0.3).expect("a moment");
+    assert!(page.menu().is_none());
+    assert!(
+        linear.changed().is_empty(),
+        "nothing is written while it is typed"
+    );
+    page.wait_for(WITHIN, |page| pressable(page, "edit-save"))
+        .unwrap_or_else(|why| panic!("Save can be pressed: {why:?}: {}", said(&page)));
+    page.press("mod+enter").expect("command and enter");
+    changed(&linear, &mut page, 1);
+    let sent = &linear.changed()[0];
+    assert_eq!(sent["ids"], serde_json::json!(["issue-412"]));
+    assert_eq!(
+        sent["input"],
+        serde_json::json!({ "description": format!("{long} Done s") })
+    );
+    // The field goes, the description is Linear's words, and nothing is sent again.
+    page.wait_for(WITHIN, |page| {
+        !page.says("Save") && page.says("Edit description")
+    })
+    .unwrap_or_else(|why| panic!("the edit is done: {why:?}: {}", said(&page)));
+    assert!(!typing_in(&page, &edit_editor("issue-412")));
+    page.press("mod+enter").expect("command and enter");
+    page.advance(0.4).expect("a moment");
+    assert_eq!(linear.changed().len(), 1);
+    assert!(linear.comment_edits().is_empty() && linear.commented().is_empty());
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn command_shift_m_edits_the_persons_last_comment_and_only_their_comments_have_edit_comment() {
+    let (linear, _session, mut page) = open_with_my_comment();
+    // One Edit comment: on Ada's comment; Deniz's and Mert's have none.
+    let edits = |page: &Page| {
+        page.words()
+            .iter()
+            .filter(|word| **word == "Edit comment")
+            .count()
+    };
+    assert_eq!(edits(&page), 1, "{}", said(&page));
+    assert!(pressable(&page, "edit-comment:c-ada"));
+    assert!(palette_offers(&mut page, "Edit your last comment"));
+    page.press("mod+shift+m").expect("command, shift and m");
+    page.wait_for(WITHIN, |page| typing_in(page, &edit_editor("issue-412")))
+        .unwrap_or_else(|why| panic!("the keyboard is in the field: {why:?}: {}", said(&page)));
+    let was = "Started on it: a sliding window per key, in Redis.";
+    assert_eq!(
+        page.editor_text(&edit_editor("issue-412")).as_deref(),
+        Some(was)
+    );
+    // While it is edited, its Edit comment and Edit description stand where they were, dim.
+    assert_eq!(edits(&page), 1, "{}", said(&page));
+    assert!(!pressable(&page, "edit-comment:c-ada"));
+    assert!(!pressable(&page, "edit-description"));
+    // A comment is not left empty.
+    for _ in 0..utf8_len(was) {
+        page.press("backspace").expect("backspace");
+    }
+    page.wait_for(WITHIN, |page| {
+        page.editor_text(&edit_editor("issue-412")).as_deref() == Some("")
+    })
+    .unwrap_or_else(|why| panic!("the field is empty: {why:?}: {}", said(&page)));
+    assert!(!pressable(&page, "edit-save"));
+    page.type_text("Done: a window per key.")
+        .expect("the words");
+    page.wait_for(WITHIN, |page| pressable(page, "edit-save"))
+        .unwrap_or_else(|why| panic!("Save can be pressed: {why:?}: {}", said(&page)));
+    page.press("mod+enter").expect("command and enter");
+    page.wait_for(WITHIN, |_| linear.comment_edits().len() == 1)
+        .unwrap_or_else(|why| panic!("the edit is sent: {why:?}: {}", said(&page)));
+    assert_eq!(
+        linear.comment_edits()[0],
+        serde_json::json!({ "id": "c-ada", "body": "Done: a window per key." })
+    );
+    assert!(linear.commented().is_empty(), "no comment is posted");
+    assert!(linear.changed().is_empty(), "no issue is changed");
+    page.wait_for(WITHIN, |page| {
+        page.says("Done: a window per key.") && page.says("edited") && !page.says("Save")
+    })
+    .unwrap_or_else(|why| panic!("the comment is in its new words: {why:?}: {}", said(&page)));
+}
+
+fn utf8_len(words: &str) -> usize {
+    words.chars().count()
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn an_edit_of_words_someone_changed_meanwhile_is_not_saved_until_it_is_saved_again() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    open_the_controls(&mut page);
+    page.press("e").expect("e");
+    page.wait_for(WITHIN, |page| typing_in(page, &edit_editor("issue-412")))
+        .unwrap_or_else(|why| panic!("the keyboard is in the field: {why:?}: {}", said(&page)));
+    let was = page
+        .editor_text(&edit_editor("issue-412"))
+        .unwrap_or_default();
+    page.type_text("Mine").expect("the words");
+    // Someone else writes the description in Linear meanwhile.
+    linear.set_detail("issue-412", serde_json::json!({ "description": "Theirs" }));
+    page.press("mod+enter").expect("command and enter");
+    page.wait_for(WITHIN, |page| page.says("Someone changed it in Linear"))
+        .unwrap_or_else(|why| panic!("it says why: {why:?}: {}", said(&page)));
+    assert!(linear.changed().is_empty(), "theirs is not written over");
+    assert_eq!(
+        page.editor_text(&edit_editor("issue-412"))
+            .unwrap_or_default(),
+        format!("{was}Mine"),
+        "the words are kept"
+    );
+    // Saved again, the person's words take the place of theirs.
+    page.wait_for(WITHIN, |page| pressable(page, "edit-save"))
+        .unwrap_or_else(|why| panic!("Save can be pressed: {why:?}: {}", said(&page)));
+    page.click("edit-save").expect("Save");
+    changed(&linear, &mut page, 1);
+    assert_eq!(
+        linear.changed()[0]["input"],
+        serde_json::json!({ "description": format!("{was}Mine") })
+    );
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_words_of_an_edit_stay_with_its_issue_and_esc_lets_them_go_only_when_the_person_says_so() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    open_the_controls(&mut page);
+    page.press("e").expect("e");
+    page.wait_for(WITHIN, |page| typing_in(page, &edit_editor("issue-412")))
+        .unwrap_or_else(|why| panic!("the keyboard is in the field: {why:?}: {}", said(&page)));
+    let was = page
+        .editor_text(&edit_editor("issue-412"))
+        .unwrap_or_default();
+    page.type_text("Half").expect("the words");
+    // Esc takes the keyboard out of the field: the words stay, and Cancel says it is Esc's now.
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| !typing_in(page, &edit_editor("issue-412")))
+        .unwrap_or_else(|why| panic!("the keyboard is out: {why:?}: {}", said(&page)));
+    assert!(page.says("Save"), "{}", said(&page));
+    assert!(page.says("Esc"), "{}", said(&page));
+    // Another issue, and back: the words are there still.
+    page.press("down").expect("down");
+    page.wait_for(WITHIN, |page| {
+        page.says("Checkout test fails") && !page.says("Save")
+    })
+    .unwrap_or_else(|why| panic!("the next issue is open: {why:?}: {}", said(&page)));
+    page.press("up").expect("up");
+    page.wait_for(WITHIN, |page| {
+        page.editor_text(&edit_editor("issue-412")).as_deref()
+            == Some(format!("{was}Half").as_str())
+    })
+    .unwrap_or_else(|why| panic!("the words are kept: {why:?}: {}", said(&page)));
+    // Esc again is Cancel's, and words that were changed are not let go without a word: it asks.
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| page.menu().is_some())
+        .unwrap_or_else(|why| panic!("it asks: {why:?}: {}", said(&page)));
+    assert_eq!(menu_titles(&page), ["Discard the edit", "Keep editing"]);
+    page.pick_titled("Keep editing").expect("keep");
+    page.wait_for(WITHIN, |page| typing_in(page, &edit_editor("issue-412")))
+        .unwrap_or_else(|why| {
+            panic!(
+                "the words have the keyboard again: {why:?}: {}",
+                said(&page)
+            )
+        });
+    assert_eq!(
+        page.editor_text(&edit_editor("issue-412"))
+            .unwrap_or_default(),
+        format!("{was}Half")
+    );
+    page.press("escape").expect("escape");
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| page.menu().is_some())
+        .unwrap_or_else(|why| panic!("it asks: {why:?}: {}", said(&page)));
+    page.pick_titled("Discard the edit").expect("discard");
+    page.wait_for(WITHIN, |page| {
+        !page.says("Save") && page.says("Edit description")
+    })
+    .unwrap_or_else(|why| panic!("the edit is let go: {why:?}: {}", said(&page)));
+    assert!(page.bounds("panel-close").is_some(), "the issue is open");
+    page.advance(0.4).expect("a moment");
+    assert!(linear.changed().is_empty() && linear.comment_edits().is_empty());
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn an_edit_whose_answer_was_lost_says_so_and_saving_again_sends_nothing_twice() {
+    let (linear, _session, mut page) = open_with_my_comment();
+    linear.set_edit_lost();
+    // (The comments are at the end of the issue: ⇧M brings it into view, Esc leaves the field.)
+    page.press("shift+m").expect("shift and m");
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| page.bounds("edit-comment:c-ada").is_some())
+        .unwrap_or_else(|why| panic!("Edit comment is in view: {why:?}: {}", said(&page)));
+    page.advance(0.4).expect("a moment");
+    page.click("edit-comment:c-ada").expect("Edit comment");
+    page.wait_for(WITHIN, |page| typing_in(page, &edit_editor("issue-412")))
+        .unwrap_or_else(|why| panic!("the keyboard is in the field: {why:?}: {}", said(&page)));
+    page.type_text(" Done.").expect("the words");
+    page.press("mod+enter").expect("command and enter");
+    page.wait_for(WITHIN, |page| page.says("to make sure"))
+        .unwrap_or_else(|why| panic!("it says it may have been saved: {why:?}: {}", said(&page)));
+    assert_eq!(linear.comment_edits().len(), 1);
+    // Linear holds the words: saving again finds them there and sends nothing.
+    page.press("mod+enter").expect("command and enter");
+    page.wait_for(WITHIN, |page| !page.says("Save") && page.says("edited"))
+        .unwrap_or_else(|why| panic!("the edit is done: {why:?}: {}", said(&page)));
+    assert_eq!(linear.comment_edits().len(), 1, "sent once");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn an_edit_that_holds_nothing_new_is_let_go_at_once_and_save_writes_nothing() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    open_the_controls(&mut page);
+    page.press("e").expect("e");
+    page.wait_for(WITHIN, |page| typing_in(page, &edit_editor("issue-412")))
+        .unwrap_or_else(|why| panic!("the keyboard is in the field: {why:?}: {}", said(&page)));
+    page.press("escape").expect("escape");
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| !page.says("Save"))
+        .unwrap_or_else(|why| panic!("the edit is let go: {why:?}: {}", said(&page)));
+    assert!(page.menu().is_none());
+    // Saved as it was, it is the same: nothing is written.
+    page.press("e").expect("e");
+    page.wait_for(WITHIN, |page| pressable(page, "edit-save"))
+        .unwrap_or_else(|why| panic!("Save can be pressed: {why:?}: {}", said(&page)));
+    page.press("mod+enter").expect("command and enter");
+    page.wait_for(WITHIN, |page| !page.says("Save"))
+        .unwrap_or_else(|why| panic!("the edit is done: {why:?}: {}", said(&page)));
+    page.advance(0.4).expect("a moment");
+    assert!(linear.changed().is_empty());
 }

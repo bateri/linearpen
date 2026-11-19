@@ -4,7 +4,7 @@
 
 use super::scan::{Scanned, many, one, scan, switch};
 use crate::linear::images::SEND_MOST;
-use crate::linear::limits::{BODY_MOST, DESCRIPTION_MOST, TITLE_MOST};
+use crate::linear::limits::{BODY_MOST, DESCRIPTION_MOST, EDIT_MOST, TITLE_MOST, is_ref};
 use crate::linear::{BATCH_MOST, Change, Priority};
 use crate::state::draft;
 
@@ -95,10 +95,20 @@ pub struct Update {
     pub fields: Fields,
     /// Names of labels the issues lose.
     pub unlabel: Vec<String>,
+    /// The words the description of the one issue is made, whole: with `attach` (whose files go at
+    /// their end) the whole of the update.
+    pub description: Option<Words>,
     /// Paths of files added at the end of the description of the one issue, which is then the whole
     /// of the update.
     pub attach: Vec<String>,
     pub json: bool,
+}
+
+/// The comment of the person's that is edited: the last they wrote on the issue, or one by its id.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Edited {
+    Last,
+    Id(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -107,6 +117,9 @@ pub struct Comment {
     /// Absent where there are files and no words.
     pub body: Option<Words>,
     pub attach: Vec<String>,
+    /// Where it is given, the words are put in the place of a comment of the person's (`--edit`): no
+    /// comment is posted, and no file goes with it.
+    pub edit: Option<Edited>,
     pub json: bool,
 }
 
@@ -435,8 +448,8 @@ fn update(args: &[String]) -> Result<Read, String> {
         one("due"),
         one("title"),
         many("attach"),
-        // Not changed by any way there is: named so that they are refused in words.
         one("description"),
+        // Not changed by any way there is: named so that it is refused in words.
         one("team"),
         switch("json"),
     ];
@@ -444,9 +457,13 @@ fn update(args: &[String]) -> Result<Read, String> {
     if found.help {
         return Ok(Read::Say(super::help::UPDATE.to_owned()));
     }
-    if found.has("description") || found.has("team") {
-        return Err("linearpen never changes the words of an issue's description, or its team (--attach adds files at the end of a description)".to_owned());
+    if found.has("team") {
+        return Err("linearpen never moves an issue to another team".to_owned());
     }
+    let description = found
+        .value("description")
+        .map(|value| words("description", value, EDIT_MOST))
+        .transpose()?;
     let mut issues: Vec<String> = Vec::new();
     for word in &found.positional {
         let key = issue_key(word).ok_or_else(|| {
@@ -472,7 +489,16 @@ fn update(args: &[String]) -> Result<Read, String> {
     let unlabel = named_all("unlabel", found.values("unlabel"))?;
     let attach = attached(&found)?;
     let nothing = heading.is_none() && unlabel.is_empty() && fields == Fields::default();
-    if !attach.is_empty() {
+    if description.is_some() {
+        if issues.len() > 1 {
+            return Err(
+                "--description is of one issue: each issue has words of its own".to_owned(),
+            );
+        }
+        if !nothing {
+            return Err("--description is the only option of its update, with --attach: it writes the description, and the other options change the issue, so run them one after the other".to_owned());
+        }
+    } else if !attach.is_empty() {
         if issues.len() > 1 {
             return Err(
                 "--attach is of one issue: its files go to the end of one description".to_owned(),
@@ -482,7 +508,7 @@ fn update(args: &[String]) -> Result<Read, String> {
             return Err("--attach is the only option of its update: it adds to the description, and the other options change the issue, so run them one after the other".to_owned());
         }
     } else if nothing {
-        return Err("update has nothing to change: give one of --status, --priority, --assignee, --label, --unlabel, --project, --cycle, --estimate, --due, --title and --attach".to_owned());
+        return Err("update has nothing to change: give one of --status, --priority, --assignee, --label, --unlabel, --project, --cycle, --estimate, --due, --title, --description and --attach".to_owned());
     }
     let lower = |name: &str| name.to_lowercase();
     if let Some(both) = fields
@@ -497,6 +523,7 @@ fn update(args: &[String]) -> Result<Read, String> {
         title: heading,
         fields,
         unlabel,
+        description,
         attach,
         json: found.has("json"),
     }))))
@@ -506,13 +533,38 @@ fn comment(args: &[String]) -> Result<Read, String> {
     let found = scan(
         "comment",
         args,
-        &[one("body"), many("attach"), switch("json")],
+        &[one("body"), many("attach"), one("edit"), switch("json")],
     )?;
     if found.help {
         return Ok(Read::Say(super::help::COMMENT.to_owned()));
     }
     let issue = the_issue("comment", &found)?;
     let attach = attached(&found)?;
+    if let Some(which) = found.value("edit") {
+        let edit = match which {
+            "last" => Edited::Last,
+            id if is_ref(id) => Edited::Id(id.to_owned()),
+            _ => {
+                return Err("--edit is last (the last comment you wrote on the issue) or the id of a comment of yours (show --json)".to_owned());
+            }
+        };
+        if !attach.is_empty() {
+            return Err("--edit takes no --attach: a file goes in a comment of its own".to_owned());
+        }
+        let Some(body) = found.value("body") else {
+            return Err(
+                "--edit needs --body, the words the comment is made, or - for them on stdin"
+                    .to_owned(),
+            );
+        };
+        return Ok(Read::Do(Command::Comment(Comment {
+            issue,
+            body: Some(words("body", body, EDIT_MOST)?),
+            attach,
+            edit: Some(edit),
+            json: found.has("json"),
+        })));
+    }
     let body = match found.value("body") {
         Some(body) => Some(words("body", body, BODY_MOST)?),
         None if attach.is_empty() => {
@@ -527,6 +579,7 @@ fn comment(args: &[String]) -> Result<Read, String> {
         issue,
         body,
         attach,
+        edit: None,
         json: found.has("json"),
     })))
 }
@@ -876,18 +929,16 @@ mod tests {
         assert!(
             refused("update", &["ACM-1", "ACM-2", "--title", "x"]).contains("--title is of one")
         );
-        assert!(
-            refused("update", &["ACM-1", "--description", "x"])
-                .contains("never changes the words of an issue's description, or its team")
-        );
-        assert!(
-            refused("update", &["ACM-1", "--team", "WEB"])
-                .contains("never changes the words of an issue's description, or its team")
-        );
+        assert!(refused("update", &["ACM-1", "--team", "WEB"]).contains("another team"));
         assert!(
             refused("update", &["ACM-1", "--description=x", "--status", "a"])
-                .contains("description, or its team")
+                .contains("--description is the only option")
         );
+        assert!(
+            refused("update", &["ACM-1", "ACM-2", "--description", "x"])
+                .contains("--description is of one issue")
+        );
+        assert!(refused("update", &["ACM-1", "--description", " "]).contains("--description"));
         assert!(refused("update", &["nope", "--status", "a"]).contains("not an issue"));
     }
 
@@ -905,6 +956,73 @@ mod tests {
     }
 
     #[test]
+    fn update_writes_a_description_whole_for_one_issue_with_its_files_and_nothing_else() {
+        let Command::Update(update) = command("update", &["acm-1", "--description", "-"]) else {
+            panic!()
+        };
+        assert_eq!(update.description, Some(Words::Stdin));
+        assert_eq!(update.issues, ["ACM-1"]);
+        let Command::Update(update) = command(
+            "update",
+            &["ACM-1", "--description=New words", "--attach", "shot.png"],
+        ) else {
+            panic!()
+        };
+        assert_eq!(
+            update.description,
+            Some(Words::Given("New words".to_owned()))
+        );
+        assert_eq!(update.attach, ["shot.png"]);
+    }
+
+    #[test]
+    fn comment_edit_names_the_last_comment_or_one_by_its_id_and_takes_words_and_no_file() {
+        let Command::Comment(given) =
+            command("comment", &["ACM-412", "--edit", "last", "--body", "-"])
+        else {
+            panic!()
+        };
+        assert_eq!(given.edit, Some(Edited::Last));
+        assert_eq!(given.body, Some(Words::Stdin));
+        let Command::Comment(given) = command(
+            "comment",
+            &[
+                "ACM-412",
+                "--edit",
+                "5c1c2a58-7d5e-4c0b-9b43-1c8f0f6f2d11",
+                "--body=Fixed",
+            ],
+        ) else {
+            panic!()
+        };
+        assert_eq!(
+            given.edit,
+            Some(Edited::Id(
+                "5c1c2a58-7d5e-4c0b-9b43-1c8f0f6f2d11".to_owned()
+            ))
+        );
+        assert!(refused("comment", &["ACM-412", "--edit", "last"]).contains("--body"));
+        assert!(
+            refused(
+                "comment",
+                &[
+                    "ACM-412", "--edit", "last", "--body", "x", "--attach", "a.png"
+                ]
+            )
+            .contains("--attach")
+        );
+        assert!(
+            refused("comment", &["ACM-412", "--edit", "a b", "--body", "x"]).contains("--edit")
+        );
+        // A comment edited is longer than one posted may be: it was written in Linear, perhaps.
+        let long = "x".repeat(10_001);
+        assert!(matches!(
+            run("comment", &["ACM-412", "--edit", "last", "--body", &long]),
+            Read::Do(_)
+        ));
+    }
+
+    #[test]
     fn comment_takes_an_issue_and_words_or_stdin() {
         assert_eq!(
             command("comment", &["acm-412", "--body", "-"]),
@@ -912,6 +1030,7 @@ mod tests {
                 issue: "ACM-412".to_owned(),
                 body: Some(Words::Stdin),
                 attach: Vec::new(),
+                edit: None,
                 json: false
             })
         );

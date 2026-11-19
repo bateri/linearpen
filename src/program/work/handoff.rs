@@ -550,12 +550,14 @@ pub fn words(text: &str) -> Result<Option<String>, String> {
 
 /// What the agent is told it can write in Linear, and how: a command each, with `{exe}` and `{issue}`
 /// in the places the program and the issue's id go, and `<status>` where a status goes. The same words
-/// are read by the command line in a test, so that what the agent is told to run is something
-/// `linearpen` takes.
+/// are read by the command line in a test (`command_line`), so that what the agent is told to run is
+/// something `linearpen` takes.
 pub const UPDATE_COMMAND: &str = "{exe} update {issue} --status \"<status>\"";
 pub const COMMENT_COMMAND: &str = "{exe} comment {issue} --body -";
 pub const COMMENT_FILE_COMMAND: &str = "{exe} comment {issue} --body - --attach PATH";
+pub const COMMENT_EDIT_COMMAND: &str = "{exe} comment {issue} --edit ID --body -";
 pub const DESCRIBE_COMMAND: &str = "{exe} update {issue} --attach PATH";
+pub const DESCRIPTION_COMMAND: &str = "{exe} update {issue} --description -";
 pub const CREATE_COMMAND: &str = "{exe} create --team KEY --title \"<title>\" --description -";
 
 /// What the agent is told it can write: the program to run, and the issue it was started on.
@@ -598,11 +600,13 @@ fn command_of(template: &str, writes: &Writes<'_>) -> String {
 /// be done unasked.
 fn writing(writes: &Writes<'_>) -> String {
     format!(
-        "When the work is done, or you cannot go on, linearpen can write in Linear for you: it can move this issue to another status, `{}` (a status that is not one of the team's is refused with the names there are); comment on it, `{}` with the words of the comment on stdin, and with `{}` a file of any kind, such as a screenshot or a log, goes at the end of the comment; add files to the end of its description, `{}`; and make another issue, `{}`. linearpen help COMMAND says the options of each.",
+        "When the work is done, or you cannot go on, linearpen can write in Linear for you: it can move this issue to another status, `{}` (a status that is not one of the team's is refused with the names there are); comment on it, `{}` with the words of the comment on stdin, and with `{}` a file of any kind, such as a screenshot or a log, goes at the end of the comment; edit a comment you posted, `{}` with its new words on stdin (ID is the id comment --json printed when you posted it: the key is the person's, and linearpen cannot tell their comments from yours); add files to the end of its description, `{}`, or write its description anew, `{}` with the whole of it on stdin (it takes the place of the whole description: read it first with show); and make another issue, `{}`. linearpen help COMMAND says the options of each.",
         command_of(UPDATE_COMMAND, writes),
         command_of(COMMENT_COMMAND, writes),
         command_of(COMMENT_FILE_COMMAND, writes),
+        command_of(COMMENT_EDIT_COMMAND, writes),
         command_of(DESCRIBE_COMMAND, writes),
+        command_of(DESCRIPTION_COMMAND, writes),
         command_of(CREATE_COMMAND, writes)
     )
 }
@@ -1003,6 +1007,8 @@ mod tests {
             .unwrap()
             .nodes
             .push(crate::linear::types::Comment {
+                id: "c-0".to_owned(),
+                edited_at: None,
                 body: "Earlier than the other".to_owned(),
                 created_at: "2026-11-01T09:00:00.000Z".to_owned(),
                 user: None,
@@ -1136,7 +1142,7 @@ mod tests {
         assert_eq!(
             parts[2],
             format!(
-                "When the work is done, or you cannot go on, linearpen can write in Linear for you: it can move this issue to another status, `{bin} update {ISSUE} --status \"<status>\"` (a status that is not one of the team's is refused with the names there are); comment on it, `{bin} comment {ISSUE} --body -` with the words of the comment on stdin, and with `{bin} comment {ISSUE} --body - --attach PATH` a file of any kind, such as a screenshot or a log, goes at the end of the comment; add files to the end of its description, `{bin} update {ISSUE} --attach PATH`; and make another issue, `{bin} create --team KEY --title \"<title>\" --description -`. linearpen help COMMAND says the options of each."
+                "When the work is done, or you cannot go on, linearpen can write in Linear for you: it can move this issue to another status, `{bin} update {ISSUE} --status \"<status>\"` (a status that is not one of the team's is refused with the names there are); comment on it, `{bin} comment {ISSUE} --body -` with the words of the comment on stdin, and with `{bin} comment {ISSUE} --body - --attach PATH` a file of any kind, such as a screenshot or a log, goes at the end of the comment; edit a comment you posted, `{bin} comment {ISSUE} --edit ID --body -` with its new words on stdin (ID is the id comment --json printed when you posted it: the key is the person's, and linearpen cannot tell their comments from yours); add files to the end of its description, `{bin} update {ISSUE} --attach PATH`, or write its description anew, `{bin} update {ISSUE} --description -` with the whole of it on stdin (it takes the place of the whole description: read it first with show); and make another issue, `{bin} create --team KEY --title \"<title>\" --description -`. linearpen help COMMAND says the options of each."
             )
         );
         // It says what can be done: it neither lets the agent skip a question nor says it is refused.
@@ -1165,6 +1171,8 @@ mod tests {
         );
         issue.comments = Some(crate::linear::types::Comments {
             nodes: vec![crate::linear::types::Comment {
+                id: "c-1".to_owned(),
+                edited_at: None,
                 body: "[the log](https://uploads.linear.app/w/2/c.log)".to_owned(),
                 created_at: "2026-11-10T10:00:00.000Z".to_owned(),
                 user: None,

@@ -24,6 +24,10 @@
 #   STANDIN_COMMENT=refused   Linear does not post the comment: a GraphQL error, HTTP 400
 #   STANDIN_COMMENT=forbidden the key may not comment: HTTP 403
 #   STANDIN_COMMENT=lost      Linear posts the comment and the answer never comes: curl times out
+#   STANDIN_COMMENT=theirs    `Comment` tells the comment asked for as someone else's (else it is the
+#                             person's: Mert's words of issue.json, written by Ada, on ACM-412)
+#   STANDIN_EDIT=refused      Linear does not edit the comment (CommentUpdate): a GraphQL error, HTTP 400
+#   STANDIN_EDIT=lost         Linear edits it and the answer never comes: curl times out
 #   STANDIN_PUT=refused       the storage a file is sent to does not take it: HTTP 403
 #   (A file of Linear: a GET of an address with `max-filesize` in the configuration. It answers with
 #   a picture of test/stand-in/ by the name the address ends in (.jpg, .gif, .webp, else a PNG), and
@@ -45,6 +49,8 @@
 #   STANDIN_ISSUE=moved       the same, with three of the files sent on elsewhere (`.../moved`,
 #                             `.../moved-away`, `.../moved-forever`)
 #   STANDIN_ISSUE=pictures-uuid  the same, with a UUID as the issue's id
+#   STANDIN_ISSUE=mine        `Issue` tells issue.json with its last comment (Mert's words) written by
+#                             the person (Ada), which is theirs to edit
 #
 # Each call is recorded with how many calls the stand-in `bateri` (STANDIN_BATERI_LOG) had had by
 # then, so that a test can say which came first: Linear or the pane.
@@ -336,6 +342,34 @@ if is CommentCreate; then
 	exit 0
 fi
 
+# One comment by its id (Comment): the person's (STANDIN_COMMENT=theirs: someone else's), on ACM-412.
+if is Comment; then
+	id=$(printf '%s' "$plain" | sed -n 's/.*"variables":{"id":"\([^"]*\)".*/\1/p')
+	mine=true
+	if [ "${STANDIN_COMMENT-}" = theirs ]; then mine=false; fi
+	printf '{"data":{"comment":{"id":"%s","body":"Keep a fallback for when Redis is down. We cannot fail closed on reads.","createdAt":"2026-11-08T16:40:00.000Z","editedAt":null,"user":{"displayName":"Ada","isMe":%s},"issue":{"id":"issue-412","identifier":"ACM-412"}}}}\n200' "$id" "$mine"
+	exit 0
+fi
+
+# The edit of a comment (CommentUpdate): answered with its id and its words; nothing of it is kept.
+if is CommentUpdate; then
+	id=$(printf '%s' "$plain" | sed -n 's/.*"variables":{"id":"\([^"]*\)".*/\1/p')
+	title=$(printf '%s' "$plain" | sed -n 's/.*"body":"\([^"]*\)".*/\1/p')
+	case "${STANDIN_EDIT-}" in
+	refused)
+		cat "$here/comment-refused.json"
+		printf '\n400'
+		exit 0
+		;;
+	lost)
+		echo "curl: (28) Operation timed out" >&2
+		exit 28
+		;;
+	esac
+	printf '{"data":{"commentUpdate":{"success":true,"comment":{"id":"%s","body":"%s","createdAt":"2026-11-08T16:40:00.000Z","editedAt":"2026-11-12T09:30:00.000Z","user":{"displayName":"Ada","isMe":true}}}}}\n200' "$id" "$title"
+	exit 0
+fi
+
 # A field of the issue `$1` as the fixtures hold it, the way the file writes the value (a string has
 # its quotes): the first line of that name after the issue's "id".
 base() {
@@ -502,6 +536,7 @@ if is Issue; then
 	pictures-uuid)
 		sed 's/"id": "issue-412"/"id": "0c9e0f1e-6d1b-4d7a-9a56-3b1c0a5e7f10"/' "$here/issue-pictures.json"
 		;;
+	mine) sed 's/"displayName": "Mert"/"displayName": "Ada", "isMe": true/' "$here/issue.json" ;;
 	*) cat "$here/issue.json" ;;
 	esac
 	printf '\n200'

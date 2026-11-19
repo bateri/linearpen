@@ -1494,3 +1494,202 @@ fn a_file_of_any_kind_is_sent_up_to_a_hundred_mib_and_nothing_else_is_by_whoever
         assert_eq!(body["variables"]["size"], bytes.len());
     }
 }
+
+/// `Comment` answered: the comment `id` with `body`, the person's or not, on the issue `i7` (ACM-7).
+fn comment_reply(id: &str, body: &str, mine: bool) -> Reply {
+    Reply {
+        status: 200,
+        body: serde_json::json!({"data": {"comment": {
+            "id": id, "body": body, "createdAt": "2026-11-10T10:00:00.000Z", "editedAt": null,
+            "user": {"displayName": "Ada", "isMe": mine},
+            "issue": {"id": "i7", "identifier": "ACM-7"}
+        }}})
+        .to_string(),
+    }
+}
+
+fn comment_updated_reply(success: bool) -> Reply {
+    Reply {
+        status: 200,
+        body: serde_json::json!({"data": {"commentUpdate": {"success": success, "comment": {
+            "id": "c-1", "body": "New words", "createdAt": "2026-11-10T10:00:00.000Z",
+            "editedAt": "2026-11-11T10:00:00.000Z", "user": {"displayName": "Ada", "isMe": true}
+        }}}})
+        .to_string(),
+    }
+}
+
+fn operation(body: &str) -> serde_json::Value {
+    serde_json::from_str(body).unwrap()
+}
+
+#[test]
+fn an_edited_description_is_written_whole_and_alone_where_linear_holds_what_the_edit_began_from() {
+    use super::edit::{Target, save};
+    let transport = Scripted::new(vec![
+        Ok(detail_reply(7, Some("Old words\n"))),
+        Ok(changed_reply(true, &[7])),
+    ]);
+    save(
+        &transport,
+        &key(),
+        "ACM-7",
+        &Target::Description,
+        "Old words\n",
+        "New words",
+    )
+    .unwrap();
+    let sent = transport.sent();
+    assert_eq!(sent.len(), 2, "read again, then written once");
+    assert_eq!(operation(&sent[0])["operationName"], "Issue");
+    let write = operation(&sent[1]);
+    assert_eq!(write["operationName"], "IssueBatchUpdate");
+    assert_eq!(write["variables"]["ids"], serde_json::json!(["i7"]));
+    let input = write["variables"]["input"].as_object().unwrap();
+    assert_eq!(input.keys().collect::<Vec<_>>(), ["description"]);
+    assert_eq!(input["description"], "New words");
+    // Emptied, it is an empty description.
+    let transport = Scripted::new(vec![
+        Ok(detail_reply(7, Some("Old"))),
+        Ok(changed_reply(true, &[7])),
+    ]);
+    save(&transport, &key(), "i7", &Target::Description, "Old", "").unwrap();
+    assert_eq!(
+        operation(&transport.sent()[1])["variables"]["input"]["description"],
+        ""
+    );
+}
+
+#[test]
+fn an_edit_of_what_someone_changed_meanwhile_is_not_written_and_says_what_linear_holds() {
+    use super::edit::{Step, Target, save};
+    let transport = Scripted::new(vec![Ok(detail_reply(7, Some("Their words")))]);
+    assert_eq!(
+        save(
+            &transport,
+            &key(),
+            "i7",
+            &Target::Description,
+            "Old words",
+            "Mine"
+        ),
+        Err(Step::Changed("Their words".to_owned()))
+    );
+    assert_eq!(transport.sent().len(), 1, "only the reading");
+    // A comment the same.
+    let transport = Scripted::new(vec![Ok(comment_reply("c-1", "Their words", true))]);
+    assert_eq!(
+        save(
+            &transport,
+            &key(),
+            "i7",
+            &Target::Comment("c-1".into()),
+            "Old",
+            "Mine"
+        ),
+        Err(Step::Changed("Their words".to_owned()))
+    );
+    assert_eq!(transport.sent().len(), 1);
+}
+
+#[test]
+fn an_edit_linear_holds_already_is_not_sent_again() {
+    use super::edit::{Target, save};
+    // The answer to a write before did not come, and it had been made: Linear holds the words (with no
+    // blank at their end).
+    let transport = Scripted::new(vec![Ok(detail_reply(7, Some("New words")))]);
+    save(
+        &transport,
+        &key(),
+        "i7",
+        &Target::Description,
+        "Old",
+        "New words\n",
+    )
+    .unwrap();
+    assert_eq!(transport.sent().len(), 1, "nothing is written");
+}
+
+#[test]
+fn an_edited_comment_is_its_body_alone_to_that_comment_and_only_the_persons_own() {
+    use super::edit::{NOT_HERE, NOT_YOURS, Step, Target, save};
+    let target = Target::Comment("c-1".into());
+    let transport = Scripted::new(vec![
+        Ok(comment_reply("c-1", "Old words", true)),
+        Ok(comment_updated_reply(true)),
+    ]);
+    save(
+        &transport,
+        &key(),
+        "ACM-7",
+        &target,
+        "Old words",
+        "New words",
+    )
+    .unwrap();
+    let sent = transport.sent();
+    assert_eq!(sent.len(), 2);
+    let read = operation(&sent[0]);
+    assert_eq!(read["operationName"], "Comment");
+    assert_eq!(read["variables"]["id"], "c-1");
+    let write = operation(&sent[1]);
+    assert_eq!(write["operationName"], "CommentUpdate");
+    assert_eq!(write["variables"]["id"], "c-1");
+    assert_eq!(
+        write["variables"]["input"],
+        serde_json::json!({"body": "New words"})
+    );
+    // Someone else's comment is not edited: nothing is sent after the reading.
+    let transport = Scripted::new(vec![Ok(comment_reply("c-1", "Old words", false))]);
+    assert_eq!(
+        save(&transport, &key(), "i7", &target, "Old words", "Mine"),
+        Err(Step::Read(Error::Failed(NOT_YOURS.to_owned())))
+    );
+    assert_eq!(transport.sent().len(), 1);
+    // Nor a comment of another issue than the one named.
+    let transport = Scripted::new(vec![Ok(comment_reply("c-1", "Old words", true))]);
+    assert_eq!(
+        save(&transport, &key(), "ACM-8", &target, "Old words", "Mine"),
+        Err(Step::Read(Error::Failed(NOT_HERE.to_owned())))
+    );
+    assert_eq!(transport.sent().len(), 1);
+    // Linear saying it did not is a no, and leaves nothing open.
+    let transport = Scripted::new(vec![
+        Ok(comment_reply("c-1", "Old words", true)),
+        Ok(comment_updated_reply(false)),
+    ]);
+    let Err(Step::Write(Error::Failed(why))) =
+        save(&transport, &key(), "i7", &target, "Old words", "Mine")
+    else {
+        panic!("not a failure of the write");
+    };
+    assert!(!left_open(&why));
+}
+
+#[test]
+fn an_edit_that_was_sent_and_not_answered_is_not_sent_again() {
+    use super::edit::{Step, Target, save};
+    let transport = Scripted::new(vec![
+        Ok(comment_reply("c-1", "Old", true)),
+        Err(Error::Unreachable("timed out".to_owned())),
+    ]);
+    assert!(matches!(
+        save(
+            &transport,
+            &key(),
+            "i7",
+            &Target::Comment("c-1".into()),
+            "Old",
+            "New"
+        ),
+        Err(Step::Write(Error::Unreachable(_)))
+    ));
+    assert_eq!(transport.sent().len(), 2);
+    // What cannot be read again is not written.
+    let transport = Scripted::new(vec![Err(Error::Unreachable("down".to_owned()))]);
+    assert!(matches!(
+        save(&transport, &key(), "i7", &Target::Description, "Old", "New"),
+        Err(Step::Read(Error::Unreachable(_)))
+    ));
+    assert_eq!(transport.sent().len(), 1);
+}

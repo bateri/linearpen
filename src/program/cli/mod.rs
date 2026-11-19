@@ -121,7 +121,7 @@ pub fn run(access: &Access, command: &Command, stdin: &mut dyn Read) -> Done {
         }
         Command::Teams { team, json } => read::teams(access, team.as_deref(), *json).map(alone),
         Command::Create(create) => write::create(access, create, stdin).map(alone),
-        Command::Update(update) => write::update(access, update),
+        Command::Update(update) => write::update(access, update, stdin),
         Command::Comment(comment) => write::comment(access, comment, stdin).map(alone),
     };
     match done {

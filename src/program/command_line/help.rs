@@ -16,8 +16,9 @@ commands:
             the files can be saved
   create    make an issue in a team, with files if you give them
   update    change the status, priority, assignee, labels, project, cycle, estimate, due date
-            or title of one issue or of several, or add files to the end of one description
-  comment   write a comment under an issue, with files if you give them
+            or title of one issue or of several, or write the description of one, or add files
+            to the end of it
+  comment   write a comment under an issue, with files if you give them, or edit one of yours
   teams     the teams, or the names that a team's issues can be given
   help      linearpen help COMMAND, or linearpen COMMAND --help, tells the options of a command
 
@@ -31,10 +32,10 @@ file `key` in ~/.config/linearpen.
 
 linearpen writes to Linear only what you ask of it: in the pane, an issue you make with its New
 issue form, a change you make to an issue (its status, priority, assignee, labels, project or
-title), a comment, the files you add to a comment, to a new issue or to the end of a
-description, and the status of an issue an agent is started on, where the form says In Progress;
-on the command line, the same with create, update and comment. It never changes the words of a
-description, only adds files after them, and never moves an issue to another team.
+title), a description you edit, a comment, a comment of yours you edit, the files you add to a
+comment, to a new issue or to the end of a description, and the status of an issue an agent is
+started on, where the form says In Progress; on the command line, the same with create, update and
+comment. It never moves an issue to another team, and never deletes or archives anything.
 `linearpen --text`, list, show and teams only read.
 
 Files are of any kind, up to 100 MiB each and ten at a time (--attach PATH). They are put in
@@ -128,6 +129,7 @@ pub const UPDATE: &str = "\
 linearpen update: change issues
 
 usage: linearpen update KEY-N [KEY-N] [OPTIONS] [--json]
+       linearpen update KEY-N --description TEXT [--attach PATH] [--json]
        linearpen update KEY-N --attach PATH [--attach PATH] [--json]
 
 All the options given are one change: it is made in every issue given or in none. The issues are
@@ -143,14 +145,17 @@ of one team. At most 50 issues are changed at once.
   --estimate E      none, a size of the team's scale, or a number of points
   --due DAY         none, or a day, written 2026-11-20
   --title TITLE     one line, with one issue only
+  --description TEXT  the whole description of one issue, in the place of the one it has, or -
+                    for the words on stdin; with --attach only (its files go at the end)
   --attach PATH     a file, up to 100 MiB, put at the end of the description of one issue,
-                    after a blank line; it may be repeated, up to ten times, and it is the only
-                    option of its update
+                    after a blank line; it may be repeated, up to ten times; it is the only
+                    option of its update but --description
   --json            print JSON instead of text
 
-Each option is given once but --label, --unlabel and --attach. linearpen never changes the words of
-an issue's description, only adds files after them (the description is read whole from Linear
-first, and nothing is written if it cannot be), and never changes its team. The files of --attach
+Each option is given once but --label, --unlabel and --attach. --description writes the words given
+over the description Linear holds: read it first (linearpen show KEY-N --json) to keep what is in it.
+Without it, --attach adds files after the description Linear holds (it is read whole first, and
+nothing is written if it cannot be). linearpen never changes an issue's team. The files of --attach
 are looked at before Linear is asked anything (status 2); if one cannot be put in Linear's
 storage nothing is written. Prints each issue as Linear says it is now.
 ";
@@ -159,16 +164,20 @@ pub const COMMENT: &str = "\
 linearpen comment: write a comment under an issue
 
 usage: linearpen comment KEY-N [--body TEXT] [--attach PATH] [--json]
+       linearpen comment KEY-N --edit last|ID --body TEXT [--json]
 
   --body TEXT    the words of the comment, or - for the words on stdin
   --attach PATH  a file, up to 100 MiB, put at the end of the comment; it may be repeated, up to
                  ten times
+  --edit C       edit a comment of yours instead of writing one: last, the last you wrote on the
+                 issue, or the id of one (linearpen show KEY-N --json); --body is its words, whole
   --json         print JSON instead of text
 
 One of --body and --attach is needed. The files of --attach are looked at before Linear is asked
 anything (status 2), and are put in Linear's storage first: if one cannot be, no comment is posted.
 The comment is posted once, in the words given with the files after them. Prints that it was added,
-and with how many files.
+and with how many files. With --edit the words given take the place of the comment's, which must be
+yours (Linear lets only the one who wrote a comment edit it), and no file goes with them.
 ";
 
 pub const TEAMS: &str = "\

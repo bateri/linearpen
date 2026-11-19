@@ -1519,3 +1519,37 @@ fn the_files_of_a_tray_are_all_of_one_width_and_a_narrow_pane_gives_each_a_row()
 
 #[allow(dead_code)]
 fn unused(_: Error) {}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn files_chosen_while_the_description_is_edited_go_at_the_end_of_the_words_with_save() {
+    let mut rig = opened();
+    let bytes = given(150);
+    let page = &mut rig.page;
+    page.press("e").expect("e");
+    page.wait_for(WITHIN, |page| typing_in(page, "edit-issue-412-1"))
+        .unwrap_or_else(|why| panic!("the keyboard is in the field: {why:?}: {}", said(page)));
+    page.type_text(" More.").expect("the words");
+    // Attach file is where it was; what it adds waits under the field, with Save and not Add to
+    // description, and the keyboard is the field's again.
+    page.press("mod+shift+u").expect("the key");
+    let handles = page.choose_files(&[("shot.png", &bytes)]).expect("chosen");
+    rig.terminal.give(&handles[0], &bytes);
+    let page = &mut rig.page;
+    wait_says(page, "shot.png");
+    assert!(!page.says("Add to description"), "{}", said(page));
+    page.wait_for(WITHIN, |page| typing_in(page, "edit-issue-412-1"))
+        .unwrap_or_else(|why| panic!("the field has the keyboard: {why:?}: {}", said(page)));
+    page.press("mod+enter").expect("command and enter");
+    crate::page_tests::changed(&rig.linear, &mut rig.page, 1);
+    let changed = &rig.linear.changed()[0];
+    assert_eq!(changed["ids"], serde_json::json!(["issue-412"]));
+    assert_eq!(
+        changed["input"],
+        serde_json::json!({ "description": format!("{} More.\n\n![shot.png](https://uploads.linear.app/stand-in/1)", description()) })
+    );
+    assert_eq!(rig.linear.put().len(), 1);
+    let page = &mut rig.page;
+    page.wait_for(WITHIN, |page| !page.says("Save") && !page.says("shot.png"))
+        .unwrap_or_else(|why| panic!("the edit is done: {why:?}: {}", said(page)));
+}

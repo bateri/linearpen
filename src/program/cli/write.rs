@@ -1,5 +1,7 @@
-//! The commands that write: `create`, `update` and `comment`. Each sends its one write once, after
-//! every name is found out, and never again. Where the answer does not come it says so with status 3.
+//! The commands that write: `create`, `update` and `comment` (and their edits: `update --description`
+//! writes a description whole, `comment --edit` the words of a comment of the person's). Each sends its
+//! one write once, after every name is found out, and never again. Where the answer does not come it
+//! says so with status 3.
 
 use std::io::Read;
 
@@ -7,9 +9,10 @@ use super::json::{self, Added, Changed, Made};
 use super::pictures::{self, with_words};
 use super::resolve::{Lookups, cycle, estimate, pick};
 use super::{Access, Stop, asked_wrong, json as print_json, written_wrong};
-use crate::command_line::{Comment, Create, Fields, Setting, Update, Words};
+use crate::command_line::{Comment, Create, Edited, Fields, Setting, Update, Words};
+use crate::linear::edit::{self, Target};
 use crate::linear::images;
-use crate::linear::limits::{BODY_MOST, DESCRIPTION_MOST, LABELS_MOST};
+use crate::linear::limits::{BODY_MOST, DESCRIPTION_MOST, EDIT_MOST, LABELS_MOST};
 use crate::linear::types::TeamRef;
 use crate::linear::{
     self, Change, Changes, Created, Error, Issue, NewIssue, Options, Priority, Team,
@@ -320,7 +323,14 @@ fn issues_of(access: &Access, keys: &[String]) -> Result<(Vec<Issue>, TeamRef), 
 
 /// Changes the issues; what is printed on stdout, and a note for stderr where Linear did not say how
 /// an issue it changed is now.
-pub fn update(access: &Access, update: &Update) -> Result<(String, String), Stop> {
+pub fn update(
+    access: &Access,
+    update: &Update,
+    stdin: &mut dyn Read,
+) -> Result<(String, String), Stop> {
+    if let Some(words) = &update.description {
+        return describe(access, update, words, stdin).map(|out| (out, String::new()));
+    }
     if !update.attach.is_empty() {
         return add_files(access, update).map(|out| (out, String::new()));
     }
@@ -439,7 +449,139 @@ fn add_files(access: &Access, update: &Update) -> Result<String, Stop> {
     ))
 }
 
+/// What an edit that did not write says: what could not be read (status 1, nothing written), and a
+/// write that failed as any write does.
+fn edit_wrong(access: &Access, identifier: &str, step: edit::Step) -> Stop {
+    match step {
+        edit::Step::Read(linear::Error::Failed(why)) if why == edit::NOT_YOURS => {
+            Stop::no("that comment is not yours: Linear lets only the one who wrote it edit it")
+        }
+        edit::Step::Read(linear::Error::Failed(why)) if why == edit::NOT_HERE => {
+            Stop::no(format!("that comment is not on {identifier}"))
+        }
+        edit::Step::Read(error) => {
+            let why = asked_wrong(access, &error).words;
+            Stop::no(format!(
+                "{identifier} could not be read again, so nothing was written ({why})"
+            ))
+        }
+        // (The command line edits over whatever is there: it is not told.)
+        edit::Step::Changed(_) => Stop::no("it was changed in Linear meanwhile"),
+        edit::Step::Write(error) => written_wrong(access, &error),
+    }
+}
+
+/// Writes the description of the one issue of `update`, whole, with the files at its end: the files
+/// are read and checked first (status 2), the issue is asked for so that one Linear does not have is
+/// told before anything is put in storage, the files go to storage, and the words are sent once in the
+/// place of the description Linear holds (`linear::edit::overwrite`; nothing is sent where it holds them
+/// already).
+fn describe(
+    access: &Access,
+    update: &Update,
+    words: &Words,
+    stdin: &mut dyn Read,
+) -> Result<String, Stop> {
+    let text = words_of("description", words, EDIT_MOST, stdin)?;
+    let files = pictures::read_files(&update.attach)?;
+    let names: Vec<&str> = files.iter().map(|file| file.name.as_str()).collect();
+    if images::with_lines_most(&text, &names) > EDIT_MOST {
+        return Err(Stop::usage(format!(
+            "the description with the lines of its files is over {EDIT_MOST} characters"
+        )));
+    }
+    let issue = issue_of(access, &update.issues[0])?;
+    let identifier = super::plain(&issue.identifier);
+    let lines = pictures::put(access, &files)?;
+    let text = if lines.is_empty() {
+        text
+    } else {
+        images::description_with(&text, &lines)
+    };
+    edit::overwrite(
+        access.transport,
+        access.key,
+        &issue.id,
+        &Target::Description,
+        &text,
+    )
+    .map_err(|step| edit_wrong(access, &identifier, step))?;
+    let now = linear::fetch_issue(access.transport, access.key, &issue.id).unwrap_or(issue);
+    if update.json {
+        return print_json(&Changed {
+            issues: vec![json::IssueRow::of(&now)],
+        });
+    }
+    let line = stated_lines(std::slice::from_ref(&now));
+    let with = with_words(files.len());
+    Ok(if with.is_empty() {
+        format!("{}  description written\n", line.trim_end())
+    } else {
+        format!("{}  description written {with}\n", line.trim_end())
+    })
+}
+
+/// The comment of the person's that `edited` names on `issue`: the last they wrote (of the first fifty,
+/// which are what Linear tells with the issue), or the one by its id.
+fn edited_id(issue: &Issue, edited: &Edited) -> Result<String, Stop> {
+    match edited {
+        Edited::Id(id) => Ok(id.clone()),
+        Edited::Last => {
+            let identifier = super::plain(&issue.identifier);
+            let comments = issue.comments.as_ref();
+            let mut mine: Vec<&linear::types::Comment> = comments
+                .map(|comments| comments.nodes.iter().filter(|c| c.mine()).collect())
+                .unwrap_or_default();
+            mine.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+            let more = comments.is_some_and(|comments| comments.page_info.has_next_page);
+            match mine.last() {
+                Some(last) if !more => Ok(last.id.clone()),
+                _ if more => Err(Stop::no(format!(
+                    "{identifier} has more comments than Linear tells at once: give the id of yours (linearpen show {identifier} --json)"
+                ))),
+                _ => Err(Stop::no(format!(
+                    "you have written no comment on {identifier}"
+                ))),
+            }
+        }
+    }
+}
+
+/// Puts the words of `comment` in the place of a comment of the person's: the issue is asked for (an
+/// issue Linear does not have, or no comment of theirs, is told before anything is written), and the
+/// words are sent once (`linear::edit::overwrite`, which writes only a comment Linear says is theirs).
+fn edit_comment(
+    access: &Access,
+    comment: &Comment,
+    edited: &Edited,
+    stdin: &mut dyn Read,
+) -> Result<String, Stop> {
+    let words = comment
+        .body
+        .as_ref()
+        .ok_or_else(|| Stop::usage("--edit needs --body"))?;
+    let text = words_of("body", words, EDIT_MOST, stdin)?;
+    let issue = issue_of(access, &comment.issue)?;
+    let identifier = super::plain(&issue.identifier);
+    let id = edited_id(&issue, edited)?;
+    let target = Target::Comment(id.clone());
+    edit::overwrite(access.transport, access.key, &issue.id, &target, &text)
+        .map_err(|step| edit_wrong(access, &identifier, step))?;
+    if comment.json {
+        let (now, _) = edit::comment_of(access.transport, access.key, &issue.id, &id)
+            .map_err(|error| asked_wrong(access, &error))?;
+        return print_json(&Added {
+            issue: identifier,
+            comment: json::Said::of(&now),
+        });
+    }
+    Ok(format!("{identifier}: comment edited\n"))
+}
+
 pub fn comment(access: &Access, comment: &Comment, stdin: &mut dyn Read) -> Result<String, Stop> {
+    if let Some(edited) = &comment.edit {
+        return edit_comment(access, comment, edited, stdin);
+    }
     let body = comment
         .body
         .as_ref()

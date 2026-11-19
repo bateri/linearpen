@@ -52,10 +52,15 @@ struct TieMessage {
     issue: NeighborMessage,
 }
 
+/// A comment as the detail tells it: Linear's id of it (what an edit names), who wrote it and when,
+/// whether the person did (they alone may edit it) and whether it was edited, and its words.
 #[derive(Debug, Serialize)]
 pub(super) struct CommentMessage {
+    id: String,
     author: String,
     at: String,
+    mine: bool,
+    edited: bool,
     body: String,
 }
 
@@ -64,11 +69,14 @@ pub(super) fn comment_of(comment: &Comment) -> (CommentMessage, bool) {
     let (body, was_cut) = cut(&comment.body, COMMENT_MOST);
     (
         CommentMessage {
+            id: comment.id.clone(),
             author: comment
                 .user
                 .as_ref()
                 .map_or_else(|| "Someone".to_owned(), |user| user.display_name.clone()),
             at: short_date(&comment.created_at),
+            mine: comment.mine(),
+            edited: comment.edited_at.is_some(),
             body,
         },
         was_cut,
@@ -77,7 +85,7 @@ pub(super) fn comment_of(comment: &Comment) -> (CommentMessage, bool) {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct IssueMessage {
+pub(super) struct IssueMessage {
     id: String,
     identifier: String,
     title: String,
@@ -127,7 +135,7 @@ fn neighbor(other: &Neighbor, more: &mut bool) -> NeighborMessage {
     }
 }
 
-fn message(issue: &Issue) -> IssueMessage {
+pub(super) fn message(issue: &Issue) -> IssueMessage {
     let mut more = false;
     let parent = issue
         .parent

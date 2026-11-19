@@ -3,12 +3,13 @@
 //! graphics the program draws it itself as pictures; in any other the program prints the issues as
 //! text and ends.
 //!
-//! It reads, and writes three things: the issue the person makes in the form of the new issue, the
+//! It reads, and writes four things: the issue the person makes in the form of the new issue, the
 //! change the person makes to issues (the status of the ones an agent is started on is such a
-//! change) and the comment the person writes under an issue. Linear is spoken to with `curl` and
-//! nothing else (`linear/`). The commands of the command line (`linearpen list`, `show`, `create`,
-//! `update`, `comment`, `teams`: `cli/`) read the same, and `create`, `update` and `comment` write the
-//! same three things.
+//! change), the comment the person writes under an issue, and the words the person edits (a
+//! description, or a comment of theirs). Linear is spoken to with `curl` and nothing else
+//! (`linear/`). The commands of the command line (`linearpen list`, `show`, `create`, `update`,
+//! `comment`, `teams`: `cli/`) read the same, and `create`, `update` and `comment` write the same
+//! four things.
 //!
 //! The program asks Linear and keeps what it was told; the page (`src/view/`, in pencere's kit) is
 //! the client, drawn by the terminal, and asks the program for what it needs with the calls and the

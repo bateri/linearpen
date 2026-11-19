@@ -21,6 +21,7 @@ use crate::page_pictures::{
 };
 use crate::page_tests::{
     Canned, Mode, PANE, Page, cursor, ls_of_p41, open, pressable, rig, rig_polling, session_over,
+    with_my_comment,
 };
 
 /// A page as large as a terminal pane on a laptop.
@@ -696,5 +697,52 @@ fn the_pictures_of_the_docs_with_images() -> Result<(), Error> {
     rig.page.type_text("Logs, the spec and the screenshot.")?;
     rig.page.advance(0.8)?;
     save(&rig.page, &fonts, Palette::Dark, "comment-file.png");
+    Ok(())
+}
+
+/// The words of an issue edited: the description as a field with Save and Cancel under it, a comment of
+/// the person's the same, and both in an 80 by 24 pane.
+#[test]
+#[ignore = "draws in the fonts of this machine: make shots"]
+fn the_pictures_of_the_docs_with_edits() -> Result<(), Error> {
+    let fonts = fonts();
+    for (size, prefix) in [(BIG, ""), (PANE, "narrow-")] {
+        let linear = Canned::new(Mode::Fine);
+        with_my_comment(&linear);
+        let session = session_over(&linear, Some("lin_api_test"), None);
+        let mut page = open(&session, size, Some(&fonts), "ACM-412")?;
+        page.press("enter")?;
+        page.wait_for(Duration::from_secs(20), |page| {
+            page.says("600 requests a minute") && pressable(page, "panel-value:state")
+        })?;
+        page.press("e")?;
+        page.wait_for(Duration::from_secs(20), |page| pressable(page, "edit-save"))?;
+        page.advance(0.4)?;
+        page.type_text("\n- Keys of the free plan share one limit")?;
+        page.advance(0.6)?;
+        save(
+            &page,
+            &fonts,
+            Palette::Dark,
+            &format!("{prefix}edit-description.png"),
+        );
+        if prefix.is_empty() {
+            save(&page, &fonts, Palette::Light, "light-edit-description.png");
+        }
+        page.press("escape")?;
+        page.press("escape")?;
+        page.wait_for(Duration::from_secs(20), |page| page.menu().is_some())?;
+        page.pick_titled("Discard the edit")?;
+        page.wait_for(Duration::from_secs(20), |page| !page.says("Save"))?;
+        page.press("cmd+shift+m")?;
+        page.wait_for(Duration::from_secs(20), |page| pressable(page, "edit-save"))?;
+        page.advance(0.6)?;
+        save(
+            &page,
+            &fonts,
+            Palette::Dark,
+            &format!("{prefix}edit-comment.png"),
+        );
+    }
     Ok(())
 }

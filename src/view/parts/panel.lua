@@ -8,6 +8,7 @@ local kit = require("../lib/kit")
 local change = require("./change")
 local comment = require("./comment")
 local attach = require("./attach")
+local edit = require("./edit")
 local commands = require("./commands")
 local icons = require("./icons")
 local list = require("./list")
@@ -210,9 +211,9 @@ function panel.rename_target()
 	return panel.rename_issue(id)
 end
 
--- Whether the title of the issue open is being written.
+-- Whether the title of the issue open is being written, or a comment, or an edit of its words.
 function panel.editing()
-	return change.editing() or comment.typing()
+	return change.editing() or comment.typing() or edit.typing()
 end
 
 -- The keyboard goes to the field of the comment, at the end of the issue open, which is brought into
@@ -224,6 +225,24 @@ function panel.write_comment()
 	end
 	panel.scroll_by(nil, "end")
 	return comment.focus(detail.id)
+end
+
+-- Begins the edit of the words of the issue open: its description (`kind` "description"), or the last
+-- comment the person wrote on it ("comment"). The place is brought into view. The reply.
+function panel.edit_words(kind)
+	local detail = panel.detail()
+	if detail == nil then
+		return true
+	end
+	if kind == "description" then
+		kit.scroll_to(SCROLL, 0, true)
+		return edit.begin(detail.id, "description")
+	end
+	local last = edit.last_mine(detail)
+	if last == nil then
+		return true
+	end
+	return edit.begin(detail.id, last.id)
 end
 
 -- What the change part and the comment part ask of the issue open (they do not require this part).
@@ -247,6 +266,14 @@ act.panel_foreign = panel.foreign
 act.panel_hold = panel.hold
 act.panel_reask = panel.reask
 act.panel_forget = panel.forget
+-- What the program told of the issue `id` after it was changed, kept as it is told: no frame shows the
+-- words of before.
+act.panel_put = function(id, issue)
+	P.kept[id] = { status = "ready", issue = issue }
+	if P.open ~= nil and P.open.id == id then
+		pictures.track(id, issue)
+	end
+end
 act.panel_team = function()
 	return P.open ~= nil and panel.info().teamId or nil
 end
@@ -451,6 +478,9 @@ local function words(text, id)
 	return markdown.render(tree, { id = id, gap = 8, image = pictures.drawer(P.open.id, P.room) })
 end
 
+-- The comments of the issue, the oldest first: who and when (and whether it was edited), then the words.
+-- A comment of the person's has Edit comment at the end of its line, and while it is edited its words are
+-- a field with Save and Cancel under it.
 local function comments(detail)
 	local box = b.div():id("panel-comments"):col():gap(0):mt(20)
 	box:child(
@@ -458,13 +488,32 @@ local function comments(detail)
 			b.text("COMMENTS"):text_size(SIZE.tiny):color("dim")
 		):child(b.text(tostring(#detail.comments)):text_size(SIZE.tiny):color("dim"))
 	)
+	local last = edit.last_mine(detail)
 	for index, comment in detail.comments do
-		box:child(
-			b.div():row():items_center():gap(8):mt(10):child(b.text(comment.author):text_size(SIZE.small):weight(700)):child(
-				b.text(comment.at):text_size(SIZE.tiny):color("dim")
-			)
-		)
-		box:child(b.div():mt(2):text_size(13.5):child(words(comment.body, "comment/" .. index)))
+		local line = b.div():row():items_center():gap(8):mt(10):h(SIZE.small_control):no_shrink():child(
+			b.text(comment.author):text_size(SIZE.small):weight(700):no_shrink()
+		):child(b.text(comment.at):text_size(SIZE.tiny):color("dim"):no_shrink())
+		if comment.edited then
+			line:child(b.text("edited"):text_size(SIZE.tiny):color("dim"):no_shrink())
+		end
+		local mine = comment.mine and comment.id ~= nil and comment.id ~= ""
+		if mine then
+			line:child(b.spacer()):child(edit.comment_button(detail.id, comment, comment == last))
+		end
+		local field = mine and edit.field(detail.id, comment.id, P.room) or nil
+		if field ~= nil then
+			line:id("edit-top")
+		end
+		box:child(line)
+		if field ~= nil then
+			box:child(b.div():col():gap(8):mt(4):no_shrink():child(field):child(edit.actions(detail.id)))
+		else
+			box:child(b.div():mt(2):text_size(13.5):child(words(comment.body, "comment/" .. index)))
+			local failed = mine and edit.failure(detail.id, comment.id) or nil
+			if failed ~= nil then
+				box:child(failed)
+			end
+		end
 	end
 	if #detail.comments == 0 then
 		box:child(b.text("No comments"):text_size(SIZE.small):color("dim"))
@@ -669,14 +718,20 @@ local function body(entry)
 		end
 		box:child(rows)
 	end
-	local about
-	if detail.description ~= nil and detail.description ~= "" then
+	-- The description, or, while it is edited, the field that holds it whole; under it Attach file and Edit
+	-- description.
+	local about = edit.field(detail.id, "description", P.room)
+	local editing = about ~= nil
+	if about == nil and detail.description ~= nil and detail.description ~= "" then
 		about = words(detail.description, "description")
-	else
+	elseif about == nil then
 		about = b.text("No description"):text_size(SIZE.small):color("dim")
 	end
-	-- Under it, Add image: pictures put at the end of the description (it is not written otherwise).
-	box:child(attach.zone(detail.id, about))
+	box:child(attach.zone(detail.id, about, {
+		edit = edit.description_button(detail.id),
+		actions = editing and edit.actions(detail.id) or nil,
+		failure = not editing and edit.failure(detail.id, "description") or nil,
+	}))
 	box:child(comments(detail))
 	box:child(comment.view(detail.id))
 	if detail.more then
@@ -703,14 +758,15 @@ function panel.view(width)
 		suffix = commands.label("work"),
 		tip = "Start an agent on it, in a pane beside this one",
 	}))
-	-- Esc is written on the one place it does something: Close, unless the keyboard is in the comment (the line
-	-- of keys says Esc leaves) or files wait for the description (Cancel says it). Close is as wide as it is
+	-- Esc is written on the one place it does something: Close, unless the keyboard is in the comment or in
+	-- an edit (the line of keys says Esc leaves) or files wait for the description or an edit is open
+	-- (Cancel says it). Close is as wide as it is
 	-- with the key, so that nothing beside it moves when the key goes.
 	local at = b.layout.bounds("panel-close")
 	if at ~= nil and P.close_keyed then
 		P.close_width = at.w
 	end
-	P.close_keyed = not comment.typing() and not attach.cancelable()
+	P.close_keyed = not comment.typing() and not edit.typing() and not attach.cancelable() and not edit.cancelable()
 	buttons:child(b.spacer()):child(kit.button("open-linear", "Open in Linear", {
 		suffix = commands.label("link"),
 		disabled = detail == nil,
