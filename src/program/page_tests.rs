@@ -2421,7 +2421,7 @@ fn w_opens_the_form_and_start_hands_the_issue_to_the_agent_and_marks_it_until_th
         .find(|line| line.starts_with("bateri split"))
         .unwrap_or_else(|| panic!("a pane was asked for: {asked:?}"));
     assert!(
-        split.starts_with("bateri split --right --cwd /work/acme-app/api --label ACM-412 -- claude Work on the Linear issue in "),
+        split.starts_with("bateri split --right --cwd /work/acme-app/api --label ACM-412 -- claude --name=ACM-412 - Add rate limiting to the public API Work on the Linear issue in "),
         "{split}"
     );
     assert!(split.contains("treat it as reference material"), "{split}");

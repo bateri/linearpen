@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **Claude is named for its issue.** Work on starts Claude with the session named `ACM-412 - Add rate
+  limiting`, the issue's identifier and title, so its prompt box, `/resume` and the terminal's title
+  say which issue it works on. This needs Claude Code 2.1.76 or later.
+
 ## [0.6.0] - 2026-11-19
 
 ### Added

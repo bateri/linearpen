@@ -51,6 +51,8 @@
 #   STANDIN_ISSUE=pictures-uuid  the same, with a UUID as the issue's id
 #   STANDIN_ISSUE=mine        `Issue` tells issue.json with its last comment (Mert's words) written by
 #                             the person (Ada), which is theirs to edit
+#   STANDIN_ISSUE=odd-title   `Issue` tells issue.json with a title that begins with dashes and holds a
+#                             line end, an escape and a bell
 #
 # Each call is recorded with how many calls the stand-in `bateri` (STANDIN_BATERI_LOG) had had by
 # then, so that a test can say which came first: Linear or the pane.
@@ -540,6 +542,9 @@ if is Issue; then
 		sed 's/"id": "issue-412"/"id": "0c9e0f1e-6d1b-4d7a-9a56-3b1c0a5e7f10"/' "$here/issue-pictures.json"
 		;;
 	mine) sed 's/"displayName": "Mert"/"displayName": "Ada", "isMe": true/' "$here/issue.json" ;;
+	odd-title)
+		sed 's|"title": "Add rate limiting to the public API"|"title": "--yolo Add\\nrate \\u001b]0;owned\\u0007 limiting"|' "$here/issue.json"
+		;;
 	*) cat "$here/issue.json" ;;
 	esac
 	printf '\n200'

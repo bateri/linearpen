@@ -767,9 +767,19 @@ fn an_agent_is_started_in_a_pane_that_is_given_the_file_of_the_issue_and_not_its
         std::path::Path::new(&call[3]).canonicalize().unwrap(),
         home.dir.path().canonicalize().unwrap()
     );
-    assert_eq!(&call[4..8], ["--label", "ACM-412", "--", "claude"]);
-    assert_eq!(call.len(), 9, "{call:?}");
-    let prompt = &call[8];
+    // Claude's session is named for the issue, in one word before the prompt.
+    assert_eq!(
+        &call[4..9],
+        [
+            "--label",
+            "ACM-412",
+            "--",
+            "claude",
+            "--name=ACM-412 - Add rate limiting to the public API"
+        ]
+    );
+    assert_eq!(call.len(), 10, "{call:?}");
+    let prompt = &call[9];
     assert!(prompt.contains(context.to_str().unwrap()), "{prompt}");
     assert_eq!(
         prompt,
@@ -801,8 +811,9 @@ fn the_persons_words_end_the_prompt_as_one_word_byte_for_byte_and_a_worktree_nee
     let calls = home.bateri_calls();
     let call = &calls[0];
     assert_eq!(&call[4..8], ["--label", "ACM-412", "--", "claude"]);
-    assert_eq!(call.len(), 9, "{call:?}");
-    let prompt = &call[8];
+    assert!(call[8].starts_with("--name=ACM-412 - "), "{call:?}");
+    assert_eq!(call.len(), 10, "{call:?}");
+    let prompt = &call[9];
     assert!(
         prompt.starts_with("Work on the Linear issue in "),
         "{prompt}"
@@ -819,6 +830,33 @@ fn the_persons_words_end_the_prompt_as_one_word_byte_for_byte_and_a_worktree_nee
     );
     // The folder the pen began in is no repository, and the worktree was asked for all the same.
     assert!(!home.dir.path().join(".git").exists());
+}
+
+// Claude's name is Linear's title: it reaches the command line as one word after `--name=`, so dashes
+// that begin the title are no option, and a line end, an escape or a bell in it is a space.
+#[test]
+fn a_title_that_looks_like_an_option_or_holds_control_characters_is_one_tame_word_of_the_name() {
+    let home = Home::new();
+    let heard = home.ask(
+        &in_bateri()
+            .env("STANDIN_ISSUE", "odd-title")
+            .call("start", hand("issue-412")),
+    );
+    assert_eq!(heard[0].result()["pane"], "p41", "{:?}", heard[0]);
+    let calls = home.bateri_calls();
+    let call = &calls[0];
+    assert_eq!(&call[6..8], ["--", "claude"]);
+    assert_eq!(
+        call[8],
+        "--name=ACM-412 - --yolo Add rate ]0;owned limiting"
+    );
+    assert_eq!(call.len(), 10, "{call:?}");
+    assert!(
+        call[9].starts_with("Work on the Linear issue in "),
+        "{call:?}"
+    );
+    assert!(!call.iter().any(|word| word == "--yolo"), "{call:?}");
+    assert!(!call[8].chars().any(char::is_control), "{:?}", call[8]);
 }
 
 #[test]
@@ -861,7 +899,7 @@ fn an_issue_with_files_says_so_in_the_file_downloads_nothing_and_the_prompt_says
     assert!(!files.exists());
     // The prompt says what linearpen can do, with this issue's id in the commands.
     let calls = home.bateri_calls();
-    let prompt = &calls[0][8];
+    let prompt = &calls[0][9];
     for command in [
         format!(" update {ID} --status \"<status>\"`"),
         format!(" comment {ID} --body -`"),

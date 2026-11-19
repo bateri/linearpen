@@ -1,6 +1,9 @@
 //! The agents the program can start: which of them are installed, and the command that starts one.
-//! An agent is found in the `PATH` and is run with its prompt as its one argument, and with no flag
-//! that lets it do what it would ask about.
+//! An agent is found in the `PATH` and is run with its prompt as its last argument, and with no flag
+//! that lets it do what it would ask about. Claude alone is given one more word before the prompt,
+//! the name of its session (`--name=`), which is the issue's identifier and title: what it shows in
+//! its prompt box, its `/resume` list and the terminal's title. The name is Linear's text in a
+//! command line, so it is one word, has no control character and is short (see [`session_name`]).
 
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -51,11 +54,50 @@ impl Agent {
         Self::ALL.into_iter().find(|agent| agent.id() == id)
     }
 
-    /// The command that starts the agent on `prompt`: the program and its one argument.
+    /// The command that starts the agent on `prompt`: the program, for Claude the name of its
+    /// session where there is one (`--name=<name>`, one word, so a name that begins with a dash is
+    /// not taken for an option), and the prompt. The other agents are given no name.
     #[must_use]
-    pub fn command(self, prompt: &str) -> Vec<String> {
-        vec![self.program().to_owned(), prompt.to_owned()]
+    pub fn command(self, name: Option<&str>, prompt: &str) -> Vec<String> {
+        let mut words = vec![self.program().to_owned()];
+        if let (Self::Claude, Some(name)) = (self, name) {
+            words.push(format!("--name={name}"));
+        }
+        words.push(prompt.to_owned());
+        words
     }
+}
+
+/// The most characters of the name of an agent's session.
+pub const NAME_MOST: usize = 100;
+
+/// The name of the session of the agent started on an issue: `ACM-412 - Add rate limiting`, one of
+/// the two where the other is empty, and none where both are. Both are Linear's: a control character
+/// (a line end, an escape that a terminal's title would take for a command) is made a space, every
+/// run of blank one space, and a name longer than [`NAME_MOST`] is cut and ends with `…`.
+#[must_use]
+pub fn session_name(identifier: &str, title: &str) -> Option<String> {
+    let clean = |text: &str| {
+        text.chars()
+            .map(|c| if c.is_control() { ' ' } else { c })
+            .collect::<String>()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    let name = [clean(identifier), clean(title)]
+        .into_iter()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(" - ");
+    if name.is_empty() {
+        return None;
+    }
+    if name.chars().count() <= NAME_MOST {
+        return Some(name);
+    }
+    let kept: String = name.chars().take(NAME_MOST - 1).collect();
+    Some(format!("{}…", kept.trim_end()))
 }
 
 /// Whether `program` is a file that can be run in one of the directories of the `PATH`.
@@ -106,16 +148,63 @@ mod tests {
     }
 
     #[test]
-    fn an_agent_is_started_with_its_prompt_and_nothing_else() {
+    fn an_agent_is_started_with_its_prompt_and_only_claude_is_given_a_name() {
         assert_eq!(
-            Agent::Cursor.command("Work on it"),
+            Agent::Cursor.command(Some("ACM-412 - Add rate limiting"), "Work on it"),
             vec!["cursor-agent".to_owned(), "Work on it".to_owned()]
         );
+        assert_eq!(
+            Agent::Codex.command(Some("ACM-412 - Add rate limiting"), "x"),
+            ["codex", "x"]
+        );
+        assert_eq!(
+            Agent::Claude.command(Some("ACM-412 - Add rate limiting"), "Work on it"),
+            ["claude", "--name=ACM-412 - Add rate limiting", "Work on it"]
+        );
+        // A name that begins with a dash is still the value of `--name`, in the same word.
+        assert_eq!(
+            Agent::Claude.command(Some("--dangerously-skip-permissions"), "x"),
+            ["claude", "--name=--dangerously-skip-permissions", "x"]
+        );
         for agent in Agent::ALL {
-            let words = agent.command("x");
-            assert_eq!(words.len(), 2, "{words:?}");
+            let words = agent.command(None, "x");
+            assert_eq!(words, [agent.program(), "x"]);
             assert_eq!(Agent::parse(agent.id()), Some(agent));
         }
         assert_eq!(Agent::parse("gemini"), None);
+    }
+
+    #[test]
+    fn the_name_is_the_identifier_and_the_title_on_one_line_and_short() {
+        assert_eq!(
+            session_name("ACM-412", "Add rate limiting").as_deref(),
+            Some("ACM-412 - Add rate limiting")
+        );
+        // One of the two where the other is empty, and none where both are.
+        assert_eq!(session_name("", " Add  it ").as_deref(), Some("Add it"));
+        assert_eq!(session_name("ACM-412", " \n").as_deref(), Some("ACM-412"));
+        assert_eq!(session_name(" ", "\t\u{7}"), None);
+        // A control character is a space: no line end, escape or bell reaches the terminal's title.
+        let odd = session_name("ACM-1", "Fix\nthe\r\nlogin\u{1b}]0;owned\u{7} page\t now").unwrap();
+        assert_eq!(odd, "ACM-1 - Fix the login ]0;owned page now");
+        assert!(!odd.chars().any(char::is_control), "{odd:?}");
+        // A long title is cut, by characters, and says it was.
+        let long = session_name("ACM-2", &"ş".repeat(300)).unwrap();
+        assert_eq!(long.chars().count(), NAME_MOST);
+        assert!(
+            long.starts_with("ACM-2 - şş") && long.ends_with("ş…"),
+            "{long}"
+        );
+        // A blank where it is cut does not stay before the `…`.
+        assert_eq!(
+            session_name("ACM-30", &"word ".repeat(40)).unwrap(),
+            format!("ACM-30 - {}…", "word ".repeat(18).trim_end())
+        );
+        // Exactly as long as it may be is not cut.
+        let full = "x".repeat(NAME_MOST - "ACM-4 - ".len());
+        assert_eq!(
+            session_name("ACM-4", &full).unwrap(),
+            format!("ACM-4 - {full}")
+        );
     }
 }

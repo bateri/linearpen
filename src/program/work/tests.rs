@@ -182,7 +182,7 @@ fn an_agent_is_started_in_a_pane_with_the_pens_sentence_that_names_the_file_and_
     assert_eq!(asked.len(), 1, "{asked:?}");
     let line = &asked[0];
     assert!(
-        line.starts_with("bateri split --right --cwd /work/acme-app/api --label ACM-412 -- claude Work on the Linear issue in "),
+        line.starts_with("bateri split --right --cwd /work/acme-app/api --label ACM-412 -- claude --name=ACM-412 - Add rate limiting Work on the Linear issue in "),
         "{line}"
     );
     assert!(
@@ -199,6 +199,32 @@ fn an_agent_is_started_in_a_pane_with_the_pens_sentence_that_names_the_file_and_
         !line.contains("dangerously") && !line.contains("--yolo") && !line.contains("--focus"),
         "{line}"
     );
+}
+
+// Only Claude takes a name for its session; Codex is started with its prompt alone.
+#[test]
+fn an_agent_other_than_claude_is_given_no_name() {
+    let bin = bin(&["bateri", "claude", "codex"]);
+    let state = tempfile::tempdir().unwrap();
+    let runner = Recorder::new();
+    let setup = setup(&bin, true);
+    let issue = fixture_issue();
+    let env = Env {
+        setup: &setup,
+        runner: &runner,
+        state: Some(state.path()),
+        now: 0,
+    };
+    let mut asked = request(&issue, Folder::Here);
+    asked.agent = Agent::Codex;
+    start(&env, &asked).unwrap();
+    let line = runner.asked().pop().unwrap();
+    assert!(
+        line.starts_with("bateri split --right --cwd /work/acme-app/api --label ACM-412 -- codex Work on the Linear issue in "),
+        "{line}"
+    );
+    assert!(!line.contains("--name"), "{line}");
+    assert!(!line.contains("Add rate limiting"), "{line}");
 }
 
 #[test]
@@ -402,8 +428,10 @@ fn asked_for(issue: &Issue, folder: Folder) -> (String, Vec<(String, String)>) {
     (asked[at].clone(), given[at].clone())
 }
 
-// The agent's own command is what it always was: the one thing of Linear's in the command line is the
-// id inside the prompt, and the environment the pane is made in carries nothing of the pen's.
+// The agent's own command is what it always was but for Claude's name: the things of Linear's in the
+// command line are the identifier that labels the pane, the name of Claude's session (the identifier
+// and the title) and the id inside the prompt, and the environment the pane is made in carries
+// nothing of the pen's.
 #[test]
 fn the_pane_is_made_with_no_variable_and_the_agent_is_run_as_ever() {
     let mut issue = fixture_issue();
@@ -411,7 +439,7 @@ fn the_pane_is_made_with_no_variable_and_the_agent_is_run_as_ever() {
     let (line, given) = asked_for(&issue, Folder::Here);
     assert!(given.is_empty(), "{given:?}");
     let (head, prompt) = line
-        .split_once(" claude ")
+        .split_once(" claude --name=ACM-412 - Add rate limiting ")
         .unwrap_or_else(|| panic!("{line}"));
     assert_eq!(
         head,
@@ -489,7 +517,7 @@ fn an_issue_whose_id_is_no_uuid_makes_a_pane_and_is_told_nothing_of_writing() {
         let (line, given) = asked_for(&issue, Folder::Here);
         assert!(given.is_empty(), "{id:?}: {given:?}");
         assert!(
-            line.starts_with("bateri split --right --cwd /work/acme-app/api --label ACM-412 -- claude Work on the Linear issue in "),
+            line.starts_with("bateri split --right --cwd /work/acme-app/api --label ACM-412 -- claude --name=ACM-412 - Add rate limiting Work on the Linear issue in "),
             "{id:?}: {line}"
         );
         assert!(

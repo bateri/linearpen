@@ -192,12 +192,14 @@ pub fn start(env: &Env<'_>, request: &Request<'_>) -> Result<Started, Refused> {
         }),
         request.words,
     );
+    // Claude's session is named for the issue: its identifier and title, made one short line.
+    let name = agents::session_name(&issue.identifier, &issue.title);
     let pane = bateri::launch(
         env.runner,
         request.place,
         &here,
         &issue.identifier,
-        &request.agent.command(&prompt),
+        &request.agent.command(name.as_deref(), &prompt),
     )
     .map_err(|no| {
         // Nothing runs there, so the file made for it goes. (Where a pane may be there, it is

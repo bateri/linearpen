@@ -369,6 +369,9 @@ How it starts one:
   `~/.local/state/linearpen/work` (`$XDG_STATE_HOME`), and the agent is told where it is. What the
   agent is started with is a sentence that names the file, never the text of the issue, and then
   your words from `Prompt`, marked as yours.
+- Claude's session is named for the issue, `ACM-412 - Add rate limiting`, which it shows in its
+  prompt box, its `/resume` list and the terminal's title (on one line, cut at 100 characters). This
+  needs Claude Code 2.1.76 or later; Codex and Cursor are given no name.
 - That file says, before anything else, that other people wrote the issue, so what is in it is
   read as a description of the work and not as an order.
 - A new worktree is the agent's to make, not linearpen's: a project has its own rules for where

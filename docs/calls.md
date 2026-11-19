@@ -294,10 +294,15 @@ prompt (the agent's command line): the file's path is, for `worktree` a sentence
 own that asks for one, where the issue's id is a UUID, that id and the path of the program in the
 sentence that says what `linearpen` can write in Linear for the agent (its status, comments and the
 edit of its own, files, its description and new issues: `docs/cli.md`), and, last, the person's own words (`prompt`). The prompt is one word of the command line: no shell reads
-it, and the person's words never begin it. The agent's command is `<agent> <prompt>` and no more, and
-the `bateri` call that makes the pane carries nothing of the pen's in its environment. The id inside
-the prompt is the one thing of Linear's in a command line. No flag that lets the agent do
-what it would ask about is ever added. The key is not in the file.
+it, and the person's words never begin it. The agent's command is `<agent> <prompt>` and no more,
+except Claude's, which is `claude --name=<name> <prompt>`: the name of its session, shown in its
+prompt box, its `/resume` list and the terminal's title, is the issue's identifier and title,
+`ACM-412 - Add rate limiting` (one of them where the other is empty, and no `--name` where both
+are). The name is one word of the command line, its control characters are made spaces, its runs of
+blank one space, and it is cut to 100 characters (the last is `…`). The `bateri` call that makes the
+pane carries nothing of the pen's in its environment. The id inside the prompt, the identifier that
+labels the pane and Claude's name are the only things of Linear's in a command line. No flag that
+lets the agent do what it would ask about is ever added. The key is not in the file.
 
 Once the pane is made, `start` keeps the agent, the folder, the place and (where `progress` was
 given) the status of the call in `$XDG_STATE_HOME/linearpen/prefs.json` (`0600`; a word that is not
