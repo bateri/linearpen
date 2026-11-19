@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-19
+
 ### Added
 
 - **Files in issues.** The pictures in a description or a comment are drawn where they are written, and
