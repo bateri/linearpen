@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Give the agent a prompt from Work on.** Words you write in the form's `Prompt` box, such as
+  "Release it when the gate is green", go to the agent with the issue, as your own.
+
+### Changed
+
+- **New worktree works in any folder.** Started in a folder that holds several repositories, the
+  agent makes the worktree of the one the issue is about.
+
 ## [0.3.1] - 2026-11-18
 
 ### Changed

@@ -3,11 +3,11 @@
 //!
 //! What it needs of the machine (the `PATH`, whether the pen runs in bateri, the folder it started
 //! in) is read once, in `main.rs`, as a [`Setup`]; what it runs is run by a [`Runner`], so that a
-//! test says what `git` and `bateri` answer without running them.
+//! test says what `bateri` answers without running it.
 //!
 //!   agents     which agents are installed, and the command that starts one
 //!   handoff    the file of the issue, and the prompt that names it
-//!   worktree   what the agent is told of a new `git` worktree (the pen makes none)
+//!   worktree   the branch Linear suggests, checked before the file gives it (the pen makes no worktree)
 //!   bateri     the pane that runs the agent, and the wait for its end
 //!   progress   what a start moves in Linear where the person chose it (an issue not begun, forward)
 
@@ -100,7 +100,8 @@ impl Setup {
 pub enum Folder {
     /// The folder the pen was started in.
     Here,
-    /// A new worktree, which the agent makes by the project's own rules.
+    /// A new worktree, which the agent makes by the project's own rules, of the repository the work
+    /// is in: the folder's own, or one under it. The pen does not look: it asks `git` nothing.
     Worktree,
 }
 
@@ -117,12 +118,14 @@ impl Folder {
 
 /// What is asked.
 pub struct Request<'a> {
-    /// The issue with its description and comments; it names the pane. The agent is given no
-    /// words of a person's: the prompt is the pen's own sentence.
+    /// The issue with its description and comments; it names the pane.
     pub issue: &'a Issue,
     pub agent: Agent,
     pub folder: Folder,
     pub place: Place,
+    /// What the person wrote for the agent, as [`handoff::words`] made it: it ends the prompt, after
+    /// the pen's own sentences.
+    pub words: Option<&'a str>,
 }
 
 /// What was made.
@@ -152,20 +155,6 @@ pub struct Env<'a> {
     pub now: u64,
 }
 
-/// Whether the agent can be asked for a new worktree from the pen's folder.
-///
-/// # Errors
-///
-/// The words of why not.
-pub fn worktree_available(env: &Env<'_>) -> Result<(), String> {
-    let folder = env
-        .setup
-        .folder
-        .as_deref()
-        .ok_or_else(|| "the folder the pen was started in is not known".to_owned())?;
-    worktree::available(env.runner, folder)
-}
-
 /// Hands the issue to the agent: writes the file and makes the pane that runs the agent, in the
 /// pen's folder. A new worktree is the agent's to make: the prompt asks it for one.
 ///
@@ -189,9 +178,6 @@ pub fn start(env: &Env<'_>, request: &Request<'_>) -> Result<Started, Refused> {
     })?;
     // Everything that can be wrong is found before anything is made.
     let worktree = request.folder == Folder::Worktree;
-    if worktree {
-        worktree_available(env).map_err(Refused::Failed)?;
-    }
     let state = env
         .state
         .ok_or_else(|| Refused::Failed("there is no folder to keep the issue in".to_owned()))?;
@@ -208,6 +194,7 @@ pub fn start(env: &Env<'_>, request: &Request<'_>) -> Result<Started, Refused> {
             exe: env.setup.exe.as_deref(),
             issue,
         }),
+        request.words,
     );
     let pane = bateri::launch(
         env.runner,

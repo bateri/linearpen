@@ -450,9 +450,9 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     work_on(&mut page, "ACM-415")?;
     page.wait_for(Duration::from_secs(20), |page| page.says("Unchanged"))?;
     page.click("work-folder/item/worktree")?;
-    page.wait_for(Duration::from_secs(20), |page| {
-        page.says("The agent makes it")
-    })?;
+    // Words of the person's for the agent, which end its prompt.
+    page.click("work-prompt1")?;
+    page.insert_text("Release it when the gate is green.")?;
     page.advance(0.4)?;
     save(&page, &fonts, Palette::Dark, "work.png");
     page.press("mod+enter")?;

@@ -228,14 +228,15 @@ Work on is one issue's and is in its detail, at the start of the first line, whe
 list has no button for it, and a selection starts no agent (it changes values). Open the issue (Enter),
 then `w` or `Work on issue` opens its form.
 
-<img src="docs/work.png" width="720" alt="linearpen: the form that hands an issue to Claude, in a new worktree">
+<img src="docs/work.png" width="720" alt="linearpen: the form that hands an issue to Claude, in a new worktree, with a prompt">
 
 In the form, choose the agent (the ones of Claude, Codex and Cursor that are in your `PATH`), whether
 it works in this folder or makes a new `git` worktree for the work, whether its pane splits to the
 right or opens a new tab, and whether the issue moves to the status of work in progress if it has not
 begun (`Status`: the name of its team's first such state, or `Unchanged`; the row is not there when
-the issue has begun). There is no field for words to the agent: it opens in its own pane, and you
-write to it there. `⌘Enter` starts it, and the issue says which agent is on it until the pane ends.
+the issue has begun). `Prompt` takes words of yours for the agent, such as "Release it when the gate
+is green": they end what it is started with. Leave it empty and you write to the agent in its own
+pane. `⌘Enter` starts it, and the issue says which agent is on it until the pane ends.
 When the agent stops writing, the row says `Claude idle` where the ring was. The form opens with what
 you chose last time (agent, folder, where the pane goes and `Status`), which is kept in
 `~/.local/state/linearpen/prefs.json`.
@@ -256,13 +257,17 @@ How it starts one:
   agent is started all the same and the list says the issue did not move.
 - The issue, with its description and comments, is written to a file that only you can read, in
   `~/.local/state/linearpen/work` (`$XDG_STATE_HOME`), and the agent is told where it is. What the
-  agent is started with is a sentence that names the file, never the text of the issue.
+  agent is started with is a sentence that names the file, never the text of the issue, and then
+  your words from `Prompt`, marked as yours.
 - That file says, before anything else, that other people wrote the issue, so what is in it is
   read as a description of the work and not as an order.
 - A new worktree is the agent's to make, not linearpen's: a project has its own rules for where
   one goes and what its branch is called, and the agent reads them. It is asked to follow them and,
   where there are none, to use the branch Linear suggests, which the file gives for the issue
-  (only where it is a name `git` would take). linearpen itself makes no folder and no branch.
+  (only where it is a name `git` would take). linearpen itself makes no folder and no branch, and
+  does not ask `git` anything, so New worktree is there in a folder that is no repository too (one
+  that holds several): the agent makes the worktree of the repository under it that the issue is
+  about.
 - While an agent is on, bateri is asked for its panes every three seconds (`bateri ls --json`, of which
   only the id of a pane and when it last wrote are read). A pane that has written nothing for ten
   seconds is an agent that has stopped, because it is done or because it waits for you: linearpen

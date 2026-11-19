@@ -733,7 +733,7 @@ fn an_agent_is_started_in_a_pane_that_is_given_the_file_of_the_issue_and_not_its
     assert!(!file.contains(common::KEY), "the key is not in the file");
     // bateri was asked for a pane to the right, in the folder the pen began in, with the program
     // after the dashes: its prompt is the pen's own sentence, names the file and is not the issue's
-    // text, and holds no word of a person's.
+    // text, and holds no word of a person's where they wrote none.
     let calls = home.bateri_calls();
     // The pane, and then the wait for its end (a thread's, so it may not be in the record yet).
     assert!(calls.len() <= 2, "{calls:?}");
@@ -776,6 +776,40 @@ fn an_agent_is_started_in_a_pane_that_is_given_the_file_of_the_issue_and_not_its
             .any(|word| word.contains("--focus") || word.contains(common::KEY)),
         "{call:?}"
     );
+}
+
+// What the person wrote for the agent reaches it as they wrote it, as one word of its command line,
+// after the pen's own sentences; and a new worktree is asked for in a folder that is no repository.
+#[test]
+fn the_persons_words_end_the_prompt_as_one_word_byte_for_byte_and_a_worktree_needs_no_repository() {
+    let home = Home::new();
+    let typed = "Release it when the gate is green.\nDon't push: \"$(whoami)\" `ls` $HOME 'q' \\ ş 发布\tend";
+    let mut asked = hand("issue-412");
+    asked["folder"] = json!("worktree");
+    asked["prompt"] = json!(format!("  {typed}\r\n"));
+    let heard = home.ask(&in_bateri().call("start", asked));
+    assert_eq!(heard[0].result()["pane"], "p41", "{:?}", heard[0]);
+    let calls = home.bateri_calls();
+    let call = &calls[0];
+    assert_eq!(&call[4..8], ["--label", "ACM-412", "--", "claude"]);
+    assert_eq!(call.len(), 9, "{call:?}");
+    let prompt = &call[8];
+    assert!(
+        prompt.starts_with("Work on the Linear issue in "),
+        "{prompt}"
+    );
+    assert!(
+        prompt.contains("\n\nDo this work in a new git worktree"),
+        "{prompt}"
+    );
+    assert!(
+        prompt.ends_with(&format!(
+            "\n\nThe person who started you on this issue adds:\n\n{typed}"
+        )),
+        "{prompt}"
+    );
+    // The folder the pen began in is no repository, and the worktree was asked for all the same.
+    assert!(!home.dir.path().join(".git").exists());
 }
 
 // A pen that was itself started for an agent (or by a shell that holds the variable) does not pass its
@@ -1053,12 +1087,16 @@ fn a_start_that_asks_for_what_the_program_does_not_take_is_refused_before_it_run
             .call("start", json!({ "id": "issue-412", "agent": "claude", "folder": "elsewhere", "open": "split" }))
             .call("start", json!({ "id": "a b", "agent": "claude", "folder": "here", "open": "split" }))
             .call("start", json!({ "id": "issue-412", "agent": "claude", "folder": "here", "open": "split", "yolo": true }))
-            // The issue is one, and nothing of a person's goes to the agent: the members of the
-            // form before are refused like any other that is not named.
+            // The issue is one: the member of the form before is refused like any other that is not
+            // named.
             .call("start", json!({ "ids": ids, "agent": "claude", "folder": "here", "open": "split" }))
             .call("start", json!({ "id": "issue-412", "ids": ["issue-412"], "agent": "claude", "folder": "here", "open": "split" }))
-            .call("start", json!({ "id": "issue-412", "prompt": "Start with the limiter.", "agent": "claude", "folder": "here", "open": "split" }))
-            .call("start", json!({ "id": "issue-412", "prompt": "", "agent": "claude", "folder": "here", "open": "split" })),
+            // The person's words are words, short enough, with no control character but a line end
+            // or a tab.
+            .call("start", json!({ "id": "issue-412", "prompt": 7, "agent": "claude", "folder": "here", "open": "split" }))
+            .call("start", json!({ "id": "issue-412", "prompt": "a\u{1b}[2Jb", "agent": "claude", "folder": "here", "open": "split" }))
+            .call("start", json!({ "id": "issue-412", "prompt": "a\u{0}b", "agent": "claude", "folder": "here", "open": "split" }))
+            .call("start", json!({ "id": "issue-412", "prompt": "x".repeat(4001), "agent": "claude", "folder": "here", "open": "split" })),
     );
     for (index, answer) in heard.iter().enumerate() {
         assert!(answer.failed("bad-params"), "{index}: {answer:?}");
@@ -1083,9 +1121,9 @@ fn where_bateri_makes_no_pane_the_start_says_so_in_its_words() {
 }
 
 #[test]
-fn the_options_say_which_agents_are_there_and_what_a_worktree_would_need() {
+fn the_options_say_which_agents_are_there_and_the_folder_the_agent_starts_in() {
     let home = Home::new();
-    // Only claude, bateri and curl are found in this PATH (and the system's, for `git`).
+    // Only claude, bateri and curl are found in this PATH (and the system's).
     let only = home.path("only-bin");
     std::fs::create_dir(&only).unwrap();
     for name in ["bateri", "claude", "curl"] {
@@ -1121,14 +1159,9 @@ fn the_options_say_which_agents_are_there_and_what_a_worktree_would_need() {
         options["folder"]["name"].as_str().unwrap(),
         home.dir.path().file_name().unwrap().to_str().unwrap()
     );
-    // The pen's folder is not in a git repository: no worktree, and the reason is said.
-    assert_eq!(options["worktree"]["available"], false);
-    assert!(
-        options["worktree"]["reason"]
-            .as_str()
-            .is_some_and(|why| why.contains("git repository")),
-        "{options}"
-    );
+    // A new worktree can always be chosen, whether or not the folder is in a repository: the pen asks
+    // `git` nothing, and the options say nothing of it.
+    assert!(options.get("worktree").is_none(), "{options}");
     // Outside bateri nothing can be started, and the options say why.
     let heard = home.ask(&keyed().call("work_options", json!({})));
     assert!(

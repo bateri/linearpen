@@ -1,9 +1,9 @@
 -- Handing an issue to an agent: the issue's own, from its detail (Work on is one issue's and no
 -- other's; what is selected is for changing values). Beside the list (or over it, in a narrow pane) a
--- form with the issue, which agent, where it works and where its pane goes; there are no words to give
--- the agent, which is written to in its pane. The program does the work (`work_options`, `start`: the
--- file of the issue, the worktree, the pane of bateri); the page asks it what can be chosen and what the
--- person chose.
+-- form with the issue, which agent, where it works and where its pane goes, and, where the person
+-- writes some, words of theirs that end the agent's prompt. The program does the work (`work_options`,
+-- `start`: the file of the issue, the prompt, the pane of bateri); the page asks it what can be chosen
+-- and what the person chose.
 
 local kit = require("../lib/kit")
 local change = require("./change")
@@ -17,7 +17,7 @@ local work = {}
 
 -- The form: whether it is open; the issue (by Linear's id) and what is said of it where the list does
 -- not hold it (it was open and left the list); what the program said can be chosen; what was chosen; the
--- words of why the last start did not.
+-- words the person wrote for the agent; the words of why the last start did not.
 local W = {
 	open = false,
 	serial = 0,
@@ -34,12 +34,57 @@ local W = {
 	-- Whether what the last start chose (which the program kept, and `boot` brought) has been put in
 	-- the form: once for a run of the page, so that what is chosen after is not undone.
 	remembered = false,
+	-- What the person wrote for the agent, kept while the form is put away (Esc, another issue opened
+	-- in its place) for the issue it was written for (`words_of`), and let go once it is started:
+	-- `restoring` while the editor made for the form has not been given them yet.
+	words = "",
+	words_of = nil,
+	restoring = false,
 	starting = false,
 	error = nil,
 }
 work.state = W
 
 local AGENT, FOLDER, PLACE, STATUS = "work-agent", "work-folder", "work-place", "work-status"
+
+-- The most characters of what the person writes for the agent: the program says no to more.
+local MOST = 4000
+
+-- The editor of the words for the agent: another for each form, so that a form begins with what was
+-- kept for its issue and nothing else.
+local function prompt_name()
+	return "work-prompt" .. W.serial
+end
+
+local function trimmed(words)
+	return string.match(words, "^%s*(.-)%s*$") or ""
+end
+
+-- The words for the agent: what the editor holds (what was kept, where it has not been made yet or has
+-- not been given what was kept).
+local function prompt_words()
+	if W.restoring then
+		return W.words
+	end
+	local name = prompt_name()
+	local length = b.layout.editor_length(name)
+	if length == nil then
+		return W.words
+	end
+	return b.layout.editor_text(name, 1, length + 1) or ""
+end
+
+-- Whether the keyboard is in the editor of the words for the agent (where the arrows move the caret and
+-- choose nothing).
+function work.typing()
+	return W.open and u:keyboard() == u:field(prompt_name())
+end
+
+-- Whether the words for the agent are few enough to be sent.
+local function prompt_fits()
+	local length = utf8.len(trimmed(prompt_words()))
+	return length ~= nil and length <= MOST
+end
 
 function work.is_open()
 	return W.open
@@ -133,6 +178,7 @@ function work.startable()
 		and options.unavailable == nil
 		and W.agent ~= nil
 		and W.id ~= nil
+		and prompt_fits()
 end
 
 -- Asks the program what can be chosen (it is the same whichever the issue is), once for a form. The
@@ -160,9 +206,6 @@ local function ask(ids)
 		if not known then
 			W.agent = result.agents[1] ~= nil and result.agents[1].id or nil
 		end
-		if W.folder == "worktree" and not result.worktree.available then
-			W.folder = "here"
-		end
 		if W.serial == serial and W.open and W.agent ~= nil and u.holder == "page" then
 			return u:focus(u:name(AGENT, "item", W.agent))
 		end
@@ -185,7 +228,8 @@ end
 
 -- Puts what the last start chose into the form, the first time it is opened: the agent, where the
 -- agent works, where its pane goes and Status. What the program says is not there (an agent that is
--- not installed, a worktree outside a repository) is let go when it says what can be chosen (`ask`).
+-- not installed) is let go when it says what can be chosen (`ask`). The words for the agent are not
+-- among them: they are for one issue.
 local function remember()
 	if W.remembered then
 		return
@@ -224,6 +268,11 @@ function work.show()
 	}
 	panel.close()
 	W.open, W.id = true, info.id
+	-- The words kept are of the issue they were written for; another issue's form begins empty.
+	if W.words_of ~= info.id then
+		W.words, W.words_of = "", info.id
+	end
+	W.restoring = W.words ~= ""
 	W.serial += 1
 	-- (A start that is on its way is not forgotten: its answer comes to a form that may be gone.)
 	W.asked, W.options, W.error = nil, nil, nil
@@ -231,8 +280,36 @@ function work.show()
 	return u:focus(nil)
 end
 
+-- Puts the form away and keeps the words for the agent.
 function work.close()
+	if not W.open then
+		return
+	end
+	W.words = prompt_words()
+	W.restoring = false
 	W.open = false
+end
+
+-- The words kept are put back in the editor the host has made, with the caret after them. The reply,
+-- or nil.
+function work.ready(event)
+	if not W.restoring or event.editor ~= prompt_name() then
+		return nil
+	end
+	W.restoring = false
+	if W.words == "" then
+		return nil
+	end
+	return { editor = { [prompt_name()] = { { load = W.words }, { command = "move", movement = "document_end" } } } }
+end
+
+-- The editor of the words changed: a frame is drawn, for how many there are says whether Start can be
+-- pressed. The reply, or nil.
+function work.edited(event)
+	if W.open and event.editor == prompt_name() then
+		return true
+	end
+	return nil
 end
 
 -- Hands the issue over to the program.
@@ -247,15 +324,22 @@ function work.start()
 	if work.moving() ~= nil then
 		progress = W.status == "progress"
 	end
-	local serial = W.serial
+	local serial, id = W.serial, W.id
+	local words = trimmed(prompt_words())
 	kit.call("start", {
 		id = W.id,
 		agent = W.agent,
 		folder = W.folder,
 		open = W.place,
 		progress = progress,
+		prompt = words ~= "" and words or nil,
 	}, function(result, err)
 		W.starting = false
+		-- The words went with a start that was made: where the form was put away while it went (and
+		-- they were kept), the next form of the issue does not have them.
+		if not err and not W.open and W.words_of == id then
+			W.words, W.words_of = "", nil
+		end
 		-- The form it was sent from may have been put away, and another opened: that one is not done.
 		if W.serial ~= serial or not W.open then
 			return true
@@ -269,7 +353,9 @@ function work.start()
 		if result ~= nil and result.notMoved ~= nil then
 			change.note(result.notMoved)
 		end
-		W.open = false
+		-- The words went with it: the next form of the issue begins empty.
+		W.open, W.restoring = false, false
+		W.words, W.words_of = "", nil
 		return u:focus(nil)
 	end)
 	return true
@@ -286,14 +372,6 @@ local function field(label, control)
 	):child(control)
 end
 
--- A line under a control: wrapped where it is words, or kept to one line where it is a name that is
--- cut short (`one_line`).
-local function note(words, one_line)
-	local text = b.text(words):text_size(SIZE.small):color("dim"):min_w(0):grow(1)
-	text = one_line and text:truncate() or text:wrap()
-	return b.div():row():gap(12):no_shrink():child(b.div():w(LABEL):no_shrink()):child(text)
-end
-
 local function agents_control(options)
 	local items = {}
 	for _, agent in options.agents do
@@ -306,17 +384,44 @@ local function agents_control(options)
 end
 
 local function folder_control(options)
-	local items = {
-		{ key = "here", title = "This folder", tip = "Work in " .. (options.folder.name or "the folder linearpen began in") },
-	}
-	if options.worktree.available then
-		items[#items + 1] = {
-			key = "worktree",
-			title = "New worktree",
-			tip = "The agent makes a worktree first, by this project's own rules",
-		}
-	end
-	return u:segments(FOLDER, { value = W.folder, items = items })
+	return u:segments(FOLDER, {
+		value = W.folder,
+		items = {
+			{ key = "here", title = "This folder", tip = "Work in " .. (options.folder.name or "the folder linearpen began in") },
+			{
+				key = "worktree",
+				title = "New worktree",
+				tip = "The agent makes a worktree first, by this project's own rules",
+			},
+		},
+	})
+end
+
+-- The words for the agent: an editor the host keeps, that wraps, in a box of the field's look. A line
+-- in a short pane, for Start to stay on the page.
+local function prompt_box(compact)
+	local t = u.theme
+	local name = u:field(prompt_name())
+	local ringed = u:keyboard() == name
+	local editor = b.editor(name, {
+		wrap = true,
+		gutter = false,
+		padding = 8,
+		line_height = 1.5,
+		hint = "More for the agent, such as: release it when it is done",
+		read_only = W.starting,
+		-- Tab is the page's: it goes on to Start.
+		keymap = { tab = false, ["shift+tab"] = false },
+	}):grow(1):min_h(0):label("Prompt")
+	return b.div()
+		:h(compact and 38 or 76)
+		:grow(1)
+		:min_w(0)
+		:rounded(t.radius.control)
+		:bg(t.field)
+		:border(1, ringed and t.ring or t.line)
+		:motion({ seconds = t.motion, color = true })
+		:child(editor)
 end
 
 local function place_control()
@@ -363,6 +468,8 @@ local function start_button()
 	local why = nil
 	if options ~= nil and options.unavailable ~= nil then
 		why = options.unavailable
+	elseif not prompt_fits() then
+		why = "A prompt is up to " .. MOST .. " characters"
 	end
 	local button = kit.button("work-start", start_label(), {
 		primary = true,
@@ -396,19 +503,18 @@ function work.view(width)
 		)
 	else
 		content:child(field("Agent", agents_control(options)))
+		-- (No line under Folder: choosing moves nothing below it, and the choice's tip says who makes
+		-- the worktree.)
 		content:child(field("Folder", folder_control(options)))
-		-- (In a short pane the line under Folder is left out, for Start to stay on the page: the
-		-- choice's tip says it.)
-		if W.folder == "worktree" and not compact then
-			content:child(note("The agent makes it, by this project's own rules", true))
-		elseif not options.worktree.available and options.worktree.reason ~= nil then
-			content:child(note("No new worktree: " .. options.worktree.reason))
-		end
 		content:child(field("Open in", place_control()))
 		local moving = work.moving()
 		if moving ~= nil then
 			content:child(field("Status", status_control(moving)))
 		end
+		-- (The label stands by the first line of the box, not at its middle.)
+		content:child(b.div():row():items_start():gap(12):no_shrink():child(
+			b.div():w(LABEL):no_shrink():mt(10):child(b.text("Prompt"):color("dim"):text_size(SIZE.small))
+		):child(prompt_box(compact)))
 	end
 	local button, why = start_button()
 	local foot = b.div():row():items_center():gap(12):no_shrink():mt(compact and 4 or 8):child(button)
@@ -462,7 +568,7 @@ function work.action(action)
 end
 
 -- What Tab goes through, in order, as it stands now: the choice made in each control (the one of its
--- parts that is in the order of the keyboard), and the button that starts.
+-- parts that is in the order of the keyboard), the words for the agent, and the button that starts.
 local function order()
 	local names = {}
 	local controls = { { AGENT, W.agent }, { FOLDER, W.folder }, { PLACE, W.place }, { STATUS, W.status } }
@@ -471,6 +577,9 @@ local function order()
 		if name ~= nil and b.layout.bounds(name) ~= nil then
 			names[#names + 1] = name
 		end
+	end
+	if W.options ~= nil and W.options.status == "ready" then
+		names[#names + 1] = u:field(prompt_name())
 	end
 	if b.layout.bounds("work-start") ~= nil then
 		names[#names + 1] = "work-start"

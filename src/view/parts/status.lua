@@ -12,6 +12,7 @@ local filters = require("./filters")
 local head = require("./head")
 local list = require("./list")
 local new = require("./new")
+local work = require("./work")
 
 local b, u, S, SIZE, act = kit.b, kit.u, kit.S, kit.SIZE, kit.act
 
@@ -42,9 +43,9 @@ function status.finish()
 			priority = 2,
 		}
 	end
-	-- (In the form of a new issue, and while a title is written, `?` is a character of the words, not the
-	-- card of keys.)
-	if not S.new_open and not S.editing and not S.writing then
+	-- (In the form of a new issue, while a title or a comment is written, and in the words for the agent
+	-- of Work on, `?` is a character of the words, not the card of keys.)
+	if not S.new_open and not S.editing and not S.writing and not work.typing() then
 		finish[#finish + 1] = {
 			key = "help",
 			words = hint({ "help" }, "keys"),
@@ -56,18 +57,20 @@ function status.finish()
 	return finish
 end
 
--- What the keyboard does in the form that hands issues to an agent.
+-- What the keyboard does in the form that hands issues to an agent: Tab goes on, and on a choice the
+-- arrows choose (in the words for the agent they move the caret).
 local function work_hints()
-	return {
-		{ key = "next_field", words = hint({ "next_field" }, "next field"), priority = 8 },
-		{
+	local start = { { key = "next_field", words = hint({ "next_field" }, "next field"), priority = 8 } }
+	if not work.typing() then
+		start[#start + 1] = {
 			key = "choose",
 			words = b.div():row():items_center():gap(5):no_shrink():child(u:kbd("left")):child(u:kbd("right")):child(
 				b.text("choose")
 			),
 			priority = 6,
-		},
-	}
+		}
+	end
+	return start
 end
 
 -- What the keyboard does in the form of a new issue: Tab goes on, and on a value Enter chooses.

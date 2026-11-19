@@ -1,6 +1,6 @@
 //! The way the program runs another program: with its arguments as a list, never through a shell,
-//! with nothing on its stdin. It is a trait so that a test can say what `git` and `bateri` answer
-//! without running them.
+//! with nothing on its stdin. It is a trait so that a test can say what `bateri` answers without
+//! running it.
 
 use std::io;
 use std::path::Path;
@@ -63,7 +63,7 @@ pub trait Runner: Send + Sync {
 pub struct System;
 
 /// The child to run: no shell, nothing on its stdin, and without the key that may be in this
-/// program's environment (`git`, its hooks, `bateri` and the agent it starts are not its readers).
+/// program's environment (`bateri` and the agent it starts are not its readers).
 pub(super) fn command_of(program: &str, args: &[String], cwd: Option<&Path>) -> Command {
     let mut command = Command::new(program);
     command

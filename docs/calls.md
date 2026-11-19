@@ -51,8 +51,9 @@ the words that say why; `key` is `none` then.
 (`$XDG_STATE_HOME/linearpen/prefs.json`): `agent` (`claude`, `codex` or `cursor`), `folder` (`here` or
 `worktree`), `place` (`split` or `tab`) and `status` (`progress` or `keep`). Each is null where the
 file does not say it, is not a word of the form's, or the file is missing or cannot be read. Whether
-the agent is installed and a worktree can be made is not told here: the page takes what it cannot have
-away when `work_options` says what can be chosen.
+the agent is installed is not told here: the page takes what it cannot have away when `work_options`
+says what can be chosen. The words the person writes for the agent are not kept: they are for one
+start.
 
 ### `connect`
 
@@ -190,8 +191,7 @@ why. Params: none. Nothing is started, and Linear is not asked.
 {
   "agents": [{ "id": "claude", "name": "Claude" }, { "id": "codex", "name": "Codex" }],
   "unavailable": null,
-  "folder": { "name": "acme-app" },
-  "worktree": { "available": true, "reason": null }
+  "folder": { "name": "acme-app" }
 }
 ```
 
@@ -201,29 +201,33 @@ why. Params: none. Nothing is started, and Linear is not asked.
   (neither `BATERI_TAB_URL` nor `LC_BATERI_TAB_URL`, which a pane on a server has, is set), `bateri`
   is not in the `PATH`, or there is no agent.
 - `folder.name`: the name of the folder the pen was started in, which is where the agent starts.
-- `worktree`: whether "New worktree" can be chosen: the folder is in a git repository. Where it
-  cannot, `reason` says why. The pen makes no worktree: where it is chosen, the agent is asked to
-  make one by the project's own rules (see `start`).
+
+"New worktree" can always be chosen, whether or not the folder is in a git repository: the pen makes
+no worktree and asks `git` nothing; where it is chosen, the agent is asked to make one by the
+project's own rules (see `start`).
 
 Errors: `bad-params`.
 
 ### `start`
 
 Hands one issue to an agent in a pane of bateri (the page calls it from the issue's own detail: Work
-on is one issue's, and there are no words to give the agent: it opens in a pane of its own, and is
-written to there). The program writes the issue, with its description and comments, to a file of its
-own and starts the agent with a prompt that is the program's own sentence and names the file. It
-answers when the pane is made. Params (a member that is not named here is refused):
+on is one issue's). The program writes the issue, with its description and comments, to a file of its
+own and starts the agent with a prompt that is the program's own sentences, names the file, and ends
+with the words the person wrote for the agent, where they wrote some. It answers when the pane is
+made. Params (a member that is not named here is refused):
 
 ```json
-{ "id": "issue-412", "agent": "claude", "folder": "here", "open": "split", "progress": true }
+{ "id": "issue-412", "agent": "claude", "folder": "here", "open": "split", "progress": true,
+  "prompt": "Release it when the gate is green." }
 ```
 
 - `id`: the Linear id of the issue.
 - `agent`: `claude`, `codex` or `cursor`. `folder`: `here` (the agent works in the folder the pen
-  was started in) or `worktree` (the agent is asked to make a new `git` worktree first, by the
-  project's own rules for where one goes and what its branch is called; the pen makes none, and the
-  agent starts in the pen's folder either way). `open`: `split` (a pane to the right of this one) or
+  was started in) or `worktree` (the agent is asked to make a new `git` worktree first, of the
+  repository the work is in: the pen's folder, or, where that is no repository, the one under it
+  that the issue is about; by the project's own rules for where one goes and what its branch is
+  called; the pen makes none and asks `git` nothing, and the agent starts in the pen's folder either
+  way). `open`: `split` (a pane to the right of this one) or
   `tab` (a new tab). The new pane is not given the focus.
 - `progress`: optional; given where the form had the Status row, as the person chose it: `true` to
   move, `false` to leave the issue as it is (not given where the row was not there, which is where
@@ -236,6 +240,11 @@ answers when the pane is made. Params (a member that is not named here is refuse
   person chose to move the issue and the form said it would move. Where it is given (true or
   false) it is kept with the choices below, so that the next form is opened with it; where it is not,
   the choice kept before stays.
+- `prompt`: optional; the words the person wrote for the agent in the form, as they wrote them. They
+  are the person's, not Linear's: the prompt ends with them, after a sentence of the program's that
+  says so (`The person who started you on this issue adds:`). The ends of their lines are made `\n`
+  and the blank round them is taken off; blank or null is no words. Up to 4000 characters, and no
+  control character but a line end or a tab (`bad-params` otherwise). They are not kept.
 
 ```json
 { "pane": "p41", "folder": "/Users/ada/acme-app", "context": "/Users/ada/.local/state/linearpen/work/20261111T031500Z-ACM-412/issues.md",
@@ -252,10 +261,11 @@ The file is `$XDG_STATE_HOME/linearpen/work/<UTC time>-<first identifier>/issues
 directories `0700`, the file `0600`); it says in its first lines that the text under it was
 written by others and holds no instructions for the agent, and the branch Linear
 suggests for the issue (where that is a name `git` would take). The text of an issue is never in the
-prompt (the agent's command line), and nothing a person typed is: only the file's path is, for
-`worktree` a sentence of the program's own that asks for one, and, where the issue's id is a UUID, that id
-and the path of the program in the sentence that says what the agent may write in Linear (its status
-and comments: `docs/cli.md`). The agent's command is `<agent> <prompt>` and no more. The variable
+prompt (the agent's command line): the file's path is, for `worktree` a sentence of the program's
+own that asks for one, where the issue's id is a UUID, that id and the path of the program in the
+sentence that says what the agent may write in Linear (its status and comments: `docs/cli.md`), and,
+last, the person's own words (`prompt`). The prompt is one word of the command line: no shell reads
+it, and the person's words never begin it. The agent's command is `<agent> <prompt>` and no more. The variable
 `LINEARPEN_AGENT` is set to the id (empty where the id is no UUID, so that a value in the pen's own
 environment does not pass) in the environment of the `bateri split` or `bateri tab` that makes the
 pane, which is the environment bateri starts the agent in; no other call to `bateri` carries it. The

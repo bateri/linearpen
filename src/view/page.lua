@@ -42,9 +42,9 @@ commands.when.list = function()
 	return S.screen == "list" and not modal() and not form_open()
 end
 -- The card of keys is not offered where words are written in a form (`?` is a letter of them): the form
--- of a new issue. The form of Work on has none.
+-- of a new issue, and the words for the agent in the form of Work on (on its choices it is offered).
 commands.when.helpable = function()
-	return S.screen == "list" and not modal() and not new.is_open() and not panel.editing()
+	return S.screen == "list" and not modal() and not new.is_open() and not panel.editing() and not work.typing()
 end
 commands.when.keyed = function()
 	return (S.screen == "list" or S.screen == "failed") and not modal() and not form_open()
@@ -753,8 +753,10 @@ local function handle(event)
 	if kind == "editor_ready" then
 		reply = b.merge(reply, new.ready(event))
 		reply = b.merge(reply, comment.ready(event))
+		reply = b.merge(reply, work.ready(event))
 	elseif kind == "edit" then
 		reply = b.merge(reply, comment.edited(event))
+		reply = b.merge(reply, work.edited(event))
 	end
 	for _, action in actions do
 		reply = b.merge(reply, on_action(action))

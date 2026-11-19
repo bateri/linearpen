@@ -1010,6 +1010,7 @@ fn the_two_commands_the_prompt_gives_the_agent_are_the_two_the_command_line_take
                 exe: exe.map(std::path::Path::new),
                 issue: MINE,
             }),
+            None,
         );
         // The commands are what is between the backticks.
         let spans: Vec<&str> = said.split('`').skip(1).step_by(2).collect();

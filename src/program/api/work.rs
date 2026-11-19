@@ -14,7 +14,7 @@ use crate::session::{Session, now_seconds};
 use crate::state::prefs;
 use crate::work::agents::{self, Agent};
 use crate::work::bateri::Place;
-use crate::work::{self, Env, Folder, Refused, Request, progress};
+use crate::work::{self, Env, Folder, Refused, Request, handoff, progress};
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -32,24 +32,17 @@ struct FolderMessage {
 }
 
 #[derive(Debug, Serialize)]
-struct WorktreeMessage {
-    available: bool,
-    reason: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
 struct OptionsMessage {
     agents: Vec<AgentMessage>,
     unavailable: Option<String>,
     folder: FolderMessage,
-    worktree: WorktreeMessage,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Hand {
-    /// The one issue handed over: Work on is an issue's own, and no words of a person's go to the
-    /// agent (a member `ids` or `prompt` is refused with any other that is not named).
+    /// The one issue handed over: Work on is an issue's own (a member `ids` is refused with any
+    /// other that is not named).
     id: String,
     agent: String,
     folder: String,
@@ -58,6 +51,9 @@ struct Hand {
     /// its team's first state of work in progress, once the pane is made (`true`), or leave it
     /// (`false`). Not given where the form had no such row. Only `true` writes to Linear.
     progress: Option<bool>,
+    /// What the person wrote for the agent, which ends its prompt: the person's own words, not
+    /// Linear's. Not given, or only blank, where they wrote none.
+    prompt: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -83,16 +79,6 @@ fn env(session: &Session) -> Env<'_> {
 
 fn options(session: &Session, _: Nothing) -> Result<OptionsMessage, Failure> {
     let setup = &session.work.setup;
-    let worktree = match work::worktree_available(&env(session)) {
-        Ok(()) => WorktreeMessage {
-            available: true,
-            reason: None,
-        },
-        Err(reason) => WorktreeMessage {
-            available: false,
-            reason: Some(reason),
-        },
-    };
     Ok(OptionsMessage {
         agents: agents::installed(&setup.path)
             .into_iter()
@@ -110,7 +96,6 @@ fn options(session: &Session, _: Nothing) -> Result<OptionsMessage, Failure> {
                 .and_then(|name| name.to_str())
                 .map(str::to_owned),
         },
-        worktree,
     })
 }
 
@@ -122,6 +107,8 @@ fn start(session: &Session, params: Hand) -> Result<StartedMessage, Failure> {
         .ok_or_else(|| Failure::BadParams("folder is here or worktree".to_owned()))?;
     let place = Place::parse(&params.open)
         .ok_or_else(|| Failure::BadParams("open is split or tab".to_owned()))?;
+    let words =
+        handoff::words(params.prompt.as_deref().unwrap_or_default()).map_err(Failure::BadParams)?;
     if session.state().key.is_none() {
         return Err(Failure::NoKey(
             "there is no key to ask Linear with".to_owned(),
@@ -139,6 +126,7 @@ fn start(session: &Session, params: Hand) -> Result<StartedMessage, Failure> {
             agent,
             folder,
             place,
+            words: words.as_deref(),
         },
     )
     .map_err(|refused| match refused {
@@ -172,7 +160,7 @@ fn start(session: &Session, params: Hand) -> Result<StartedMessage, Failure> {
 
 /// What the form is opened with: the choices of the last start, each only where it is one the form
 /// has (a word the file holds that it has not is as if the file did not say). Whether the agent is
-/// installed and a worktree can be made is for the form to tell, with what `work_options` says.
+/// installed is for the form to tell, with what `work_options` says.
 #[derive(Debug, Default, Serialize)]
 pub(super) struct Remembered {
     agent: Option<&'static str>,
@@ -304,19 +292,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_id_is_an_id_and_the_words_of_a_start_are_the_pens_alone() {
+    fn the_id_is_an_id_and_the_prompt_is_words_or_nothing() {
         use crate::api::params::parse;
         let base =
             json!({ "id": "issue-412", "agent": "claude", "folder": "here", "open": "split" });
         assert!(parse::<Hand>(base.clone()).is_ok());
-        // One issue, and nothing a person typed: `ids` and `prompt` are members no more.
-        for (name, value) in [
-            ("ids", json!(["issue-412"])),
-            ("prompt", json!("Start with the limiter.")),
-        ] {
+        // One issue: `ids` is a member no more, and nor is any other that is not named.
+        for (name, value) in [("ids", json!(["issue-412"])), ("words", json!("Go."))] {
             let mut more = base.clone();
             more[name] = value;
             assert!(parse::<Hand>(more).is_err(), "{name} is refused");
+        }
+        // The prompt is words, or null, or not there.
+        for (value, fine) in [
+            (json!("Start with the limiter."), true),
+            (json!(null), true),
+            (json!(7), false),
+            (json!(["Go."]), false),
+        ] {
+            let mut more = base.clone();
+            more["prompt"] = value.clone();
+            assert_eq!(parse::<Hand>(more).is_ok(), fine, "{value}");
         }
         let mut none = base.clone();
         none.as_object_mut().unwrap().remove("id");
@@ -338,6 +334,7 @@ mod tests {
             folder: "here".to_owned(),
             open: "split".to_owned(),
             progress: Some(progress),
+            prompt: None,
         }
     }
 
