@@ -131,7 +131,7 @@ function head.action(action)
 	return nil
 end
 
--- How many open issues the list shown holds, as the button says it: "500+" where there are more than
+-- How many issues the list shown holds, as the button says it: "500+" where there are more than
 -- the program takes. Nothing while the list has not come.
 local function count_words(snapshot)
 	local counts = snapshot ~= nil and snapshot.loaded and snapshot.listing == "ready" and snapshot.counts or nil

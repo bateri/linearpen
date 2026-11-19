@@ -88,7 +88,7 @@ pub const VERIFY: Operation = Operation {
     text: concat!("query Verify { viewer { ", viewer_fields!(), " } }"),
 };
 
-/// The open issues assigned to the person.
+/// The issues assigned to the person.
 pub const MY_ISSUES: Operation = Operation {
     name: "MyIssues",
     text: concat!(
@@ -101,7 +101,7 @@ pub const MY_ISSUES: Operation = Operation {
     ),
 };
 
-/// The open issues of the whole workspace.
+/// The issues of the whole workspace.
 pub const ALL_ISSUES: Operation = Operation {
     name: "AllIssues",
     text: concat!(
@@ -114,8 +114,7 @@ pub const ALL_ISSUES: Operation = Operation {
     ),
 };
 
-/// What a search for some words finds: issues of the whole workspace, the closed ones too, as
-/// Linear ranks them. The words are a variable, like everything the person typed.
+/// What a search for some words finds: issues of the whole workspace, as Linear ranks them. The words are a variable, like everything the person typed.
 pub const SEARCH_ISSUES: Operation = Operation {
     name: "SearchIssues",
     text: concat!(
@@ -127,7 +126,7 @@ pub const SEARCH_ISSUES: Operation = Operation {
     ),
 };
 
-/// The open issues of one thing that has some (a team, a cycle, a view, a project, a label), asked
+/// The issues of one thing that has some (a team, a cycle, a view, a project, a label), asked
 /// for by its id: the id is a variable, and what the issues are of is the one thing that differs.
 macro_rules! issues_of {
     ($name:literal, $root:literal) => {
@@ -149,15 +148,15 @@ macro_rules! issues_of {
     };
 }
 
-/// The open issues of a team.
+/// The issues of a team.
 pub const TEAM_ISSUES: Operation = issues_of!("TeamIssues", "team");
-/// The open issues of a cycle.
+/// The issues of a cycle.
 pub const CYCLE_ISSUES: Operation = issues_of!("CycleIssues", "cycle");
-/// The open issues a saved view of issues shows.
+/// The issues a saved view of issues shows.
 pub const VIEW_ISSUES: Operation = issues_of!("ViewIssues", "customView");
-/// The open issues of a project.
+/// The issues of a project.
 pub const PROJECT_ISSUES: Operation = issues_of!("ProjectIssues", "project");
-/// The open issues that have a label.
+/// The issues that have a label.
 pub const LABEL_ISSUES: Operation = issues_of!("LabelIssues", "issueLabel");
 
 /// The favorites of the person: what Linear starred (views, projects, cycles, labels, and what is not
@@ -594,7 +593,7 @@ mod tests {
         let page = Page {
             first: 100,
             after: None,
-            filter: crate::linear::Filters::default().to_value(true),
+            filter: crate::linear::Filters::default().to_value(crate::linear::States::Open),
         };
         assert_eq!(
             serde_json::to_string(&page).unwrap(),

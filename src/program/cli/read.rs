@@ -12,13 +12,8 @@ use crate::linear::{self, Filters, Issue, ME, NONE, Scope, lines, plain};
 use crate::model::time::short_date;
 use crate::text::summary::section;
 
-/// Whether a state is one that a list of open issues has no issue in.
-fn closed(kind: StateKind) -> bool {
-    matches!(kind, StateKind::Completed | StateKind::Canceled)
-}
-
 /// What the person asked a list to be narrowed by, as Linear's names for them.
-fn filters(lookups: &mut Lookups, list: &List, searching: bool) -> Result<Filters, Stop> {
+fn filters(lookups: &mut Lookups, list: &List) -> Result<Filters, Stop> {
     let mut status: Vec<String> = Vec::new();
     if !list.status.is_empty() {
         let states: Vec<(String, StateKind)> = lookups
@@ -28,7 +23,7 @@ fn filters(lookups: &mut Lookups, list: &List, searching: bool) -> Result<Filter
             .map(|state| (state.name.clone(), state.kind))
             .collect();
         for asked in &list.status {
-            let kind = pick(WORKSPACE, "status", asked, &states)?;
+            pick(WORKSPACE, "status", asked, &states)?;
             // The name as Linear spells it: the match Linear makes is the exact one.
             let lower = asked.to_lowercase();
             let name = states
@@ -36,11 +31,6 @@ fn filters(lookups: &mut Lookups, list: &List, searching: bool) -> Result<Filter
                 .find(|(name, _)| name == asked)
                 .or_else(|| states.iter().find(|(name, _)| name.to_lowercase() == lower))
                 .map_or_else(|| asked.clone(), |(name, _)| name.clone());
-            if closed(kind) && !searching {
-                return Err(Stop::no(format!(
-                    "{name:?} is a closed status, and a list holds the open issues only; --search WORDS finds closed ones"
-                )));
-            }
             status.push(name);
         }
     }
@@ -142,7 +132,7 @@ fn scope_of(lookups: &mut Lookups, list: &List) -> Result<(Scope, String), Stop>
 pub fn list(access: &Access, list: &List) -> Result<String, Stop> {
     let mut lookups = Lookups::new(access);
     let searching = matches!(list.scope, ListScope::Search(_));
-    let filters = filters(&mut lookups, list, searching)?;
+    let filters = filters(&mut lookups, list)?;
     let (scope, title) = scope_of(&mut lookups, list)?;
     let fetched = linear::fetch(access.transport, access.key, &scope, &filters)
         .map_err(|error| asked_wrong(access, &error))?;
@@ -156,7 +146,7 @@ pub fn list(access: &Access, list: &List) -> Result<String, Stop> {
     } else if searching {
         "Nothing was found."
     } else {
-        "There are no open issues."
+        "There are no issues."
     };
     let mut out = String::new();
     section(&mut out, &plain(&title), &fetched.listing, empty);

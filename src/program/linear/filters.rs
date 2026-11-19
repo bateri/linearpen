@@ -2,7 +2,8 @@
 //! project of the issues. They are sent to Linear, put with the list's own filter by "and", and
 //! apply to every list (the one of a search too). Only these shapes are made, and each is one Linear
 //! takes: `state.name in`, `priority in`, `assignee.isMe`, `assignee.id in`, `assignee null`,
-//! `labels.some.name in`, `project.id in` and `project null`.
+//! `labels.some.name in`, `project.id in` and `project null`; and, for the open or the closed issues
+//! of a list, `state.type nin` or `state.type in` the closed kinds.
 
 use serde_json::{Value, json};
 
@@ -38,6 +39,20 @@ pub struct Filters {
     pub labels: Vec<String>,
     /// `none`, or Linear's id of a project.
     pub project: Vec<String>,
+}
+
+/// The kinds of the states an issue is closed in: done and canceled.
+const CLOSED: [&str; 2] = ["completed", "canceled"];
+
+/// Which issues a list asks Linear for by the kind of their state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum States {
+    /// The issues that are not done or canceled.
+    Open,
+    /// The issues that are done or canceled.
+    Closed,
+    /// Every issue, whatever its state.
+    Any,
 }
 
 /// Why a filter is not taken.
@@ -115,15 +130,16 @@ impl Filters {
             && self.project.is_empty()
     }
 
-    /// The filter Linear is given: `open` where the list holds the open issues only, and the
-    /// person's own, each kind a part, "and"ed (so a closed state asked for in a list of the open
-    /// issues finds nothing: it is a search's). No part is `null`; one part is that part (what was
-    /// asked before the filters were).
+    /// The filter Linear is given: the `states` asked for, and the person's own filters, each kind
+    /// a part, "and"ed (so a closed state asked for with the open issues finds nothing, and is found
+    /// with the closed ones). No part is `null`; one part is that part.
     #[must_use]
-    pub fn to_value(&self, open: bool) -> Value {
+    pub fn to_value(&self, states: States) -> Value {
         let mut parts: Vec<Value> = Vec::new();
-        if open {
-            parts.push(json!({ "state": { "type": { "nin": ["completed", "canceled"] } } }));
+        match states {
+            States::Open => parts.push(json!({ "state": { "type": { "nin": CLOSED } } })),
+            States::Closed => parts.push(json!({ "state": { "type": { "in": CLOSED } } })),
+            States::Any => {}
         }
         if !self.status.is_empty() {
             parts.push(json!({ "state": { "name": { "in": self.status } } }));
@@ -207,18 +223,23 @@ mod tests {
     }
 
     #[test]
-    fn no_filter_is_the_open_filter_alone_as_it_was_asked_before_the_filters() {
+    fn no_filter_is_the_part_of_the_states_alone() {
         assert_eq!(
-            Filters::default().to_value(true),
+            Filters::default().to_value(States::Open),
             json!({ "state": { "type": { "nin": ["completed", "canceled"] } } })
         );
-        // A search holds closed issues too: with no filter there is nothing to send.
-        assert_eq!(Filters::default().to_value(false), Value::Null);
+        assert_eq!(
+            Filters::default().to_value(States::Closed),
+            json!({ "state": { "type": { "in": ["completed", "canceled"] } } })
+        );
+        // A search holds every state: with no filter there is nothing to send.
+        assert_eq!(Filters::default().to_value(States::Any), Value::Null);
     }
 
     #[test]
     fn the_kinds_are_and_ed_with_the_open_filter_and_the_values_of_a_kind_are_any_of_them() {
-        let value = filters(&[], &["me", "u-deniz", "none"], &["bug"], &["none"]).to_value(true);
+        let value =
+            filters(&[], &["me", "u-deniz", "none"], &["bug"], &["none"]).to_value(States::Open);
         assert_eq!(
             value,
             json!({ "and": [
@@ -235,17 +256,24 @@ mod tests {
     }
 
     #[test]
-    fn states_asked_for_are_and_ed_with_the_open_filter_and_alone_in_a_search() {
+    fn states_asked_for_are_and_ed_with_the_kinds_asked_for_and_alone_in_a_search() {
         let narrowed = filters(&["Done", "In Progress"], &[], &[], &[]);
         assert_eq!(
-            narrowed.to_value(true),
+            narrowed.to_value(States::Open),
             json!({ "and": [
                 { "state": { "type": { "nin": ["completed", "canceled"] } } },
                 { "state": { "name": { "in": ["Done", "In Progress"] } } },
             ] })
         );
         assert_eq!(
-            narrowed.to_value(false),
+            narrowed.to_value(States::Closed),
+            json!({ "and": [
+                { "state": { "type": { "in": ["completed", "canceled"] } } },
+                { "state": { "name": { "in": ["Done", "In Progress"] } } },
+            ] })
+        );
+        assert_eq!(
+            narrowed.to_value(States::Any),
             json!({ "state": { "name": { "in": ["Done", "In Progress"] } } })
         );
     }
@@ -260,7 +288,7 @@ mod tests {
             Vec::new(),
         )
         .expect("priorities")
-        .to_value(false);
+        .to_value(States::Any);
         assert_eq!(value, json!({ "priority": { "in": [1, 4, 0] } }));
     }
 

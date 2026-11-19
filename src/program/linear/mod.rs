@@ -33,7 +33,7 @@ pub use comment::{NOT_POSTED, post as comment};
 pub use describe::{Step, add_files};
 pub use error::{Error, lines, plain, tidy};
 pub use filter_options::{FilterOptions, filter_options};
-pub use filters::{Filters, ME, NONE};
+pub use filters::{Filters, ME, NONE, States};
 pub use key::{Key, KeyError};
 pub use names::{Entry, names};
 pub use new_issue::{Created, CycleChoice, NewIssue, Options, StateChoice, Team};
@@ -41,15 +41,17 @@ pub use transport::Transport;
 pub use types::{Issue, Priority, Viewer};
 pub use upload::{NotSent, send_file};
 
+use std::collections::HashSet;
+
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 use query::{Lookup, Operation, Page};
 use types::Connection;
 
-/// Which issues a list shows: the ones assigned to the person, all of the workspace's, the open
-/// issues of one thing Linear has (by its id): a team, a cycle, a saved view, a project, a label, or
-/// what a search for some words finds (the whole workspace, the closed issues too).
+/// Which issues a list shows: the ones assigned to the person, all of the workspace's, the issues
+/// of one thing Linear has (by its id): a team, a cycle, a saved view, a project, a label, or what a
+/// search for some words finds (the whole workspace).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Scope {
     Mine,
@@ -113,14 +115,15 @@ impl Scope {
     }
 }
 
-/// The most issues of one list that are taken, and how many are asked for at a time.
+/// The most issues of one list that are taken (the open ones first), and how many are asked for at
+/// a time.
 pub const LIMIT: usize = 500;
 pub const PAGE: u32 = 100;
 
 /// The most issues one change is made to at once (Linear's own limit of a batch).
 pub const BATCH_MOST: usize = 50;
 
-/// One list of open issues.
+/// One list of issues: the open ones, then the closed ones that changed last.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Listing {
     pub issues: Vec<Issue>,
@@ -295,20 +298,66 @@ struct SearchData {
     search: Connection,
 }
 
-/// The open issues of `scope` that `filters` let through (all of them where there are none), a
-/// hundred a page, up to [`LIMIT`]; a search's are the closed issues too.
+/// The issues of `scope` that `filters` let through (all of them where there are none), a hundred
+/// a page, up to [`LIMIT`]: every open issue first, then, in what is left, the closed ones that
+/// changed last, so that the closed ones (of which a team has many more) never push an open one out
+/// of the list. A search asks once, for every state, as Linear ranks them.
 pub fn fetch(
     transport: &dyn Transport,
     key: &Key,
     scope: &Scope,
     filters: &Filters,
 ) -> Result<Fetched, Error> {
+    let fetched = |viewer, issues, truncated| Fetched {
+        viewer,
+        listing: Listing { issues, truncated },
+    };
+    if matches!(scope, Scope::Search(_)) {
+        let (viewer, issues, more) =
+            pages(transport, key, scope, &filters.to_value(States::Any), LIMIT)?;
+        return Ok(fetched(viewer, issues, more));
+    }
+    let (viewer, mut issues, more) = pages(
+        transport,
+        key,
+        scope,
+        &filters.to_value(States::Open),
+        LIMIT,
+    )?;
+    let room = LIMIT - issues.len();
+    if more || room == 0 {
+        // No room is left for the closed ones, and there may be some: the list is cut.
+        return Ok(fetched(viewer, issues, true));
+    }
+    let (_, closed, more) = pages(
+        transport,
+        key,
+        scope,
+        &filters.to_value(States::Closed),
+        room,
+    )?;
+    // An issue closed between the two questions is in both: it is held once, as it is now.
+    let now: HashSet<&str> = closed.iter().map(|issue| issue.id.as_str()).collect();
+    issues.retain(|issue| !now.contains(issue.id.as_str()));
+    issues.extend(closed);
+    Ok(fetched(viewer, issues, more))
+}
+
+/// The issues of `scope` that `filter` lets through, a hundred a page, up to `most`; and whether
+/// Linear has more than those.
+fn pages(
+    transport: &dyn Transport,
+    key: &Key,
+    scope: &Scope,
+    filter: &serde_json::Value,
+    most: usize,
+) -> Result<(Viewer, Vec<Issue>, bool), Error> {
     let mut issues: Vec<Issue> = Vec::new();
     let mut after: Option<String> = None;
-    let filter = filters.to_value(!matches!(scope, Scope::Search(_)));
     loop {
+        let first = u32::try_from(most - issues.len()).map_or(PAGE, |left| left.min(PAGE));
         let page = Page {
-            first: PAGE,
+            first,
             after: after.as_deref(),
             filter: filter.clone(),
         };
@@ -349,27 +398,14 @@ pub fn fetch(
         };
         issues.extend(connection.nodes);
         let more = connection.page_info.has_next_page;
-        if issues.len() >= LIMIT {
-            issues.truncate(LIMIT);
-            return Ok(Fetched {
-                viewer,
-                listing: Listing {
-                    issues,
-                    truncated: more,
-                },
-            });
+        if issues.len() >= most {
+            let cut = more || issues.len() > most;
+            issues.truncate(most);
+            return Ok((viewer, issues, cut));
         }
         match (more, connection.page_info.end_cursor) {
             (true, Some(cursor)) => after = Some(cursor),
-            _ => {
-                return Ok(Fetched {
-                    viewer,
-                    listing: Listing {
-                        issues,
-                        truncated: false,
-                    },
-                });
-            }
+            _ => return Ok((viewer, issues, false)),
         }
     }
 }

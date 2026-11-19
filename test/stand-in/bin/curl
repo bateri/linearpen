@@ -61,7 +61,8 @@
 #
 # A change (IssueBatchUpdate, answered or lost) is kept in "$STANDIN_LOG.changed", a line to each
 # field of each issue (its id, the field and the value): the lists tell the title, the priority and
-# the state of an issue as it was last changed to, and leave out one that is done or canceled. The
+# the state of an issue as it was last changed to, and leave out one that is done or canceled, which
+# only the question for the closed issues of a list tells (no other issue is closed). The
 # answer is each issue as the fixtures hold it with its changes, the state and the labels apart: the
 # state is the one it was changed to (else In Progress), the person the one it was given to (else
 # Ada), the labels those that were added and not removed since, the cycle, the estimate and the due
@@ -196,16 +197,18 @@ fill() {
 
 # A list as the changes made leave it: each issue with the title, the priority and the state it
 # was last changed to, and with no issue that is done or canceled. Where there is no change, as it is.
+# `settle closed` is the list of the closed issues: only the ones that were made done or canceled.
 settle() {
-	if [ -z "$changed" ] || [ ! -s "$changed" ]; then
+	if [ -z "${1-}" ] && { [ -z "$changed" ] || [ ! -s "$changed" ]; }; then
 		cat
 		return
 	fi
-	awk -v changes="$changed" '
+	awk -v changes="$changed" -v closed="${1-}" '
 	function state_name(id) { return id == "s-back" ? "Backlog" : id == "s-todo" ? "Todo" : id == "s-prog" ? "In Progress" : id == "s-review" ? "In Review" : id == "s-done" ? "Done" : id == "s-cancel" ? "Canceled" : "State" }
 	function state_type(id) { return id == "s-back" ? "backlog" : id == "s-todo" ? "unstarted" : id == "s-done" ? "completed" : id == "s-cancel" ? "canceled" : "started" }
-	function finish(   i, line, ind, in_state, text) {
-		if (((id, "state") in set) && (state_type(set[id, "state"]) == "completed" || state_type(set[id, "state"]) == "canceled")) return
+	function finish(   i, line, ind, in_state, text, gone) {
+		gone = ((id, "state") in set) && (state_type(set[id, "state"]) == "completed" || state_type(set[id, "state"]) == "canceled")
+		if (closed != "" ? !gone : gone) return
 		text = ""
 		in_state = 0
 		for (i = 1; i <= n; i++) {
@@ -228,7 +231,7 @@ settle() {
 		pending = text
 	}
 	BEGIN {
-		while ((getline line < changes) > 0) {
+		while (changes != "" && (getline line < changes) > 0) {
 			split(line, f, "\t")
 			if (f[2] == "title" || f[2] == "priority" || f[2] == "state") set[f[1], f[2]] = f[3]
 		}
@@ -542,6 +545,22 @@ if is Issue; then
 	printf '\n200'
 	exit 0
 fi
+
+# The closed issues of a list, asked for after its open ones (its filter takes the done and canceled
+# kinds): the issues of its fixture that a change made done or canceled; none, where none was.
+case "$plain" in
+*'"type":{"in":["completed","canceled"]}'*)
+	for list in MyIssues:my-issues.json AllIssues:all-issues.json TeamIssues:team-issues.json \
+		CycleIssues:cycle-issues.json ViewIssues:view-issues.json ProjectIssues:project-issues.json \
+		LabelIssues:label-issues.json; do
+		if is "${list%%:*}"; then
+			settle closed <"$here/${list#*:}"
+			printf '\n200'
+			exit 0
+		fi
+	done
+	;;
+esac
 
 if is MyIssues; then
 	if [ "${STANDIN_MY-}" = empty ]; then listing my-issues-empty.json; else listing my-issues.json; fi

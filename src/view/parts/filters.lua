@@ -186,13 +186,9 @@ local function choices(kind)
 	elseif F.options == nil then
 		return nil
 	elseif kind == "status" then
-		-- The lists hold the open issues: a closed state is offered where it finds something, in a search
-		-- (and where it is set, so that it can be taken away).
+		-- Every list holds the issues of every state: each state is offered.
 		for _, state in F.options.states do
-			local closed = state.kind == "completed" or state.kind == "canceled"
-			if not closed or S.scope == "search" or has("status", state.name) then
-				out[#out + 1] = { state.name, state.name }
-			end
+			out[#out + 1] = { state.name, state.name }
 		end
 	elseif kind == "assignee" then
 		-- The person is "Me" whoever they are called, and the others are by name.

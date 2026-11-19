@@ -1,8 +1,9 @@
-//! The groups of the list: the open issues, grouped by the state they are in, and sorted.
+//! The groups of the list: the issues, grouped by the state they are in, and sorted.
 //!
-//! The groups go by the kind of the state (`started`, `unstarted`, `backlog`, `triage`), and within a
-//! kind by the position of the state; states of the same name in different teams are one group. In
-//! a group the issue updated last is first. `backlog` and `triage` begin folded.
+//! The groups go by the kind of the state (`started`, `unstarted`, `backlog`, `triage`, then
+//! `completed` and `canceled`), and within a kind by the position of the state; states of the same
+//! name in different teams are one group. In a group the issue updated last is first. `backlog`,
+//! `triage`, `completed` and `canceled` begin folded.
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -22,8 +23,7 @@ pub struct Group<'a> {
 }
 
 impl Group<'_> {
-    /// Whether the group begins folded: what waits, and what is closed (a list holds the closed
-    /// issues only where it is a search).
+    /// Whether the group begins folded: what waits, and what is closed.
     #[must_use]
     pub fn folded_at_first(&self) -> bool {
         matches!(

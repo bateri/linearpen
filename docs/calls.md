@@ -90,22 +90,23 @@ Errors: `bad-params` (the text is not a key: `Empty`, too long, or a character n
 What the page is looking at; the answer is the list for it, as the topic tells it. Every member is
 optional (`{}` asks for the list as it is). Params:
 
-- `list`: `{ "kind", "id"? }`, the list the page shows. `kind` is `"mine"` (the open issues assigned
-  to the person, the default), `"all"` (the open issues of the workspace; asked for when it is shown),
-  or one of `"team"` (the open issues of a team), `"cycle"` (the open issues of a cycle: the `id` of any
+- `list`: `{ "kind", "id"? }`, the list the page shows. `kind` is `"mine"` (the issues assigned
+  to the person, the default), `"all"` (the issues of the workspace; asked for when it is shown),
+  or one of `"team"` (the issues of a team), `"cycle"` (the issues of a cycle: the `id` of any
   cycle, the running one of a team is in the `catalog`),
-  `"view"` (a saved view of issues), `"project"` (a project's open issues) and `"label"` (the open
+  `"view"` (a saved view of issues), `"project"` (a project's issues) and `"label"` (the
   issues with a label), which take the `id` of what they are of (the ids the topic's `catalog` tells);
   or `"search"`, which takes the words in `id` (at most 200 characters, no control character, trimmed)
-  and is what Linear finds for them in the whole workspace, closed issues too, up to 500, whose closed
-  groups begin folded. `mine` and `all` take no `id`. Only the list shown and My issues are asked for: going to another
+  and is what Linear finds for them in the whole workspace, up to 500. A list holds the issues of
+  every state, up to 500: every open one first, then the done and canceled ones that changed last
+  (a search, as Linear ranks them); the groups of the closed ones begin folded. `mine` and `all` take
+  no `id`. Only the list shown and My issues are asked for: going to another
   list lets go of the one left and asks Linear for the new one, and the topic tells it as `listing`
   `"loading"` until it comes. An `id` Linear does not know is not an error of the call: `listing` is `failed`
   and `error` has Linear's words. The old member `scope` is not taken.
 - `filters`: what Linear is asked to narrow the list by, as the person set it (all of it, or the call
   does not set it; `[]` or `{}` is none). Each kind is a list of values, any of which lets an issue
-  through; the kinds are all required of it, and the list's own filter too (the open issues, so a
-  closed state finds something only in a search, which has no such filter). At most 50 values of a kind, each
+  through; the kinds are all required of it. At most 50 values of a kind, each
   at most 100 characters with no control character; anything else is `bad-params`.
   - `status`: names of workflow states (`"In Progress"`), as `filter_options` tells them;
   - `priority`: `"urgent"`, `"high"`, `"medium"`, `"low"` or `"none"`;
@@ -441,10 +442,10 @@ Changes one field of one issue or of several, in Linear. Params:
 ```
 
 The answer tells the issues Linear changed, and for each whether the list in view (the list the
-page last set with `view`) still holds it: one that is done or canceled is in no list, and one given
-to another person is not in My issues. What Linear says of them is written into the lists the program holds (My issues and the one
-shown: a list other than All issues keeps an issue it holds and lets it go where it is done, a search,
-which holds closed issues too, keeps it) and into
+page last set with `view`) still holds it: one that is done or canceled stays, in the group of its
+state, and one given to another person is not in My issues. What Linear says of them is written into
+the lists the program holds (My issues and the one shown: My issues has the person's, All issues
+has every one, and another list keeps an issue it holds and takes no new one) and into
 the issues kept for `issue`, and the topic `issues` tells it: the lists are not asked for again.
 
 The change is sent **once**, to all the issues in one request; the program never sends it again by
@@ -764,15 +765,15 @@ the lists came, asking failed). The same value `view` answers with.
 - `listing`: whether the list shown has come: `ready`; `loading` (it is being asked for: `groups` is
   empty, and `counts.shown` is 0); or `failed` (Linear could not tell it: `error` says why, and
   `loaded` is still true because My issues came).
-- `counts`: how many open issues My issues holds (`mine`, whole) and the list shown holds (`shown`, as
-  `filters` narrow it, a search's closed issues too; not by the words of `filter`); `mineCut` and `shownCut` say there are more than the 500 the program takes of a list:
-  the 500 that changed last, and for a search the first 500 Linear finds (it has no order of its own).
+- `counts`: how many issues My issues holds (`mine`, whole) and the list shown holds (`shown`, as
+  `filters` narrow it; not by the words of `filter`), closed ones too; `mineCut` and `shownCut` say there are more than the 500 the program takes of a list:
+  every open one first, then the closed ones that changed last, and for a search the first 500 Linear finds (it has no order of its own).
 - A row tells at most 10 labels of its issue (the first Linear gives); the 11th is not marked.
 - `catalog`: the lists the page can go to besides My issues and All issues, as Linear last said them.
   `loaded` is false until the first answer, and `error` says why one could not come (the lists of
   before stay). Each `item` has `key` (`kind:id`, what the page keeps it by), `kind` and `id` (what
-  `view`'s `list` takes), `title` (named as the card shows it: a team by its key, `ACM \u00b7 Active
-  issues` and, where it has a cycle running, `ACM \u00b7 Current cycle`), `section` (`favorite`, in
+  `view`'s `list` takes), `title` (named as the card shows it: a team by its key, `ACM \u00b7
+  Issues` and, where it has a cycle running, `ACM \u00b7 Current cycle`), `section` (`favorite`, in
   the order Linear's sidebar has them; `team`, the teams the person is a member of in the order of
   their own list of teams; `view` and `project`, by name), `team` (the
   key of the team a view is of, or null) and, for a `cycle`, its `number`, when it `endsAt` and the day it

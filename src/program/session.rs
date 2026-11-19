@@ -22,7 +22,7 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::linear::edit::{self, Target};
-use crate::linear::types::{Comment, StateKind};
+use crate::linear::types::Comment;
 use crate::linear::{
     self, Change, Created, Entry, Error, FilterOptions, Filters, Issue, Key, Listing, NewIssue,
     Options, Scope, Team, Transport, Viewer,
@@ -274,13 +274,12 @@ impl State {
     }
 
     /// Writes an issue as Linear says it is now into what is held: the person's list has it where it
-    /// is theirs and open, and not where it is not; All issues has it where it is open; any other list
-    /// the page looks at keeps an issue it holds as it is now, and lets it go where it is done (it
-    /// cannot say whether Linear's own rule for that list takes a new one). The issue kept with its
-    /// description is as it is now. Gives whether the list the page is looking at holds it.
+    /// is theirs, and not where it is not; All issues has it; any other list the page looks at keeps
+    /// an issue it holds as it is now, done or not (it cannot say whether Linear's own rule for that
+    /// list takes a new one). The issue kept with its description is as it is now. Gives whether the
+    /// list the page is looking at holds it.
     fn put(&mut self, issue: &Issue) -> bool {
-        let open = !matches!(issue.state.kind, StateKind::Completed | StateKind::Canceled);
-        let mine = open && issue.assignee.as_ref().is_some_and(|who| who.is_me);
+        let mine = issue.assignee.as_ref().is_some_and(|who| who.is_me);
         let mut listed = false;
         if let Some(lists) = &mut self.lists {
             let row = Issue {
@@ -292,12 +291,11 @@ impl State {
             let narrowed = !lists.filters.is_empty();
             if let Some((scope, listing)) = &mut lists.shown {
                 let held = listing.issues.iter().any(|held| held.id == row.id);
-                // A search holds the closed issues too; the person's own list holds what is theirs.
+                // The person's own list holds what is theirs.
                 let wanted = match scope {
-                    Scope::Search(_) => held,
-                    Scope::Mine => open && mine && held,
-                    Scope::All => open && (held || !narrowed),
-                    _ => open && held,
+                    Scope::Mine => mine && held,
+                    Scope::All => held || !narrowed,
+                    _ => held,
                 };
                 place(listing, &row, wanted);
             }
@@ -325,7 +323,7 @@ impl State {
             // holds what it held.)
             _ if !self.view.filters.is_empty() => listed,
             Scope::Mine => mine,
-            Scope::All => open,
+            Scope::All => true,
             _ => listed,
         }
     }
@@ -1191,6 +1189,7 @@ impl Drop for Session {
 mod tests {
     use super::*;
     use crate::linear::transport::Reply;
+    use crate::linear::types::StateKind;
 
     /// A transport that is never asked: these tests hold no key.
     struct Never;
@@ -1632,8 +1631,17 @@ mod tests {
         }
     }
 
+    /// The kind of the state the issue `id` is in, in `listing`.
+    fn kind_in(listing: &Listing, id: &str) -> Option<StateKind> {
+        listing
+            .issues
+            .iter()
+            .find(|issue| issue.id == id)
+            .map(|issue| issue.state.kind)
+    }
+
     #[test]
-    fn an_issue_that_is_done_leaves_both_lists_and_the_counts_follow() {
+    fn an_issue_that_is_done_stays_in_both_lists_in_its_new_state() {
         let (session, sent) = holding(vec![batch_reply(&[wire("a", "Add it", "completed", true)])]);
         let told = session
             .change(&strings(&["a"]), &Change::State("s-completed".to_owned()))
@@ -1642,13 +1650,15 @@ mod tests {
             told,
             [Changed {
                 id: "a".to_owned(),
-                listed: false
+                listed: true
             }]
         );
         let state = session.state();
         let lists = state.lists.as_ref().unwrap();
-        assert_eq!(ids_of(&lists.mine), ["b"]);
-        assert_eq!(ids_of(shown(lists)), ["b"]);
+        assert_eq!(ids_of(&lists.mine), ["a", "b"]);
+        assert_eq!(ids_of(shown(lists)), ["a", "b"]);
+        assert_eq!(kind_in(&lists.mine, "a"), Some(StateKind::Completed));
+        assert_eq!(kind_in(shown(lists), "a"), Some(StateKind::Completed));
         assert_eq!(sent.lock().unwrap().len(), 1, "no list is asked for again");
     }
 
@@ -1808,7 +1818,8 @@ mod tests {
         drop(sent);
         // Linear did make it: the list says so.
         let state = session.state();
-        assert_eq!(ids_of(&state.lists.as_ref().unwrap().mine), ["b"]);
+        let mine = &state.lists.as_ref().unwrap().mine;
+        assert_eq!(kind_in(mine, "a"), Some(StateKind::Completed));
     }
 
     #[test]
@@ -1849,7 +1860,8 @@ mod tests {
             drop(sent);
             // Linear did make it: the list says so.
             let state = session.state();
-            assert_eq!(ids_of(&state.lists.as_ref().unwrap().mine), ["b"]);
+            let mine = &state.lists.as_ref().unwrap().mine;
+            assert_eq!(kind_in(mine, "a"), Some(StateKind::Completed));
         }
     }
 
@@ -1930,7 +1942,9 @@ mod tests {
         assert_eq!(told.len(), 2);
         assert_eq!(sent.lock().unwrap().len(), 2);
         let state = session.state();
-        assert!(ids_of(&state.lists.as_ref().unwrap().mine).is_empty());
+        let mine = &state.lists.as_ref().unwrap().mine;
+        assert_eq!(kind_in(mine, "a"), Some(StateKind::Completed));
+        assert_eq!(kind_in(mine, "b"), Some(StateKind::Completed));
     }
 
     #[test]
@@ -2134,7 +2148,7 @@ mod tests {
                 },
             ));
             state.view.scope = Scope::Search("add".to_owned());
-            // (A search holds the closed issues: one that was done is not let go of.)
+            // (One that was done is not let go of.)
             assert!(state.put(&issue_of(&wire("a", "Renamed", "completed", true))));
             let lists = state.lists.as_ref().unwrap();
             assert_eq!(ids_of(shown(lists)), ["a"]);
@@ -2175,9 +2189,10 @@ mod tests {
             let lists = state.lists.as_ref().unwrap();
             assert_eq!(ids_of(shown(lists)), ["a"]);
             assert_eq!(shown(lists).issues[0].title, "Renamed");
-            // One that is done is out of it.
-            assert!(!state.put(&issue_of(&wire("a", "Renamed", "completed", true))));
-            assert!(shown(state.lists.as_ref().unwrap()).issues.is_empty());
+            // One that is done stays in it, in its new state.
+            assert!(state.put(&issue_of(&wire("a", "Renamed", "completed", true))));
+            let shown = shown(state.lists.as_ref().unwrap());
+            assert_eq!(kind_in(shown, "a"), Some(StateKind::Completed));
         }
     }
 }

@@ -59,7 +59,8 @@ fn list_prints_my_issues_in_groups_and_as_json_with_the_key_nowhere() {
     assert!(ran.stdout.contains("  In Progress (4)\n"), "{}", ran.stdout);
     assert!(ran.stdout.contains("ACM-412  High"), "{}", ran.stdout);
     assert!(!ran.stdout.contains("All issues"));
-    assert_eq!(sent(&home, "MyIssues").len(), 1);
+    // The open issues, then the closed ones.
+    assert_eq!(sent(&home, "MyIssues").len(), 2);
     assert_eq!(writes(&home), 0);
 
     let json = linearpen(&home, &["list", "--json"], &[], None);

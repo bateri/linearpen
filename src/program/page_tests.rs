@@ -101,6 +101,8 @@ pub(crate) struct Canned {
     big_all: Mutex<bool>,
     /// Whether Linear cannot tell the names of the lists (the issues of a list come).
     no_names: Mutex<bool>,
+    /// Whether the lists have closed issues (the closed ones a search finds); else they have none.
+    closed_lists: Mutex<bool>,
     /// How a change is answered.
     change: Mutex<Change>,
     /// The inputs of the `IssueBatchUpdate` requests that were sent (`ids` and `input`), in order.
@@ -185,6 +187,7 @@ impl Canned {
             big_team: Mutex::new(false),
             big_all: Mutex::new(false),
             no_names: Mutex::new(false),
+            closed_lists: Mutex::new(false),
             change: Mutex::new(Change::Fine),
             changes: Mutex::new(Vec::new()),
             comment: Mutex::new(Comment::Fine),
@@ -215,6 +218,12 @@ impl Canned {
     /// the fixture's own, the rest are filler.
     pub(crate) fn set_big_all(&self) {
         *self.big_all.lock().unwrap() = true;
+    }
+
+    /// From now on the lists have closed issues: the ones of the search's fixture that are done or
+    /// canceled (in My issues, the person's).
+    pub(crate) fn set_closed_lists(&self) {
+        *self.closed_lists.lock().unwrap() = true;
     }
 
     /// From now on Linear cannot tell the names of the lists.
@@ -743,13 +752,67 @@ fn edit_node(node: &mut serde_json::Value, input: &serde_json::Value) {
     node["labels"]["nodes"] = labels.into();
 }
 
-/// Whether the request asks for more than the open issues: it has filters of the person's.
+/// Whether the request asks for more than the open or the closed issues: it has filters of the
+/// person's.
 fn narrowed(body: &str) -> bool {
     let asked: serde_json::Value = serde_json::from_str(body).unwrap();
     let filter = &asked["variables"]["filter"];
-    !(filter.is_null()
-        || *filter
-            == serde_json::json!({ "state": { "type": { "nin": ["completed", "canceled"] } } }))
+    let kinds_alone = filter.as_object().is_some_and(|parts| parts.len() == 1)
+        && filter["state"].get("type").is_some();
+    !(filter.is_null() || kinds_alone)
+}
+
+/// Whether the request asks for the closed issues of a list (`true`) or its open ones (`false`), by
+/// the part of its filter that says which; nothing where it has none (a search).
+fn closed_part(body: &str) -> Option<bool> {
+    let asked: serde_json::Value = serde_json::from_str(body).ok()?;
+    let filter = &asked["variables"]["filter"];
+    let part = filter
+        .get("and")
+        .and_then(|parts| parts.get(0))
+        .unwrap_or(filter);
+    let kinds = &part["state"]["type"];
+    if kinds.get("in").is_some() {
+        Some(true)
+    } else if kinds.get("nin").is_some() {
+        Some(false)
+    } else {
+        None
+    }
+}
+
+/// `body`, an answer of a list, with only its issues that are closed (`closed`) or open.
+fn kept_by_state(body: &str, closed: bool) -> String {
+    let Ok(mut value) = serde_json::from_str::<serde_json::Value>(body) else {
+        return body.to_owned();
+    };
+    let data = &mut value["data"];
+    let nodes = if data["viewer"].get("assignedIssues").is_some() {
+        data["viewer"]["assignedIssues"]["nodes"].as_array_mut()
+    } else if data.get("issues").is_some() {
+        data["issues"]["nodes"].as_array_mut()
+    } else {
+        data.as_object_mut().and_then(|data| {
+            data.values_mut()
+                .find_map(|owner| owner.get_mut("issues"))
+                .and_then(|issues| issues["nodes"].as_array_mut())
+        })
+    };
+    if let Some(nodes) = nodes {
+        nodes.retain(|node| {
+            let kind = node["state"]["type"].as_str().unwrap_or_default();
+            (kind == "completed" || kind == "canceled") == closed
+        });
+    }
+    value.to_string()
+}
+
+/// The search's fixture as the workspace's issues are told (`data.issues`).
+fn as_listing(search: &str) -> String {
+    let mut value: serde_json::Value = serde_json::from_str(search).unwrap();
+    let found = value["data"]["searchIssues"].take();
+    value["data"]["issues"] = found;
+    value.to_string()
 }
 
 /// `fixture` (the issues of the workspace) as the answer of the query `name`: its issues where that
@@ -869,12 +932,36 @@ impl Transport for Canned {
         .into_iter()
         .find(|name| body.contains(&format!(r#""operationName":"{name}""#)))
         .unwrap_or("Other");
-        self.asked.lock().unwrap().push(name.to_owned());
+        // The closed issues of a list, asked for after its open ones, are told apart: `MyIssues
+        // closed`. A list is asked for once as it was, and `times` and `last_filter` are of that.
+        let closed = closed_part(body);
+        let recorded = match closed {
+            Some(true) => format!("{name} closed"),
+            _ => name.to_owned(),
+        };
+        self.asked.lock().unwrap().push(recorded.clone());
         if let Ok(asked) = serde_json::from_str::<serde_json::Value>(body) {
             self.variables
                 .lock()
                 .unwrap()
-                .push((name.to_owned(), asked["variables"].clone()));
+                .push((recorded, asked["variables"].clone()));
+        }
+        if closed == Some(true)
+            && *self.closed_lists.lock().unwrap()
+            && *self.mode.lock().unwrap() == Mode::Fine
+        {
+            let found = kept_by_state(&reshaped(name, &as_listing(SEARCH_ISSUES)), true);
+            let mut value: serde_json::Value = serde_json::from_str(&found).unwrap();
+            if name == "MyIssues" {
+                let nodes = value["data"]["viewer"]["assignedIssues"]["nodes"]
+                    .as_array_mut()
+                    .unwrap();
+                nodes.retain(|node| node["assignee"]["isMe"] == true);
+            }
+            return Ok(Reply {
+                status: 200,
+                body: value.to_string(),
+            });
         }
         *self.key.lock().unwrap() = Some(key.expose().to_owned());
         let reply = |status, body: &str| {
@@ -886,7 +973,7 @@ impl Transport for Canned {
         while *self.mode.lock().unwrap() == Mode::Held {
             std::thread::sleep(Duration::from_millis(20));
         }
-        match *self.mode.lock().unwrap() {
+        let answer = match *self.mode.lock().unwrap() {
             Mode::Down | Mode::Held => Err(LinearError::Unreachable(
                 "the host name was not found".to_owned(),
             )),
@@ -1088,6 +1175,14 @@ impl Transport for Canned {
                     "a query the test does not know".to_owned(),
                 )),
             },
+        };
+        // A list's open issues and its closed ones are each what the fixture has of them.
+        match (answer, closed) {
+            (Ok(reply), Some(closed)) if reply.status == 200 => Ok(Reply {
+                body: kept_by_state(&reply.body, closed),
+                ..reply
+            }),
+            (answer, _) => answer,
         }
     }
 }
@@ -1274,6 +1369,28 @@ fn a_press_on_a_groups_head_folds_and_opens_it() {
         .expect("the head is pressed");
     page.wait_for(WITHIN, |page| !page.says("ACM-352"))
         .expect("the backlog is folded again");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_list_holds_its_closed_issues_at_the_end_folded_and_a_press_opens_them() {
+    let linear = Canned::new(Mode::Fine);
+    linear.set_closed_lists();
+    let session = session_over(&linear, Some("lin_api_test"), None);
+    let mut page = open(&session, WIDE, None, "ACM-412").expect("the page opens");
+    // My issues has the person's issue that is done, in the group of Done, which begins folded, and
+    // is after the backlog; the issue of another that is done is not there.
+    page.wait_for(WITHIN, |page| group_says(page, "Done, 1"))
+        .unwrap_or_else(|why| panic!("the group of Done: {why:?}: {}", said(&page)));
+    assert!(!page.says("ACM-366"), "{}", said(&page));
+    assert_eq!(linear.times("MyIssues"), 1);
+    assert_eq!(linear.times("MyIssues closed"), 1);
+    page.press("end").expect("end");
+    cursor_on(&mut page, "Done");
+    page.press("right").expect("right");
+    page.wait_for(WITHIN, |page| page.says("ACM-366"))
+        .unwrap_or_else(|why| panic!("the group is open: {why:?}: {}", said(&page)));
+    assert!(!page.says("ACM-359"), "{}", said(&page));
 }
 
 #[test]
@@ -3661,8 +3778,7 @@ fn a_change_to_a_folded_group_opens_it_and_the_cursor_follows_the_issue() {
 
 #[test]
 #[ignore = "opens the kit's interpreter: make test-page"]
-fn done_takes_the_issue_out_of_the_list_the_panel_stays_on_it_and_follows_the_cursor_after_a_move()
-{
+fn done_puts_the_issue_away_folded_the_panel_stays_on_it_and_follows_the_cursor_after_a_move() {
     let (linear, _session, mut page) = open_lists(WIDE);
     // A line that is not the first, so that its neighbour is not where the cursor began.
     page.press("down").expect("down");
@@ -3675,7 +3791,8 @@ fn done_takes_the_issue_out_of_the_list_the_panel_stays_on_it_and_follows_the_cu
         linear.changed()[0],
         serde_json::json!({ "ids": ["issue-398"], "input": { "stateId": "s-done" } })
     );
-    // The line is gone, the cursor is on the next, and the issue is still open and says Done.
+    // The line is put away in the folded group of Done, the cursor is on the next, and the issue is
+    // still open and says Done.
     page.wait_for(WITHIN, |page| {
         page.bounds("row:i:issue-398").is_none()
             && page
@@ -3686,6 +3803,7 @@ fn done_takes_the_issue_out_of_the_list_the_panel_stays_on_it_and_follows_the_cu
     cursor_on(&mut page, "ACM-405");
     assert!(page.says("Checkout test fails"), "{}", said(&page));
     assert!(group_says(&page, "In Progress, 3"), "{}", said(&page));
+    assert!(group_says(&page, "Done, 1"), "{}", said(&page));
     page.advance(0.5).expect("a moment");
     assert!(
         page.says("Checkout test fails"),
@@ -3777,10 +3895,13 @@ fn s_with_three_issues_selected_changes_all_three_and_the_menu_says_how_many() {
             "input": { "stateId": "s-done" }
         })
     );
-    // They are gone from the list, and the cursor is on the next that is there.
+    // They are put away in the folded group of Done, the cursor is on the next that is there, and
+    // the selection is gone with the lines (a key after it changes no issue that cannot be seen).
     page.wait_for(WITHIN, |page| group_says(page, "In Progress, 1"))
         .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    assert!(group_says(&page, "Done, 3"), "{}", said(&page));
     cursor_on(&mut page, "ACM-377");
+    assert!(!page.says("selected"), "{}", said(&page));
 }
 
 #[test]
@@ -4214,8 +4335,8 @@ fn a_change_that_was_made_and_never_answered_shows_what_linear_holds_and_says_so
     page.click("panel-value:state").expect("status");
     page.pick_titled("Done").expect("Done");
     changed(&linear, &mut page, 1);
-    // Linear made it: the program asked, the line is gone, and the issue open says Done, with the
-    // words that no answer came.
+    // Linear made it: the program asked, the line is put away in the folded group of Done, and the
+    // issue open says Done, with the words that no answer came.
     page.wait_for(WITHIN, |page| {
         page.bounds("row:i:issue-412").is_none()
             && page
@@ -5260,12 +5381,12 @@ fn the_card_of_lists_has_mine_all_the_favorites_the_teams_the_views_and_the_proj
         "Billing|Project|4",
         "Agent-ready|View \u{b7} ACM|5",
         "ACM \u{b7} Current cycle|Cycle 24, ends Nov 15",
-        "ACM \u{b7} Active issues|Team",
+        "ACM \u{b7} Issues|Team",
         "WEB \u{b7} Current cycle|Cycle 11, ends Nov 18",
-        "WEB \u{b7} Active issues|Team",
+        "WEB \u{b7} Issues|Team",
         "MOB \u{b7} Current cycle|Cycle 7, ends Nov 15",
-        "MOB \u{b7} Active issues|Team",
-        "OPS \u{b7} Active issues|Team",
+        "MOB \u{b7} Issues|Team",
+        "OPS \u{b7} Issues|Team",
         "Bugs by customer, last 30 days|View",
         "Stale in review|View \u{b7} ACM",
         "Unlabelled bugs nobody owns yet|View \u{b7} MOB",
@@ -5387,7 +5508,9 @@ fn a_list_of_more_than_five_hundred_shows_the_most_recent_and_says_so_in_the_but
     );
     page.press("end").expect("end");
     page.wait_for(WITHIN, |page| {
-        page.says("The 500 issues changed last. Filter them, or go to a list, for the others.")
+        page.says(
+            "The 500 issues changed last, the open ones first. Filter them, or go to a list, for the others.",
+        )
     })
     .unwrap_or_else(|why| panic!("the list says it was cut: {why:?}: {}", said(&page)));
     // The cursor does not stop on it: the last line of the list is where it is, and up is one line up.
@@ -5444,7 +5567,7 @@ fn only_the_list_shown_and_my_issues_are_asked_for_and_refresh_asks_for_those_ag
     assert_eq!(linear.times("AllIssues"), 0, "All issues waits to be shown");
     assert_eq!(linear.times("TeamIssues"), 0);
     open_card_of_lists(&mut page);
-    page.type_text("ACM \u{b7} Active").expect("the words");
+    page.type_text("ACM \u{b7} Issues").expect("the words");
     page.press("enter").expect("enter");
     page.wait_for(WITHIN, |page| page.says("ACM-423"))
         .unwrap_or_else(|why| panic!("the team's issues come: {why:?}: {}", said(&page)));
@@ -7009,12 +7132,20 @@ fn f_opens_a_row_of_five_chips_the_keyboard_on_the_first_and_with_the_list_back_
         .unwrap_or_else(|why| panic!("the menu of Status: {why:?}: {}", said(&page)));
     assert_eq!(
         menu_titles(&page),
-        // (The lists hold the open issues: Done, Canceled and Duplicate are offered in a search.)
-        ["Backlog", "Todo", "In Progress", "In Review"]
+        // (A list holds the issues of every state: the closed ones are offered too.)
+        [
+            "Backlog",
+            "Todo",
+            "In Progress",
+            "In Review",
+            "Done",
+            "Canceled",
+            "Duplicate"
+        ]
     );
     page.pick_titled("In Progress").expect("a status is picked");
-    // Linear is asked for the list with the state, "and"ed with the open issues, which My issues,
-    // which is counted, is asked for as it was.
+    // Linear is asked for the list with the state, "and"ed with the open issues and then with the
+    // closed ones, which My issues, which is counted, is asked for as it was.
     page.wait_for(WITHIN, |page| page.says("ACM-431"))
         .unwrap_or_else(|why| panic!("the narrowed list comes: {why:?}: {}", said(&page)));
     assert_eq!(
@@ -7024,6 +7155,14 @@ fn f_opens_a_row_of_five_chips_the_keyboard_on_the_first_and_with_the_list_back_
             { "state": { "name": { "in": ["In Progress"] } } },
         ] })
     );
+    page.wait_for(WITHIN, |_| {
+        last_filter(&linear, "MyIssues closed")
+            == serde_json::json!({ "and": [
+                { "state": { "type": { "in": ["completed", "canceled"] } } },
+                { "state": { "name": { "in": ["In Progress"] } } },
+            ] })
+    })
+    .unwrap_or_else(|why| panic!("the closed ones are asked for by it: {why:?}"));
     // Esc gives the keyboard back to the list: the chip that is set stays, with Clear filters.
     page.press("escape").expect("escape");
     page.advance(0.3).expect("a moment");

@@ -134,12 +134,12 @@ function screens.nothing(o)
 		card:child(b.text("Nothing in " .. lists.name() .. " matches"):text_size(15):weight(700):truncate():max_w(520))
 		card:child(b.div():mt(6):child(kit.button("search-all", "Search all of Linear", {
 			suffix = commands.label("search"),
-			tip = "Search the whole workspace for these words, closed issues too",
+			tip = "Search the whole workspace for these words",
 		})))
 	elseif o.narrowed then
 		card:child(b.text("Nothing in " .. lists.name() .. " matches the filters"):text_size(15):weight(700):truncate():max_w(520))
 	else
-		card:child(b.text("No open issues"):text_size(15):weight(700))
+		card:child(b.text("No issues"):text_size(15):weight(700))
 	end
 	return centered(card)
 end

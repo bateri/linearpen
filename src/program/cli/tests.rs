@@ -562,7 +562,7 @@ fn a_create_sends_the_values_by_the_ids_the_names_stand_for_and_the_description_
 }
 
 #[test]
-fn a_list_asks_for_the_team_and_the_cycle_by_name_and_refuses_what_a_list_cannot_hold() {
+fn a_list_asks_for_the_team_and_the_cycle_by_name_and_refuses_a_name_linear_has_not() {
     let memory = Memory::new(|name, body| match name {
         "CycleIssues" => ok(
             r#"{"data":{"viewer":{"id":"u","name":"Ada","organization":{"name":"Acme","urlKey":"acme"}},"cycle":{"issues":{"nodes":[],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}}"#,
@@ -597,10 +597,18 @@ fn a_list_asks_for_the_team_and_the_cycle_by_name_and_refuses_what_a_list_cannot
         "{sent}"
     );
     assert!(sent.contains("In Review"), "{sent}");
-    // A closed status is for a search.
-    let done = run_with(&world(), &["list", "--status", "done"], "");
-    assert_eq!(done.status, 1);
-    assert!(done.err.contains("closed status"), "{}", done.err);
+    // A closed status is one a list holds: the open issues and the closed ones are asked for by it.
+    let memory = Memory::new(|name, body| match name {
+        "MyIssues" => ok(
+            r#"{"data":{"viewer":{"id":"u","name":"Ada","organization":{"name":"Acme","urlKey":"acme"},"assignedIssues":{"nodes":[],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}}"#,
+        ),
+        _ => world().post(&Key::new("k").unwrap(), body),
+    });
+    let done = run_with(&memory, &["list", "--status", "done"], "");
+    assert_eq!(done.status, 0, "{}", done.err);
+    let asked = memory.of("MyIssues");
+    assert_eq!(asked.len(), 2, "{asked:?}");
+    assert!(asked.iter().all(|sent| sent.contains("Done")), "{asked:?}");
     // A name Linear has not, among the ones it has.
     let done = run_with(&world(), &["list", "--label", "nope"], "");
     assert_eq!(done.status, 1);

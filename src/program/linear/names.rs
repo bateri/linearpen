@@ -1,4 +1,4 @@
-//! The lists a person can go to, by name: what Linear starred, the teams (their open issues and the
+//! The lists a person can go to, by name: what Linear starred, the teams (their issues and the
 //! cycle that runs), the saved views and the projects that are not finished. Four questions, each a
 //! page at a time up to a ceiling; what a name is called is Linear's text and goes through `plain`.
 //!
@@ -299,7 +299,7 @@ fn favorite_entry(favorite: WireFavorite) -> Option<Entry> {
 
 /// The lists the person can go to, in the order of the card: the favorites by their sort order, the
 /// teams the person is a member of, in the order of their own list of teams (each with the cycle that
-/// runs and its open issues), the views and the projects by
+/// runs and its issues), the views and the projects by
 /// name. A list is in the card once: the first place it has is its place.
 pub fn names(transport: &dyn Transport, key: &Key) -> Result<Vec<Entry>, Error> {
     let mut favorites = pages(
@@ -347,7 +347,7 @@ pub fn names(transport: &dyn Transport, key: &Key) -> Result<Vec<Entry>, Error> 
             found.push(Entry {
                 scope: Scope::Team(team.id),
                 section: Section::Team,
-                title: format!("{key} \u{b7} Active issues"),
+                title: format!("{key} \u{b7} Issues"),
                 team: Some(key),
                 cycle: None,
             });

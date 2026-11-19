@@ -98,15 +98,17 @@ used first, and kept nowhere. A key file that other users can read is still read
 The head of the page has the list button, the filter, Refresh and New issue, each in its own place
 whatever the page is doing (in a pane too narrow for the list and an issue beside it, the head goes
 with the list). The list is **My issues** (what is assigned to you) or any other list
-you go to: **All issues** (the open issues of the workspace, each saying whose it is), what you
-starred in Linear, the open issues or the running cycle of a team you are in (in the order of your own
-list of teams), a saved view, a project. Each is grouped by state with the backlog folded, and asked of Linear again every five minutes. The list
+you go to: **All issues** (the issues of the workspace, each saying whose it is), what you
+starred in Linear, the issues or the running cycle of a team you are in (in the order of your own
+list of teams), a saved view, a project. Each holds the issues of every state, grouped by state with
+the backlog, Done and Canceled folded, and is asked of Linear again every five minutes. The list
 button says which it is and how many it has, and opens the card of lists (`g`): My issues is `1`, All
 issues `2`, your first seven favorites `3` to `9`; the card is the palette, so typing finds a list by
 its name, and each line says what it is (`View`, `Project`, `Team`, `Cycle 24, ends Nov 15`). Only
 the list you look at is asked for (with My issues), so the others cost nothing until you go to
-them. Linear is asked for no more than 500 issues of a list, the ones that changed last: the button
-says `500+` and a line at the end of the list says so.
+them. Linear is asked for no more than 500 issues of a list: every open one first, then the closed
+ones that changed last. Where there are more, the button says `500+` and a line at the end of the
+list says so.
 
 <img src="docs/lists.png" width="720" alt="linearpen: the card of lists, over My issues">
 
@@ -122,8 +124,8 @@ there is no row. They are forgotten when the pen closes.
 
 `/` filters the list by title, identifier or
 label, and the field says how many it lets through (`4 of 14`) inside itself. While you type, `⌘Enter`
-searches all of Linear for the words (the whole workspace, closed issues too, up to 500; the closed groups
-begin folded): the result is a list of its own, **Search**, the words stay in the field, the filters
+searches all of Linear for the words (the whole workspace, up to 500; the closed groups begin
+folded): the result is a list of its own, **Search**, the words stay in the field, the filters
 apply to it, and `Esc` goes back to the list you were in. Where nothing in the list matches, the page
 says so and offers the same search.
 

@@ -419,10 +419,11 @@ end
 
 -- The key of the group an issue is in once it is in `state` (`kind:name`, as the program names them),
 -- where that group is folded or is not shown yet (Backlog and Triage begin folded): the person is
--- shown where the issue went, not a count that grew.
+-- shown where the issue went, not a count that grew. An issue that is done or canceled is put away:
+-- its group stays as it is, and the cursor goes on to the next line.
 local function folded(state)
 	-- (A filter shows what it finds: no group is folded over a match.)
-	if S.issues.filter ~= "" then
+	if S.issues.filter ~= "" or state.kind == "completed" or state.kind == "canceled" then
 		return nil
 	end
 	local key = state.kind .. ":" .. state.name
@@ -434,11 +435,8 @@ local function folded(state)
 			return group.closed == true and key or nil
 		end
 	end
-	-- (Where the list begins with the group folded: what waits, and what is closed, which a search holds.)
-	local begins_folded = state.kind == "backlog"
-		or state.kind == "triage"
-		or state.kind == "completed"
-		or state.kind == "canceled"
+	-- (Where the list begins with the group folded: what waits.)
+	local begins_folded = state.kind == "backlog" or state.kind == "triage"
 	return begins_folded and key or nil
 end
 
@@ -471,7 +469,7 @@ local function send(ids, field, value, state)
 			if err then
 				-- The program asked Linear what it holds where the change may have been made (no answer,
 				-- or one that could not be read): what the open issue says is asked for again, too, for
-				-- it may be of what the lists do not hold any more (done, given to someone else).
+				-- it may be of what the lists do not hold any more (given to someone else).
 				for _, id in ids do
 					C.busy[id] = nil
 					if not act.panel_reask(id, function() end) then
@@ -482,7 +480,7 @@ local function send(ids, field, value, state)
 				return true
 			end
 			-- What the open issue says is asked for again, for it may be of what the lists do not
-			-- hold any more (done, given to someone else); the control is busy until it comes.
+			-- hold any more (given to someone else); the control is busy until it comes.
 			for _, id in ids do
 				if not act.panel_reask(id, function()
 					C.busy[id] = nil

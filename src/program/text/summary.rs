@@ -125,12 +125,7 @@ impl Summary<'_> {
             "Nothing is assigned to you.",
         );
         out.push('\n');
-        section(
-            &mut out,
-            "All issues",
-            self.all,
-            "There are no open issues.",
-        );
+        section(&mut out, "All issues", self.all, "There are no issues.");
         if let Some(note) = note {
             let _ = write!(out, "\n{note}\n");
         }
@@ -243,7 +238,7 @@ a note
         }
         .text(None);
         assert!(text.contains("Only the first 1 are listed"), "{text}");
-        assert!(text.contains("There are no open issues."));
+        assert!(text.contains("There are no issues."));
     }
 
     #[test]

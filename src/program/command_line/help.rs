@@ -54,13 +54,13 @@ linearpen list: the issues of a list, as text
 
 usage: linearpen list [LIST] [NARROWING] [--json]
 
-LIST is one of these (the open issues of My issues, if none is given):
+LIST is one of these (My issues, if none is given):
   --all             all issues of the workspace
   --team KEY        the issues of a team, by key or by name
   --cycle current   with --team: the issues of the team's cycle that is running, or of the cycle
   --cycle N         with this number (the running one and the ones that come next)
   --view NAME       a saved view of issues
-  --search WORDS    what a search for the words finds, closed issues too
+  --search WORDS    what a search for the words finds
 
 NARROWING gives the issues that are all of it; the values of one option are any of them (an option
 may be repeated):
@@ -73,7 +73,8 @@ may be repeated):
   --json            print JSON instead of text; its fields are in
                     https://github.com/bateri/linearpen/blob/main/docs/cli.md
 
-The open issues are listed; to find a closed one, search for it.
+Every open issue is listed first, then the done and canceled ones that changed last, up to 500 in
+all; a search finds older ones.
 ";
 
 pub const SHOW: &str = "\

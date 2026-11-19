@@ -144,7 +144,7 @@ fn the_issues_topic_tells_the_lists_that_curl_brought_and_the_key_never_leaves_i
     // The day it ends is written as the dates of the lists are (the program's own way, once).
     assert_eq!(items[3]["cycle"]["ends"], "Nov 15");
     assert_eq!(items[3]["section"], "team");
-    assert_eq!(items[4]["title"], "ACM \u{b7} Active issues");
+    assert_eq!(items[4]["title"], "ACM \u{b7} Issues");
 }
 
 #[test]
@@ -218,14 +218,18 @@ fn each_list_asks_linear_for_its_own_issues_and_nothing_but_reads_and_all_issues
             .unwrap_or_else(|| panic!("{kind}: a list that came: {told:?}\n{log}"));
         assert_eq!(ready["listId"], id, "{kind}");
         assert!(ready.to_string().contains(identifier), "{kind}: {ready}");
-        // The list is asked for once, by its id; the person's own list is asked for with it (its
-        // count is on the card): when the page began, and when it went to another list; the list
-        // that is not shown is not asked for; each question is a read.
+        // The list is asked for once, by its id (its open issues, then its closed ones); the
+        // person's own list is asked for with it (its count is on the card): when the page began,
+        // and when it went to another list; the list that is not shown is not asked for; each
+        // question is a read.
         let asked = asked_of(&home, operation);
-        assert_eq!(asked.len(), 1, "{kind}: {:?}", home.calls());
-        assert!(asked[0].stdin.contains(id), "{kind}: {}", asked[0].stdin);
+        assert_eq!(asked.len(), 2, "{kind}: {:?}", home.calls());
         assert!(
-            (1..=2).contains(&asked_of(&home, "MyIssues").len()),
+            asked.iter().all(|call| call.stdin.contains(id)),
+            "{kind}: {asked:?}"
+        );
+        assert!(
+            (2..=4).contains(&asked_of(&home, "MyIssues").len()),
             "{kind}"
         );
         assert!(asked_of(&home, "AllIssues").is_empty(), "{kind}");
@@ -254,7 +258,7 @@ fn each_list_asks_linear_for_its_own_issues_and_nothing_but_reads_and_all_issues
                 .find(|list| list["listing"] == "ready" && list["scope"] == "all")
                 .unwrap_or_else(|| panic!("All issues came: {told:?}\n{log}"));
             assert_eq!(ready["counts"]["shown"], 19);
-            assert_eq!(asked_of(&home, "AllIssues").len(), 1);
+            assert_eq!(asked_of(&home, "AllIssues").len(), 2);
         });
     });
 }
@@ -353,7 +357,7 @@ fn the_filters_go_to_linear_in_the_shapes_it_takes_and_with_the_lists_own_filter
     assert_eq!(ready["filters"]["labels"], json!(["bug"]));
     assert_eq!(ready["filters"]["status"], json!([]));
     let asked = asked_of(&home, "AllIssues");
-    assert_eq!(asked.len(), 1, "{:?}", home.calls());
+    assert_eq!(asked.len(), 2, "{:?}", home.calls());
     let body = sent(&asked[0]);
     // The open issues, and each kind of filter, "and"ed; the values of a kind are any of them.
     for shape in [
@@ -370,7 +374,15 @@ fn the_filters_go_to_linear_in_the_shapes_it_takes_and_with_the_lists_own_filter
         mine.contains(r#""filter":{"state":{"type":{"nin":["completed","canceled"]}}}"#),
         "{mine}"
     );
-    // A status asked for is "and"ed with the open filter, as the others are.
+    // Then the closed issues, by the same filters.
+    let closed = sent(&asked[1]);
+    assert!(
+        closed.contains(
+            r#""filter":{"and":[{"state":{"type":{"in":["completed","canceled"]}}},{"priority":{"in":[1,2]}},"#
+        ),
+        "{closed}"
+    );
+    // A status asked for is "and"ed with the open filter, and with the closed one, as the others are.
     let home = Home::new();
     let log = home.record(
         &keyed()
@@ -386,13 +398,15 @@ fn the_filters_go_to_linear_in_the_shapes_it_takes_and_with_the_lists_own_filter
         pushes(&log).iter().any(|list| list["listing"] == "ready"),
         "{log}"
     );
-    let body = sent(&asked_of(&home, "TeamIssues")[0]);
-    assert!(
-        body.contains(
-            r#""filter":{"and":[{"state":{"type":{"nin":["completed","canceled"]}}},{"state":{"name":{"in":["Done","Todo"]}}}]}"#
-        ),
-        "{body}"
-    );
+    let asked = asked_of(&home, "TeamIssues");
+    for (call, part) in asked.iter().zip(["nin", "in"]) {
+        let body = sent(call);
+        let shape = format!(
+            r#""filter":{{"and":[{{"state":{{"type":{{"{part}":["completed","canceled"]}}}}}},{{"state":{{"name":{{"in":["Done","Todo"]}}}}}}]}}"#
+        );
+        assert!(body.contains(&shape), "{shape}\n{body}");
+    }
+    assert_eq!(asked.len(), 2);
     for call in home.calls() {
         assert!(!call.stdin.to_lowercase().contains("mutation"));
     }
@@ -1513,7 +1527,7 @@ fn change_sends_the_one_mutation_once_with_the_key_on_stdin_alone_and_the_lists_
     assert!(!heard.is_empty(), "{log}");
     let told = heard[0].result();
     assert_eq!(told["issues"][0]["id"], CHANGED, "{told}");
-    assert_eq!(told["issues"][0]["listed"], false, "done leaves My issues");
+    assert_eq!(told["issues"][0]["listed"], true, "done stays in My issues");
     let sent = asked_of(&home, "IssueBatchUpdate");
     assert_eq!(sent.len(), 1, "{:?}", home.calls());
     assert_eq!(sent[0].argv, ["-q", "--config", "-"]);
@@ -1527,7 +1541,7 @@ fn change_sends_the_one_mutation_once_with_the_key_on_stdin_alone_and_the_lists_
         assert!(!sent[0].stdin.contains(word), "{word}: {}", sent[0].stdin);
     }
     // Nothing else of the pen writes: every other request is a query, and the issue that was
-    // changed is not in the list that is told at last.
+    // changed is in the folded group of Done in the list that is told at last.
     for call in home.calls() {
         if !call
             .stdin
@@ -1544,8 +1558,14 @@ fn change_sends_the_one_mutation_once_with_the_key_on_stdin_alone_and_the_lists_
     let last = told.last().expect("the lists were told");
     assert!(
         !last.to_string().contains("ACM-412"),
-        "the issue that is done is not in the list: {last}"
+        "the issue that is done is not in an open group: {last}"
     );
+    let done = last["groups"]
+        .as_array()
+        .and_then(|groups| groups.iter().find(|group| group["key"] == "completed:Done"))
+        .unwrap_or_else(|| panic!("a group of Done: {last}"));
+    assert_eq!(done["count"], 1, "{done}");
+    assert_eq!(done["closed"], true, "{done}");
     assert!(!log.contains(KEY), "the key is not in what the page heard");
 }
 
