@@ -19,6 +19,7 @@ local list = require("./parts/list")
 local lists = require("./parts/lists")
 local new = require("./parts/new")
 local palette = require("./parts/palette")
+local picker = require("./parts/picker")
 local panel = require("./parts/panel")
 local pictures = require("./parts/pictures")
 local screens = require("./parts/screens")
@@ -32,7 +33,7 @@ local b, u, S, SIZE, act, lib = kit.b, kit.u, kit.S, kit.SIZE, kit.act, kit.lib
 -- What a command can be done under: what the page shows, never where the keyboard is, but for the one
 -- whose key a field would take (`idle`).
 local function modal()
-	return palette.is_open() or help.is_open() or lists.is_open() or pictures.is_open()
+	return palette.is_open() or help.is_open() or lists.is_open() or pictures.is_open() or picker.is_open()
 end
 
 -- While a form (the one for an agent, the one for a new issue) is open, or the title of the issue is
@@ -498,6 +499,12 @@ local function render(size, now, reduce_motion)
 		palette.view(root)
 		lists.view(root)
 		help.view(root)
+		-- (The card of the values is the layer in front: Esc and the keys are its while it is open.)
+		picker.view(root)
+	end
+	if S.screen ~= "list" then
+		-- (The list's screen went: the control the card stood by with it.)
+		picker.close()
 	end
 	kit.start_toasts(u.now)
 	kit.lib.toasts_prune(S.toasts, u.now)
@@ -721,7 +728,11 @@ end
 
 local function on_action(action)
 	local from, kind = action.from, action.kind
-	local reply = head.action(action)
+	local reply = picker.action(action)
+	if reply ~= nil then
+		return reply
+	end
+	reply = head.action(action)
 	if reply == nil then
 		reply = palette.action(action)
 	end
@@ -1053,7 +1064,7 @@ local function handle(event)
 		-- while it went: what it was told of the pointer (the shape, the button down) is no longer so.
 		S.cursor, S.armed = nil, nil
 		reply = b.merge(reply, true)
-	elseif kind == "focus" and event.field ~= nil then
+	elseif kind == "focus" and event.field ~= nil and not picker.holds(event.field) then
 		-- The person clicked into a field (the filter's): the row of the filters is put away.
 		filters.close()
 	elseif kind == "press" then

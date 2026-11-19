@@ -12,6 +12,7 @@ local filters = require("./filters")
 local head = require("./head")
 local list = require("./list")
 local new = require("./new")
+local picker = require("./picker")
 local pictures = require("./pictures")
 local work = require("./work")
 
@@ -88,6 +89,24 @@ local function edit_hints()
 	return {
 		{ key = "save", words = b.div():row():items_center():gap(5):no_shrink():child(u:kbd("enter")):child(b.text("save")), priority = 8 },
 		{ key = "cancel", words = b.div():row():items_center():gap(5):no_shrink():child(u:kbd("escape")):child(b.text("cancel")), priority = 7 },
+	}
+end
+
+-- What the keyboard does while the card of the values is open (the labels, a filter): the arrows move,
+-- Enter turns the value on or off and the card stays, Esc puts it away. The commands wait until it is
+-- closed: the palette's and the card of keys' are not said.
+local function picker_hints()
+	local function keys(names, words)
+		local row = b.div():row():items_center():gap(5):no_shrink()
+		for _, name in names do
+			row:child(u:kbd(name))
+		end
+		return row:child(b.text(words))
+	end
+	return {
+		{ key = "move", words = keys({ "up", "down" }, "move"), priority = 8 },
+		{ key = "turn", words = keys({ "enter" }, "turn on or off"), priority = 7 },
+		{ key = "close", words = keys({ "escape" }, "close"), priority = 6 },
 	}
 end
 
@@ -174,13 +193,15 @@ function status.bar()
 		)
 	)
 	for _, value in shown_values() do
-		bar:child(kit.button("bar:" .. value[1], value[3], {
+		-- (Each button stands in a place of its own name, which a card of its values stands by: the
+		-- button cannot be pressed while a change is on its way, and the place is there all the same.)
+		bar:child(b.div():id("bar-place:" .. value[1]):no_shrink():child(kit.button("bar:" .. value[1], value[3], {
 			bar = true,
 			suffix = commands.label(value[2]),
 			disabled = not change.can(value[1] == "priority")
 				or (value[1] == "cycle" and not change.offers("cycle", change.targets())),
 			tip = "Change the " .. string.lower(value[3]) .. " of the issues selected",
-		}))
+		})))
 	end
 	bar:child(b.spacer())
 	bar:child(kit.button("bar:more", "More", {
@@ -200,7 +221,7 @@ function status.press(id)
 	elseif kind == "more" then
 		return act.run("palette")
 	end
-	return change.run(kind, id)
+	return change.run(kind, "bar-place:" .. kind)
 end
 
 function status.view()
@@ -218,6 +239,11 @@ function status.view()
 			end
 		end
 		return u:status("status", { start = start })
+	end
+	-- (The bar of the selection stays while a card of its values is open: what is selected and the
+	-- button the card stands by do not go.)
+	if S.screen == "list" and picker.is_open() and not status.selecting() then
+		return u:status("status", { start = picker_hints() })
 	end
 	if S.editing then
 		return u:status("status", { start = edit_hints(), finish = status.finish() })

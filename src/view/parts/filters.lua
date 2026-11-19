@@ -1,6 +1,7 @@
 -- The filters of a list: a row of five chips under the head (Status, Priority, Assignee, Labels,
--- Project), each a menu whose picks add and take away values. They narrow the list in Linear (the
--- program sends them with the list's own filter), whichever list it is, a search too. `f` opens the row
+-- Project), each a menu whose picks add and take away values (the kit's picker where the terminal has
+-- one: it stays open while the person turns one value after another). They narrow the list in Linear
+-- (the program sends them with the list's own filter), whichever list it is, a search too. `f` opens the row
 -- with the keyboard on the first chip; Tab goes on, Enter opens the menu, Esc gives the keyboard back
 -- to the list. When it is back only what is set stays (a chip with its values, and Clear filters); with
 -- none set there is no row. The filters are forgotten when the pen closes (the program holds them, as
@@ -8,6 +9,7 @@
 -- the head's.
 
 local icons = require("./icons")
+local picker = require("./picker")
 local values = require("./values")
 local commands = require("./commands")
 local kit = require("../lib/kit")
@@ -32,10 +34,11 @@ local MENU = "filters-menu"
 local PREFIX = "filters:"
 local CLEAR = "filters-clear"
 
+-- `picking`: the kind whose picker is open (its chip stays while it is, though it has no value left).
 -- `open`: the row is open with all five chips (`f`). `now`: the filters as the page set them (the
 -- program holds the same). `options`: what the menus offer, as the program said, and for which asking of
 -- Linear (`at`).
-local F = { open = false, now = nil, options = nil, at = nil, asking = false }
+local F = { open = false, now = nil, options = nil, at = nil, asking = false, picking = nil }
 filters.state = F
 
 local function empty()
@@ -71,9 +74,9 @@ function filters.is_open()
 	return F.open
 end
 
--- Whether the row is on the page: open, or there is something set.
+-- Whether the row is on the page: open, or there is something set, or a picker of it is open.
 function filters.visible()
-	return F.open or filters.any()
+	return F.open or F.picking ~= nil or filters.any()
 end
 
 -- The name of the chip of `kind`.
@@ -318,7 +321,8 @@ local function picture(kind, held)
 end
 
 local function chip(kind, title)
-	local held = filters.current()[kind]
+	-- (While its card is open the chip says what it held when it opened: it does not move the card.)
+	local held = picker.steady(chip_name(kind), filters.current()[kind])
 	local kids = { picture(kind, held) }
 	if #held > 0 then
 		kids[#kids + 1] = words(words_of(kind, held), false)
@@ -338,7 +342,7 @@ function filters.view()
 	local now = filters.current()
 	local row = b.div():id("filters-row"):row():wrap():items_center():gap_x(8):gap_y(8):px(SIZE.pad):pb(8):no_shrink()
 	for _, kind in KINDS do
-		if F.open or #now[kind[1]] > 0 then
+		if F.open or #now[kind[1]] > 0 or F.picking == kind[1] then
 			row:child(chip(kind[1], kind[2]))
 		end
 	end
@@ -368,7 +372,7 @@ end
 -- A press that is not on the row puts it away (a menu is not drawn by the page: its entries are not
 -- pressed with the page's pointer).
 function filters.outside(hit)
-	if not F.open then
+	if not F.open or picker.holds(hit) then
 		return
 	end
 	if hit ~= nil and (string.sub(hit, 1, #PREFIX) == PREFIX or hit == CLEAR) then
@@ -377,13 +381,77 @@ function filters.outside(hit)
 	F.open = false
 end
 
--- Opens the menu of `kind`, under its chip. The reply.
+-- What stands before a value in the picker of `kind`: the picture of a status, a priority or a label.
+local function picture_of(kind, value)
+	if kind == "status" then
+		for _, state in F.options ~= nil and F.options.states or {} do
+			if state.name == value then
+				return icons.state(state.kind)
+			end
+		end
+	elseif kind == "priority" then
+		return icons.priority(value)
+	elseif kind == "labels" then
+		for _, label in F.options ~= nil and F.options.labels or {} do
+			if label.name == value then
+				return icons.dot(label.color)
+			end
+		end
+	end
+	return nil
+end
+
+-- What the picker of `kind` offers now, each on where it is set; nil where the choices are gone.
+local function picker_items(kind)
+	local offered = choices(kind)
+	if offered == nil then
+		return nil
+	end
+	local out = {}
+	for _, choice in offered do
+		out[#out + 1] = { key = choice[1], title = choice[2], icon = picture_of(kind, choice[1]), on = has(kind, choice[1]) }
+	end
+	return out
+end
+
+-- The words of a kind (`labels`: Labels).
+local function title_of(kind)
+	for _, known in KINDS do
+		if known[1] == kind then
+			return known[2]
+		end
+	end
+	return kind
+end
+
+-- Opens the menu of `kind`, under its chip (the kit's picker, where the terminal has one). The reply.
 local function open_menu(kind)
 	ask()
 	local offered = choices(kind)
 	if offered == nil or #offered == 0 then
 		-- (The choices are asked for before a key is pressed; one pressed too soon does nothing but ask.)
 		return true
+	end
+	if picker.available() then
+		local title = title_of(kind)
+		local opened = picker.open({
+			anchor = chip_name(kind),
+			label = title,
+			hint = "Filter by " .. string.lower(title),
+			items = function()
+				return picker_items(kind)
+			end,
+			toggle = function(item)
+				return toggle(kind, item.key)
+			end,
+			closed = function()
+				F.picking = nil
+			end,
+		})
+		if opened then
+			F.picking = picker.is_open() and kind or nil
+			return true
+		end
 	end
 	local entries = {}
 	for _, choice in offered do

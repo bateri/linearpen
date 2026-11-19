@@ -4,10 +4,14 @@
 -- (`new_options`, kept for each team); a choice is sent when it is made, with no question, and
 -- the issue is busy until the answer comes. What is written is only what the menus offer: the
 -- status, priority, assignee, labels, project, cycle, estimate and due date, and the title. Nothing is
--- sent again by the page.
+-- sent again by the page. The labels are chosen in the kit's picker where the terminal has one (a card
+-- that stays open while the person turns one label after another on and off): each turn is a change
+-- of its own, sent in the order they were made, the next when the one before is answered.
 
+local icons = require("./icons")
 local kit = require("../lib/kit")
 local list = require("./list")
+local picker = require("./picker")
 local values = require("./values")
 
 local b, u, S, act = kit.b, kit.u, kit.S, kit.act
@@ -55,6 +59,10 @@ local CLEARS = { assignee = true, project = true, cycle = true, estimate = true,
 -- menu waited for until the choices come, the choices by team, the issues a change is on its way
 -- for, why the last was not made, and the title being edited.
 local C = { serial = 0, menu = nil, options = {}, busy = {}, error = nil, rename = nil }
+-- The labels turned in the picker that wait to be sent, in order (`{ ids, label, on }`), the one on its
+-- way, and what each label turned is to become while one of its turns is on its way or waits (what
+-- the picker marks then).
+C.later, C.going, C.want = {}, nil, {}
 change.state = C
 
 -- --- The choices of a team ---------------------------------------------------------------------------
@@ -311,6 +319,130 @@ local function key_of(request, choice)
 	return request.serial .. "|" .. field .. "|" .. choice.id
 end
 
+-- --- The labels, in the picker -----------------------------------------------------------------------
+
+local send
+
+-- Whether a label has a turn on its way or waiting.
+local function pending(label)
+	if C.going ~= nil and C.going.label == label then
+		return true
+	end
+	for _, turn in C.later do
+		if turn.label == label then
+			return true
+		end
+	end
+	return false
+end
+
+-- Sends the next label turned where the one before it is answered (none of its issues is busy any more).
+local function go_on()
+	local going = C.going
+	if going ~= nil then
+		for _, id in going.ids do
+			if C.busy[id] then
+				return
+			end
+		end
+		C.going = nil
+	end
+	local next_turn = C.later[1]
+	if next_turn ~= nil and send(next_turn.ids, next_turn.on and "addLabel" or "removeLabel", next_turn.label) then
+		table.remove(C.later, 1)
+		C.going = next_turn
+	end
+end
+
+-- The labels turned and not sent are let go of (a change was not made: the person sees why, and what
+-- Linear holds).
+local function drop_turns()
+	C.later, C.want = {}, {}
+end
+
+-- Whether `a` and `b` are the same issues, in the same order.
+local function same_ids(a, b)
+	if #a ~= #b then
+		return false
+	end
+	for index, id in a do
+		if b[index] ~= id then
+			return false
+		end
+	end
+	return true
+end
+
+-- The person turned `label` on or off (`on`) for the issues of the request. A turn that undoes one
+-- that waits (of the same issues) takes it away: neither is sent.
+local function turn_label(request, label, on)
+	C.want[label] = on
+	for index, waiting_turn in C.later do
+		if waiting_turn.label == label and same_ids(waiting_turn.ids, request.ids) then
+			table.remove(C.later, index)
+			go_on()
+			return true
+		end
+	end
+	C.later[#C.later + 1] = { ids = table.clone(request.ids), label = label, on = on }
+	go_on()
+	return true
+end
+
+-- What the picker offers for the issues of the request: the labels of their team, each on where every
+-- issue has it, or as the person turned it until the lists say so (the answer to a change comes before
+-- the lists that have it). Nil where the issues or the team's choices are gone.
+local function label_items(request)
+	local rows = target_rows(request.ids)
+	if rows == nil then
+		return nil
+	end
+	local team = team_of(rows)
+	local data = team ~= nil and team ~= "mixed" and change.options(team) or nil
+	if data == nil then
+		return nil
+	end
+	local current = current_of(rows)
+	local out = {}
+	for _, label in data.labels do
+		local has = current.labels[label.id] == true
+		local on = C.want[label.id]
+		if on ~= nil and on == has and not pending(label.id) then
+			-- The issues say what was turned: the lists have it.
+			C.want[label.id] = nil
+		end
+		if on == nil then
+			on = has
+		end
+		out[#out + 1] = { key = label.id, title = label.name, icon = icons.dot(label.color), on = on }
+	end
+	return out
+end
+
+-- Opens the picker of the labels for the request, by the control it was asked from (or, from the menu
+-- of a line, by that line). Whether it opened.
+local function open_picker(request, count)
+	local anchor = request.near or (list.state.cursor ~= nil and "row:" .. list.state.cursor or nil)
+	if anchor == nil then
+		return false
+	end
+	return picker.open({
+		anchor = anchor,
+		label = count > 1 and ("Labels of " .. count .. " issues") or "Labels",
+		hint = "Change labels",
+		items = function()
+			return label_items(request)
+		end,
+		toggle = function(item, on)
+			return turn_label(request, item.key, on)
+		end,
+		closed = function()
+			-- (What waits is still sent: the person turned it.)
+			C.want = {}
+		end,
+	})
+end
+
 -- The menu of the request, its choices being known.
 local function open_menu(request)
 	local rows = target_rows(request.ids)
@@ -339,6 +471,9 @@ local function open_menu(request)
 	elseif request.kind == "estimate" and #data.estimates == 0 then
 		entries[#entries + 1] = reason("This team does not estimate")
 		return show(request, entries)
+	end
+	if request.kind == "labels" and picker.available() and open_picker(request, #rows) then
+		return true
 	end
 	local choices = values.choices(request.kind, data, current_of(rows), data.allStates)
 	for _, entry in values.entries(choices, function(choice)
@@ -448,11 +583,11 @@ end
 
 -- Sends one change: the issues `ids`, the `field` (`status`, `priority`, `assignee`, `addLabel`,
 -- `removeLabel`, `project` or `title`) and its `value`. Once: a change on issues that have one on
--- its way is not sent.
-local function send(ids, field, value, state)
+-- its way is not sent. Whether it was sent.
+function send(ids, field, value, state)
 	for _, id in ids do
 		if C.busy[id] then
-			return
+			return false
 		end
 	end
 	local params = { ids = table.clone(ids) }
@@ -477,6 +612,8 @@ local function send(ids, field, value, state)
 					end
 				end
 				C.error = { ids = request.ids, words = err.message or err.code, strip = strip_words(request, err.message or err.code) }
+				C.going = nil
+				drop_turns()
 				return true
 			end
 			-- What the open issue says is asked for again, for it may be of what the lists do not
@@ -484,11 +621,13 @@ local function send(ids, field, value, state)
 			for _, id in ids do
 				if not act.panel_reask(id, function()
 					C.busy[id] = nil
+					go_on()
 				end) then
 					C.busy[id] = nil
 					act.panel_forget(id)
 				end
 			end
+			go_on()
 			return true
 		end)
 	end
@@ -499,6 +638,7 @@ local function send(ids, field, value, state)
 	else
 		go()
 	end
+	return true
 end
 
 -- What a pick of the menu chose: dropped where the menu is not the last opened.

@@ -13,6 +13,7 @@ local commands = require("./commands")
 local icons = require("./icons")
 local list = require("./list")
 local pictures = require("./pictures")
+local picker = require("./picker")
 local values = require("./values")
 
 local b, u, S, SIZE, act = kit.b, kit.u, kit.S, kit.SIZE, kit.act
@@ -432,7 +433,7 @@ local function shown_of(info, detail, data)
 		state = info.state,
 		priority = info.priority,
 		assignee = assignee,
-		labels = info.labels,
+		labels = picker.steady("panel-value:labels", info.labels),
 		project = project,
 		cycle = cycle,
 		estimate = estimate,

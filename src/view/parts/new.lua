@@ -1,8 +1,9 @@
 -- A new issue: beside the list (or over it, in a narrow pane) a form with what Linear's own asks: a
 -- title, what it is about, and the values of the issue (team where there are several, status,
 -- priority, assignee, labels, project). Each value is a control that says its value and opens the
--- host's menu of the others. The program does the work (`new_options`, `create`); the page asks it
--- what can be chosen and what the person chose.
+-- host's menu of the others; the labels open the kit's picker where the terminal has one, which stays
+-- open while the person turns one label after another. The program does the work (`new_options`,
+-- `create`); the page asks it what can be chosen and what the person chose.
 --
 -- The draft stays when the form is put away (the words, the values) and goes when the issue is made;
 -- the team and the project are what the next draft begins with. Making the issue is sent once: the
@@ -14,8 +15,10 @@ local attach = require("./attach")
 local commands = require("./commands")
 local filters = require("./filters")
 local head = require("./head")
+local icons = require("./icons")
 local list = require("./list")
 local panel = require("./panel")
+local picker = require("./picker")
 local values = require("./values")
 
 local b, u, S, SIZE, act = kit.b, kit.u, kit.S, kit.SIZE, kit.act
@@ -360,10 +363,60 @@ local function current()
 	}
 end
 
--- Opens the host's menu of a value, under its control. The reply that asks for it.
+-- Puts the label `id` on the draft, or takes it off where it is on.
+local function toggle_label(id)
+	local kept, found = {}, false
+	for _, held in N.labels do
+		if held == id then
+			found = true
+		else
+			kept[#kept + 1] = held
+		end
+	end
+	if not found then
+		kept[#kept + 1] = id
+	end
+	N.labels = kept
+end
+
+-- What the picker of the labels offers: the team's, each on where the draft has it. Nil where the form
+-- is put away, the issue is being made, or the team's choices are not here.
+local function label_items()
+	local data = chosen()
+	if data == nil or not N.open or N.creating then
+		return nil
+	end
+	local held = {}
+	for _, id in N.labels do
+		held[id] = true
+	end
+	local out = {}
+	for _, label in data.labels do
+		out[#out + 1] = { key = label.id, title = label.name, icon = icons.dot(label.color), on = held[label.id] == true }
+	end
+	return out
+end
+
+-- Opens the host's menu of a value, under its control (the labels: the kit's picker, where the
+-- terminal has one). The reply that asks for it.
 local function open_menu(kind)
 	local data = chosen()
 	if data == nil or N.creating then
+		return true
+	end
+	if
+		kind == "labels"
+		and picker.available()
+		and picker.open({
+			anchor = VALUE .. kind,
+			label = "Labels",
+			hint = "Change labels",
+			items = label_items,
+			toggle = function(item)
+				toggle_label(item.key)
+			end,
+		})
+	then
 		return true
 	end
 	local choices = values.choices(kind, data, current(), data.states)
@@ -396,18 +449,7 @@ local function choose(entry)
 	elseif kind == "assignee" then
 		N.assignee = id ~= "none" and id or nil
 	elseif kind == "label" then
-		local kept, found = {}, false
-		for _, held in N.labels do
-			if held == id then
-				found = true
-			else
-				kept[#kept + 1] = held
-			end
-		end
-		if not found then
-			kept[#kept + 1] = id
-		end
-		N.labels = kept
+		toggle_label(id)
 	elseif kind == "project" then
 		N.project = id ~= "none" and id or nil
 	end
@@ -418,8 +460,8 @@ end
 -- What the chips say: what the draft holds, as the team's choices name it.
 local function shown_of(data)
 	local labels = {}
-	-- In the order they were chosen.
-	for _, id in N.labels do
+	-- In the order they were chosen; while their card is open, as they were when it opened.
+	for _, id in picker.steady(VALUE .. "labels", N.labels) do
 		local label = find(data.labels, id)
 		if label ~= nil then
 			labels[#labels + 1] = label
@@ -596,7 +638,8 @@ local function order()
 	end
 	for _, kind in KINDS do
 		local name = VALUE .. kind
-		if b.layout.bounds(name) ~= nil then
+		-- (A value that cannot be pressed now is named all the same, and is not in the order.)
+		if b.layout.bounds(name) ~= nil and kit.buttons[name] then
 			names[#names + 1] = name
 		end
 	end

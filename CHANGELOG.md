@@ -12,6 +12,10 @@
 - **Claude is named for its issue.** Work on starts Claude with the session named `ACM-412 - Add rate
   limiting`, the issue's identifier and title, so its prompt box, `/resume` and the terminal's title
   say which issue it works on. This needs Claude Code 2.1.76 or later.
+- **Labels and filters take several values in one go.** The labels of an issue, of a new issue and
+  of the issues selected, and the five filters, open a card where you check and uncheck values and
+  type to find one; it stays open until `Esc` or a click elsewhere. In a pane, this comes with the
+  bateri that carries the card; until then they open a menu, one pick at a time.
 
 ## [0.6.0] - 2026-11-19
 

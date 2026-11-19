@@ -113,9 +113,10 @@ more open ones, the button says `500+` and a line at the end of the list says so
 <img src="docs/lists.png" width="720" alt="linearpen: the card of lists, over My issues">
 
 `f` opens a row of five filters under the head: Status, Priority, Assignee, Labels and Project. The
-keyboard is on the first (`Tab` goes on, `Enter` opens its menu, `Esc` gives the keyboard back to the
-list), and each menu adds a value or takes it away, so a chip can hold several (any of them) and the
-chips together narrow the list (all of them). Linear does the narrowing, whichever list you are in:
+keyboard is on the first (`Tab` goes on, `Enter` opens its card, `Esc` gives the keyboard back to the
+list). In a chip's card you check and uncheck values, typing to find one, and it stays open until `Esc`
+or a click elsewhere, so a chip can hold several (any of them) and the chips together narrow the list
+(all of them). Linear does the narrowing, whichever list you are in:
 the filters go with the list's own filter, and are asked for again when they change. With the keyboard
 on the list only what you set stays, a chip with its values and `Clear filters` (`⇧F`); with none set
 there is no row. They are forgotten when the pen closes.
@@ -146,7 +147,8 @@ issue leaves their buttons out; `⌘R` and `c` do what they say all the same.
 `c` opens a form beside the list with what Linear's own asks: a title, a description, and the
 values of the issue: the team (where the workspace has more than one), its status, its priority,
 who it is assigned to (you, to begin with), its labels and its project. Each value is a button that
-says what it is now and opens a menu of the others, and Tab goes through them all. `⌘Enter`, or
+says what it is now and opens a menu of the others (the labels open a card where you check several),
+and Tab goes through them all. `⌘Enter`, or
 `Create issue`, makes the issue.
 
 <img src="docs/created.png" width="720" alt="linearpen: the issue that was made, under the cursor with its panel open">
@@ -168,7 +170,9 @@ it is now (or its name, dim, where it has none) and opens a menu of the others, 
 state of the team (Done and Canceled too). The cycle menu has the cycle that runs and the next ones,
 and the estimate menu the scale the team uses (t-shirt sizes are sent as the numbers Linear takes
 them as): a team with no cycles, or that does not estimate, has neither button. The due date menu has
-Today, Tomorrow, In 3 days, In a week and In 2 weeks, by your own day. The title is changed in place: `r`, or a press
+Today, Tomorrow, In 3 days, In a week and In 2 weeks, by your own day. The labels open a card rather
+than a menu: type to find a label, check and uncheck as many as you like (each is sent as you check
+it), and `Esc` or a click elsewhere puts the card away. The title is changed in place: `r`, or a press
 on it, makes it a field with the words selected; `Enter` saves it, and so does a press anywhere else
 or `Tab` (what you typed is not lost), and `Esc` leaves the old one. A
 change is sent when you choose it, with no question; the control is busy until Linear has answered,

@@ -138,6 +138,8 @@ pub(crate) struct Canned {
     storage_refuses: Mutex<bool>,
     /// Whether the storage holds each `PUT` (after it is written down) until a test lets it go.
     storage_holds: Mutex<bool>,
+    /// Whether each `IssueBatchUpdate` is held (after it is written down) until a test lets it go.
+    changes_hold: Mutex<bool>,
 }
 
 /// What the storage was sent: the address, the headers and the bytes.
@@ -206,6 +208,7 @@ impl Canned {
             uploads: Mutex::new(0),
             storage_refuses: Mutex::new(false),
             storage_holds: Mutex::new(false),
+            changes_hold: Mutex::new(false),
         })
     }
 
@@ -287,6 +290,12 @@ impl Canned {
     /// the call waits, so that a test can do something while a file is being sent.
     pub(crate) fn hold_storage(&self, hold: bool) {
         *self.storage_holds.lock().unwrap() = hold;
+    }
+
+    /// From now on (until `hold_changes(false)`) Linear answers no `IssueBatchUpdate`: it is written
+    /// down, and the call waits, so that a test can do something while a change is on its way.
+    pub(crate) fn hold_changes(&self, hold: bool) {
+        *self.changes_hold.lock().unwrap() = hold;
     }
 
     /// The ids `Issue` was asked for, in order.
@@ -1059,6 +1068,13 @@ impl Transport for Canned {
                             asked["variables"]["input"]
                         ));
                     }
+                    // (Held for the most of half a minute: a test that forgets to let go is not left waiting.)
+                    for _ in 0..3000 {
+                        if !*self.changes_hold.lock().unwrap() {
+                            break;
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(10));
+                    }
                     if *self.change.lock().unwrap() == Change::Refused {
                         return reply(400, CHANGE_REFUSED);
                     }
@@ -1275,6 +1291,56 @@ pub(crate) fn open_patiently(
     page.wait_for(WITHIN, |page| page.says(ready))?;
     page.advance(0.3)?;
     Ok(page)
+}
+
+/// The entry of the page as a terminal draws it whose kit has no picker (one older than it): the
+/// library's context is the one before it, and the page is the same.
+const OLD_KIT: &str = "local ui = require(\"@pencere/ui\")\n\
+getmetatable(ui.new()).picker = nil\n\
+return require(\"./page\")\n";
+
+/// The bundle of the page with `old-kit.lua` beside it, the entry of [`OLD_KIT`].
+struct OldKit(pencere_drive::headless::Files);
+
+impl pencere_sandbox::Assets for OldKit {
+    fn read(&self, path: &str) -> Option<Arc<[u8]>> {
+        if path == "old-kit.lua" {
+            return Some(Arc::from(OLD_KIT.as_bytes()));
+        }
+        self.0.read(path)
+    }
+
+    fn media_type(&self, path: &str) -> Option<String> {
+        if path == "old-kit.lua" {
+            return Some("text/x-lua".to_owned());
+        }
+        self.0.media_type(path)
+    }
+}
+
+/// The page over the lists of the fixtures, at `size`, as a terminal whose kit has no picker draws
+/// it: the labels and the filters open the host's menu.
+fn open_lists_on_an_old_kit(size: (f32, f32)) -> (Arc<Canned>, Arc<Session>, Page) {
+    let linear = Canned::new(Mode::Fine);
+    let session = session_over(&linear, Some("lin_api_test"), None);
+    let program = InProcess::new(options(&session, &Arc::new(Mutex::new(None))));
+    let bundle = OldKit(pencere_drive::headless::Files::app(env!(
+        "CARGO_MANIFEST_DIR"
+    )));
+    let mut page = Headless::bundle(bundle, "old-kit.lua")
+        .size(size.0, size.1)
+        .limits(limits(
+            std::env::var("LINEARPEN_CALL_MS")
+                .ok()
+                .and_then(|ms| ms.parse().ok()),
+        ))
+        .peer(program)
+        .open()
+        .expect("the page opens");
+    page.wait_for(WITHIN, |page| page.says("ACM-412"))
+        .expect("the lists");
+    page.advance(0.3).expect("a moment");
+    (linear, session, page)
 }
 
 /// The page over the lists of the fixtures, at `size`.
@@ -3249,6 +3315,95 @@ fn menu_titles(page: &Page) -> Vec<String> {
         .collect()
 }
 
+/// The name of the card the labels and the filters choose their values in (the kit's picker).
+const PICKER: &str = "values-picker";
+
+/// Whether the card of the values is open.
+fn picker_open(page: &Page) -> bool {
+    page.bounds(PICKER).is_some()
+}
+
+/// The rows of the card of the values, in their order: what each says, and whether it is on.
+fn picker_rows(page: &Page) -> Vec<(String, bool, pencere_view::Rect)> {
+    let Some(card) = page.bounds(PICKER) else {
+        return Vec::new();
+    };
+    page.outline()
+        .accessible
+        .iter()
+        .filter(|node| {
+            node.role == pencere_view::AccessibleRole::Checkbox
+                && node.rect.y >= card.y
+                && node.rect.y + node.rect.h <= card.y + card.h + 0.5
+                && node.rect.x >= card.x
+                && node.rect.x + node.rect.w <= card.x + card.w + 0.5
+        })
+        .map(|node| {
+            (
+                node.words.clone(),
+                node.state.checked == Some(true),
+                node.rect,
+            )
+        })
+        .collect()
+}
+
+/// What the rows of the card say, marked as a menu marks what is on (`✓ api`).
+fn picker_titles(page: &Page) -> Vec<String> {
+    picker_rows(page)
+        .into_iter()
+        .map(|(title, on, _)| {
+            if on {
+                format!("\u{2713} {title}")
+            } else {
+                title
+            }
+        })
+        .collect()
+}
+
+/// Waits until the card of the values is open and offers `title`.
+fn picker_offers(page: &mut Page, title: &str) {
+    page.wait_for(WITHIN, |page| {
+        picker_rows(page).iter().any(|(said, _, _)| said == title)
+    })
+    .unwrap_or_else(|why| {
+        panic!(
+            "the card offers {title:?}: {why:?}: {:?}",
+            picker_titles(page)
+        )
+    });
+}
+
+/// Turns the value `title` of the card on or off, with a click on its row: the card stays.
+fn turn(page: &mut Page, title: &str) {
+    picker_offers(page, title);
+    let at = row_middle(page, title);
+    page.click_at(at)
+        .unwrap_or_else(|why| panic!("{title:?} is turned: {why:?}"));
+}
+
+/// Presses `key` until the card of the values opens (a command waits for the choices of the team).
+fn picker_after(page: &mut Page, key: &str) {
+    for _ in 0..100 {
+        page.press(key).expect("the key");
+        page.advance(0.1).expect("a moment");
+        if picker_open(page) {
+            return;
+        }
+    }
+    panic!("{key} opens the card: {}", said(page));
+}
+
+/// Puts the card of the values away with Esc.
+fn close_picker(page: &mut Page) {
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| !picker_open(page))
+        .unwrap_or_else(|why| panic!("the card closes: {why:?}: {}", said(page)));
+    // (The keyboard goes back where it was at the frame after.)
+    page.advance(0.1).expect("a moment");
+}
+
 /// Presses the value `kind` and picks the entry titled `title` of its menu.
 fn pick_value(page: &mut Page, kind: &str, title: &str) {
     page.click(&format!("new-value:{kind}"))
@@ -3324,6 +3479,12 @@ fn enter_in_the_title_goes_to_the_description_and_tab_goes_through_the_values() 
     ] {
         page.press("tab").expect("tab");
         page.press("enter").expect("enter");
+        if kind == "labels" {
+            // The labels open their card, which Esc puts away: the keyboard is back on the value.
+            picker_offers(&mut page, first);
+            close_picker(&mut page);
+            continue;
+        }
         let titles = menu_titles(&page);
         assert!(
             titles.iter().any(|title| title.ends_with(first)),
@@ -3394,36 +3555,72 @@ fn a_value_opens_its_menu_and_the_pick_is_written_to_the_control() {
 
 #[test]
 #[ignore = "opens the kit's interpreter: make test-page"]
-fn labels_are_picked_one_at_a_time_and_a_second_pick_takes_one_off() {
-    let (_linear, _session, mut page) = open_lists(WIDE);
+fn the_labels_of_a_new_issue_are_turned_in_a_card_that_stays_open_and_esc_puts_only_it_away() {
+    // (A pane where the labels' value, grown by three labels, would wrap to the next line.)
+    let (_linear, _session, mut page) = open_lists((1280.0, 800.0));
     open_new(&mut page);
-    // (A group of labels is not offered; those of the workspace are, with the team's.)
     page.click("new-value:labels").expect("labels");
-    assert_eq!(menu_titles(&page), ["api", "bug", "Customer"]);
-    page.pick_titled("bug").expect("bug");
-    pick_value(&mut page, "labels", "api");
-    page.wait_for(WITHIN, |page| {
-        let words = page.words_in("new-value:labels");
-        words.contains(&"bug".to_owned()) && words.contains(&"api".to_owned())
-    })
-    .unwrap_or_else(|why| panic!("{why:?}: {:?}", page.words_in("new-value:labels")));
-    // They are said in the order they were chosen.
-    let words = page.words_in("new-value:labels");
+    // (A group of labels is not offered; those of the workspace are, with the team's.)
+    picker_offers(&mut page, "api");
+    assert_eq!(picker_titles(&page), ["api", "bug", "Customer"]);
+    assert!(page.menu().is_none(), "no menu of the host's");
+    let card = page.bounds(PICKER).expect("the card");
+    let value = page.bounds("new-value:labels").expect("the value");
+    turn(&mut page, "bug");
+    turn(&mut page, "api");
+    turn(&mut page, "Customer");
+    page.advance(0.3).expect("a moment");
+    assert_eq!(
+        picker_titles(&page),
+        ["\u{2713} api", "\u{2713} bug", "\u{2713} Customer"]
+    );
+    // Neither the card nor the value it stands by moves while it is open: the value says what was
+    // chosen when the card is put away.
+    assert_eq!(page.bounds(PICKER), Some(card), "the card does not move");
+    assert_eq!(
+        page.bounds("new-value:labels"),
+        Some(value),
+        "the value does not move"
+    );
     assert!(
-        words.iter().position(|word| word == "bug") < words.iter().position(|word| word == "api"),
+        !page
+            .words_in("new-value:labels")
+            .contains(&"bug".to_owned()),
+        "{:?}",
+        page.words_in("new-value:labels")
+    );
+    // The line of keys says what the keys of the card do.
+    assert!(page.says("turn on or off"), "{}", said(&page));
+    // Esc puts the card away and the form stays, with the labels in the order they were chosen.
+    close_picker(&mut page);
+    assert!(page.says("Create issue"), "the form stays: {}", said(&page));
+    let words = page.words_in("new-value:labels");
+    let at = |name: &str| words.iter().position(|word| word == name);
+    assert!(
+        at("bug").is_some() && at("bug") < at("api") && at("api") < at("Customer"),
         "{words:?}"
     );
+    // The keyboard is in its field: words narrow what it offers, and Enter turns the one the cursor is on.
     page.click("new-value:labels").expect("labels");
-    assert_eq!(
-        menu_titles(&page),
-        ["\u{2713} api", "\u{2713} bug", "Customer"]
+    picker_offers(&mut page, "api");
+    // (The keyboard goes into the card's field at the frame after it is drawn.)
+    page.advance(0.1).expect("a moment");
+    page.type_text("cust").expect("the words");
+    page.wait_for(WITHIN, |page| picker_titles(page) == ["\u{2713} Customer"])
+        .unwrap_or_else(|why| panic!("{why:?}: {:?}", picker_titles(&page)));
+    page.press("enter").expect("enter");
+    page.wait_for(WITHIN, |page| picker_titles(page) == ["Customer"])
+        .unwrap_or_else(|why| panic!("{why:?}: {:?}", picker_titles(&page)));
+    // A second press of the value closes the card.
+    page.click("new-value:labels").expect("labels");
+    page.wait_for(WITHIN, |page| !picker_open(page))
+        .unwrap_or_else(|why| panic!("the card closes: {why:?}: {}", said(&page)));
+    page.advance(0.3).expect("a moment");
+    let words = page.words_in("new-value:labels");
+    assert!(
+        !words.contains(&"Customer".to_owned()) && words.contains(&"api".to_owned()),
+        "{words:?}"
     );
-    page.pick_titled("\u{2713} bug").expect("bug off");
-    page.wait_for(WITHIN, |page| {
-        let words = page.words_in("new-value:labels");
-        !words.contains(&"bug".to_owned()) && words.contains(&"api".to_owned())
-    })
-    .unwrap_or_else(|why| panic!("{why:?}: {:?}", page.words_in("new-value:labels")));
 }
 
 #[test]
@@ -3462,7 +3659,9 @@ fn command_enter_makes_the_issue_once_and_it_is_under_the_cursor_with_the_panel_
     page.press("enter").expect("enter");
     page.type_text("It fails twice.").expect("the description");
     pick_value(&mut page, "priority", "High");
-    pick_value(&mut page, "labels", "bug");
+    page.click("new-value:labels").expect("labels");
+    turn(&mut page, "bug");
+    close_picker(&mut page);
     pick_value(&mut page, "project", "Billing");
     // The group of Backlog is folded in the list: the issue goes there, and the group opens.
     pick_value(&mut page, "state", "Backlog");
@@ -3944,31 +4143,227 @@ fn issues_of_two_teams_say_why_status_cannot_change_and_priority_can() {
 
 #[test]
 #[ignore = "opens the kit's interpreter: make test-page"]
-fn l_twice_adds_a_label_and_takes_it_off() {
+fn l_opens_the_labels_in_a_card_and_each_turn_is_sent_in_the_order_it_was_made() {
     let (linear, _session, mut page) = open_lists(WIDE);
+    picker_after(&mut page, "l");
+    assert_eq!(picker_titles(&page), ["\u{2713} api", "bug", "Customer"]);
+    // Two turns one after the other, each a change of its own, in the order they were made.
+    turn(&mut page, "bug");
+    turn(&mut page, "api");
+    assert_eq!(
+        picker_titles(&page),
+        ["api", "\u{2713} bug", "Customer"],
+        "what was turned is marked at once"
+    );
+    changed(&linear, &mut page, 2);
+    assert_eq!(
+        linear.changed(),
+        [
+            serde_json::json!({ "ids": ["issue-412"], "input": { "addedLabelIds": ["l-bug"] } }),
+            serde_json::json!({ "ids": ["issue-412"], "input": { "removedLabelIds": ["l-api"] } }),
+        ]
+    );
+    page.wait_for(WITHIN, |page| {
+        let words = page.words_in("row:i:issue-412");
+        words.contains(&"bug".to_owned()) && !words.contains(&"api".to_owned())
+    })
+    .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    assert!(picker_open(&page), "the card stays");
+    assert_eq!(picker_titles(&page), ["api", "\u{2713} bug", "Customer"]);
+    // Esc puts the card away, and nothing more is sent.
+    close_picker(&mut page);
+    page.advance(0.3).expect("a moment");
+    assert_eq!(linear.changed().len(), 2, "{:?}", linear.changed());
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_labels_turned_while_a_change_is_on_its_way_wait_for_it_and_a_turn_that_undoes_one_sends_neither()
+ {
+    let linear = Canned::new(Mode::Fine);
+    let session = session_over(&linear, Some("lin_api_test"), None);
+    // (The program owes the answer while a change is held: a step that tells the page is then slow.)
+    let mut page = open_patiently(
+        &session,
+        WIDE,
+        None,
+        "ACM-412",
+        Some(Duration::from_millis(1500)),
+    )
+    .expect("the page opens");
+    picker_after(&mut page, "l");
+    linear.hold_changes(true);
+    // bug is on its way; Customer and docs... Customer waits for it, and is turned back before it goes.
+    in_flight(page.click_at(row_middle(&page, "bug")));
+    in_flight(page.click_at(row_middle(&page, "Customer")));
+    page.wait_for(WITHIN, |_| linear.changed().len() == 1)
+        .unwrap_or_else(|why| panic!("{why:?}: {:?}", linear.changed()));
+    assert_eq!(
+        picker_titles(&page),
+        ["\u{2713} api", "\u{2713} bug", "\u{2713} Customer"],
+        "what was turned is marked while it waits"
+    );
+    in_flight(page.click_at(row_middle(&page, "Customer")));
+    in_flight(page.click_at(row_middle(&page, "api")));
+    assert_eq!(
+        linear.changed().len(),
+        1,
+        "nothing goes while bug is on its way"
+    );
+    linear.hold_changes(false);
+    // bug is answered, then the turn of api goes: Customer's two turns undid each other.
+    changed(&linear, &mut page, 2);
+    page.advance(0.5).expect("a moment");
+    assert_eq!(
+        linear.changed(),
+        [
+            serde_json::json!({ "ids": ["issue-412"], "input": { "addedLabelIds": ["l-bug"] } }),
+            serde_json::json!({ "ids": ["issue-412"], "input": { "removedLabelIds": ["l-api"] } }),
+        ]
+    );
+    page.wait_for(WITHIN, |page| {
+        picker_titles(page) == ["api", "\u{2713} bug", "Customer"]
+    })
+    .unwrap_or_else(|why| panic!("{why:?}: {:?}", picker_titles(&page)));
+}
+
+/// A step that tells the page something while the program owes an answer: it may be slow.
+fn in_flight<T>(step: Result<T, Error>) {
+    match step {
+        Ok(_) | Err(Error::Slow { .. }) => {}
+        Err(other) => panic!("{other:?}"),
+    }
+}
+
+/// The middle of the row of the card titled `title`.
+fn row_middle(page: &Page, title: &str) -> pencere_view::Point {
+    let rect = picker_rows(page)
+        .into_iter()
+        .find(|(said, _, _)| said == title)
+        .map(|(_, _, rect)| rect)
+        .unwrap_or_else(|| panic!("the card offers {title:?}: {:?}", picker_titles(page)));
+    pencere_view::Point {
+        x: rect.x + rect.w / 2.0,
+        y: rect.y + rect.h / 2.0,
+    }
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_labels_of_issues_selected_are_turned_for_all_of_them_and_a_right_press_opens_them_by_its_line()
+ {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    page.press("shift+down").expect("shift+down");
+    page.wait_for(WITHIN, |page| page.says("2 selected"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    picker_after(&mut page, "l");
+    // ACM-412 has api and ACM-398 bug: a label is on where every one of them has it.
+    assert_eq!(picker_titles(&page), ["api", "bug", "Customer"]);
+    turn(&mut page, "bug");
+    changed(&linear, &mut page, 1);
+    assert_eq!(
+        linear.changed()[0],
+        serde_json::json!({ "ids": ["issue-412", "issue-398"], "input": { "addedLabelIds": ["l-bug"] } })
+    );
+    page.wait_for(WITHIN, |page| {
+        picker_titles(page) == ["api", "\u{2713} bug", "Customer"]
+    })
+    .unwrap_or_else(|why| panic!("{why:?}: {:?}", picker_titles(&page)));
+    close_picker(&mut page);
+    // Labels in the menu of a line pressed with the right button opens the card by that line.
+    page.right_click("row:i:issue-377").expect("a right press");
+    page.wait_for(WITHIN, |page| page.menu().is_some())
+        .unwrap_or_else(|why| panic!("the menu: {why:?}: {}", said(&page)));
+    page.pick_titled("Labels").expect("Labels");
+    page.wait_for(WITHIN, picker_open)
+        .unwrap_or_else(|why| panic!("the card opens: {why:?}: {}", said(&page)));
+    let row = page.bounds("row:i:issue-377").expect("the line");
+    let card = page.bounds(PICKER).expect("the card");
+    assert!(
+        card.y >= row.y + row.h - 0.5 || card.y + card.h <= row.y + 0.5,
+        "by its line: {card:?} {row:?}"
+    );
+    close_picker(&mut page);
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn labels_of_the_bar_of_the_selection_open_a_card_by_it_and_the_bar_stays_as_it_is() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    page.press("shift+down").expect("shift+down");
+    page.wait_for(WITHIN, |page| pressable(page, "bar:labels"))
+        .unwrap_or_else(|why| panic!("the bar: {why:?}: {}", said(&page)));
+    let bar = page.bounds("selection-bar").expect("the bar");
+    let button = page.bounds("bar:labels").expect("the button");
+    page.click("bar:labels").expect("Labels");
+    picker_offers(&mut page, "bug");
+    turn(&mut page, "bug");
+    changed(&linear, &mut page, 1);
+    assert_eq!(
+        linear.changed()[0],
+        serde_json::json!({ "ids": ["issue-412", "issue-398"], "input": { "addedLabelIds": ["l-bug"] } })
+    );
+    page.advance(0.5).expect("a moment");
+    // The card stays by its button, and the bar, what it says and where its button is, do not change.
+    assert!(picker_open(&page), "the card stays: {}", said(&page));
+    assert!(page.says("2 selected"), "{}", said(&page));
+    assert_eq!(page.bounds("selection-bar"), Some(bar));
+    assert_eq!(page.bounds("bar:labels"), Some(button));
+    // Esc puts the card away and leaves the selection; a second press of the button closes the card.
+    close_picker(&mut page);
+    assert!(page.says("2 selected"), "{}", said(&page));
+    page.click("bar:labels").expect("Labels");
+    picker_offers(&mut page, "bug");
+    page.click("bar:labels").expect("Labels again");
+    page.wait_for(WITHIN, |page| !picker_open(page))
+        .unwrap_or_else(|why| panic!("the card closes: {why:?}: {}", said(&page)));
+    assert!(page.says("2 selected"), "{}", said(&page));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_card_of_a_filter_goes_with_its_chip_when_the_pane_is_made_narrow() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    open_the_issue_under_the_cursor(&mut page);
+    open_filters(&linear, &mut page);
+    page.click("filters:labels").expect("labels");
+    picker_offers(&mut page, "bug");
+    // The pane is made narrow (a split beside it): the issue has it, and the head is not there.
+    page.resize(PANE.0, PANE.1).expect("the pane is narrower");
+    page.advance(0.3).expect("a moment");
+    assert!(page.bounds("panel-close").is_some(), "{}", said(&page));
+    assert!(!picker_open(&page), "{}", said(&page));
+    // The keys are the issue's again: Esc closes it.
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| page.bounds("panel-close").is_none())
+        .unwrap_or_else(|why| panic!("the issue closes: {why:?}: {}", said(&page)));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn on_a_terminal_whose_kit_has_no_picker_the_labels_and_the_filters_open_the_hosts_menu() {
+    let (linear, _session, mut page) = open_lists_on_an_old_kit(WIDE);
     let entries = menu_after(&mut page, "l");
     assert_eq!(titles(&entries), ["\u{2713} api", "bug", "Customer"]);
+    assert!(!picker_open(&page));
     page.pick_titled("bug").expect("bug");
     changed(&linear, &mut page, 1);
     assert_eq!(
         linear.changed()[0],
         serde_json::json!({ "ids": ["issue-412"], "input": { "addedLabelIds": ["l-bug"] } })
     );
-    page.wait_for(WITHIN, |page| {
-        page.words_in("row:i:issue-412").contains(&"bug".to_owned())
+    // The chips of the filters open the host's menu too.
+    open_filters(&linear, &mut page);
+    page.press("enter").expect("enter");
+    page.wait_for(WITHIN, |page| page.menu().is_some())
+        .unwrap_or_else(|why| panic!("the menu of Status: {why:?}: {}", said(&page)));
+    assert!(!picker_open(&page));
+    page.pick_titled("In Progress").expect("a status is picked");
+    page.wait_for(WITHIN, |_| {
+        last_filter(&linear, "MyIssues")["and"][1]
+            == serde_json::json!({ "state": { "name": { "in": ["In Progress"] } } })
     })
-    .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
-    let entries = menu_after(&mut page, "l");
-    assert_eq!(
-        titles(&entries),
-        ["\u{2713} api", "\u{2713} bug", "Customer"]
-    );
-    page.pick_titled("\u{2713} bug").expect("bug off");
-    changed(&linear, &mut page, 2);
-    assert_eq!(
-        linear.changed()[1],
-        serde_json::json!({ "ids": ["issue-412"], "input": { "removedLabelIds": ["l-bug"] } })
-    );
+    .unwrap_or_else(|why| panic!("{why:?}: {:?}", linear.variables_of("MyIssues")));
 }
 
 #[test]
@@ -4553,14 +4948,18 @@ fn after_a_press_on_the_scope_every_key_of_the_list_does_what_it_says() {
     page.press("escape").expect("escape");
     page.wait_for(WITHIN, |page| !page.says("Do it"))
         .expect("escape closes the palette");
-    // The keys that change issues: s, p, a and l open their menus, r makes the title a field.
-    for key in ["s", "p", "a", "l"] {
+    // The keys that change issues: s, p and a open their menus, l the card of the labels, r makes the
+    // title a field.
+    for key in ["s", "p", "a"] {
         let entries = menu_after(&mut page, key);
         assert!(entries.len() > 1, "{key} opens a menu: {entries:?}");
         page.press("escape").expect("escape");
         page.wait_for(WITHIN, |page| page.menu().is_none())
             .expect("escape closes the menu");
     }
+    picker_after(&mut page, "l");
+    assert!(picker_rows(&page).len() > 1, "{:?}", picker_titles(&page));
+    close_picker(&mut page);
     page.press("r").expect("r");
     page.wait_for(WITHIN, |page| has_field(page, "panel-title/field"))
         .unwrap_or_else(|why| panic!("r makes the title a field: {why:?}: {}", said(&page)));
@@ -7245,12 +7644,12 @@ fn open_filters(linear: &Canned, page: &mut Page) {
     page.advance(0.4).expect("a moment");
 }
 
-/// Presses the chip `kind` of the row and picks the entry titled `title` of its menu.
+/// Presses the chip `kind` of the row, turns the value `title` in its card and puts the card away.
 fn pick_filter(page: &mut Page, kind: &str, title: &str) {
     page.click(&format!("filters:{kind}"))
         .unwrap_or_else(|why| panic!("{kind} is pressed: {why:?}"));
-    page.pick_titled(title)
-        .unwrap_or_else(|why| panic!("{title:?} is picked: {why:?}: {:?}", menu_titles(page)));
+    turn(page, title);
+    close_picker(page);
 }
 
 #[test]
@@ -7269,13 +7668,12 @@ fn f_opens_a_row_of_five_chips_the_keyboard_on_the_first_and_with_the_list_back_
         assert!(pressable(&page, &format!("filters:{kind}")), "{kind}");
     }
     // The keyboard is on the first chip: the line of keys says what it does there, and Enter opens
-    // its menu, which has the states by name.
+    // its card, which has the states by name.
     assert!(page.says("back to the list"), "{}", said(&page));
     page.press("enter").expect("enter");
-    page.wait_for(WITHIN, |page| page.menu().is_some())
-        .unwrap_or_else(|why| panic!("the menu of Status: {why:?}: {}", said(&page)));
+    picker_offers(&mut page, "In Progress");
     assert_eq!(
-        menu_titles(&page),
+        picker_titles(&page),
         // (A list holds the issues of every state: the closed ones are offered too.)
         [
             "Backlog",
@@ -7287,7 +7685,7 @@ fn f_opens_a_row_of_five_chips_the_keyboard_on_the_first_and_with_the_list_back_
             "Duplicate"
         ]
     );
-    page.pick_titled("In Progress").expect("a status is picked");
+    turn(&mut page, "In Progress");
     // Linear is asked for the list with the state, "and"ed with the open issues and then with the
     // closed ones, which My issues, which is counted, is asked for as it was.
     page.wait_for(WITHIN, |page| page.says("ACM-431"))
@@ -7307,7 +7705,9 @@ fn f_opens_a_row_of_five_chips_the_keyboard_on_the_first_and_with_the_list_back_
             ] })
     })
     .unwrap_or_else(|why| panic!("the closed ones are asked for by it: {why:?}"));
-    // Esc gives the keyboard back to the list: the chip that is set stays, with Clear filters.
+    // Esc puts the card away, and again gives the keyboard back to the list: the chip that is set
+    // stays, with Clear filters.
+    close_picker(&mut page);
     page.press("escape").expect("escape");
     page.advance(0.3).expect("a moment");
     assert!(pressable(&page, "filters:status"));
@@ -7355,14 +7755,14 @@ fn a_chip_takes_more_than_one_value_and_the_filters_are_and_ed_in_every_list() {
             { "labels": { "some": { "name": { "in": ["bug"] } } } },
         ] })
     );
-    // The menu marks what is set, and a pick of what is set takes it away.
+    // The card marks what is set, and a turn of what is set takes it away.
     page.click("filters:assignee").expect("assignee");
-    let titles = menu_titles(&page);
+    picker_offers(&mut page, "Deniz");
+    let titles = picker_titles(&page);
     assert!(titles.contains(&"\u{2713} Deniz".to_owned()), "{titles:?}");
     assert_eq!(titles[0], "Me", "{titles:?}");
     assert_eq!(titles.last().map(String::as_str), Some("No assignee"));
-    page.pick_titled("\u{2713} Deniz")
-        .expect("Deniz is taken away");
+    turn(&mut page, "Deniz");
     page.wait_for(WITHIN, |_| {
         last_filter(&linear, "AllIssues")["and"]
             .as_array()
@@ -7381,6 +7781,7 @@ fn a_chip_takes_more_than_one_value_and_the_filters_are_and_ed_in_every_list() {
             { "labels": { "some": { "name": { "in": ["bug"] } } } },
         ] })
     );
+    close_picker(&mut page);
     // A second label is another value of the same chip: any of them.
     pick_filter(&mut page, "labels", "api");
     page.wait_for(WITHIN, |_| {
@@ -7575,13 +7976,14 @@ fn the_row_of_filters_opens_from_the_line_of_keys_and_a_press_elsewhere_puts_it_
         .unwrap_or_else(|why| panic!("the row opens: {why:?}: {}", said(&page)));
     page.wait_for(WITHIN, |_| linear.times("FilterOptions") >= 1)
         .expect("the choices are asked for");
-    // A chip is pressed with the pointer: its menu opens, and the row stays while it is used.
+    // A chip is pressed with the pointer: its card opens, and the row stays while it is used.
     page.click("filters:priority").expect("the chip");
+    picker_offers(&mut page, "High");
     assert_eq!(
-        menu_titles(&page),
+        picker_titles(&page),
         ["Urgent", "High", "Medium", "Low", "No priority"]
     );
-    page.pick_titled("High").expect("a priority");
+    turn(&mut page, "High");
     page.wait_for(WITHIN, |_| {
         last_filter(&linear, "MyIssues")["and"][1]
             == serde_json::json!({ "priority": { "in": [2] } })
@@ -7592,10 +7994,12 @@ fn the_row_of_filters_opens_from_the_line_of_keys_and_a_press_elsewhere_puts_it_
             linear.variables_of("MyIssues")
         )
     });
+    assert!(picker_open(&page), "the card stays");
     assert!(pressable(&page, "filters:project"), "{}", said(&page));
-    // A press anywhere else puts the row away: what is set stays.
+    // A press anywhere else puts the card and the row away: what is set stays.
     page.click("filter-box").expect("the field");
     page.advance(0.3).expect("a moment");
+    assert!(!picker_open(&page));
     assert!(!pressable(&page, "filters:project"), "{}", said(&page));
     assert!(pressable(&page, "filters:priority"), "{}", said(&page));
     assert!(pressable(&page, "filters-clear"), "{}", said(&page));
@@ -7603,6 +8007,43 @@ fn the_row_of_filters_opens_from_the_line_of_keys_and_a_press_elsewhere_puts_it_
     page.click("filters-clear").expect("Clear filters");
     page.wait_for(WITHIN, |page| !pressable(page, "filters:priority"))
         .unwrap_or_else(|why| panic!("they are let go of: {why:?}: {}", said(&page)));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_chip_turns_several_values_in_one_card_and_keeps_its_place_while_it_is_open() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    open_filters(&linear, &mut page);
+    page.click("filters:labels").expect("labels");
+    turn(&mut page, "bug");
+    turn(&mut page, "api");
+    page.wait_for(WITHIN, |_| {
+        last_filter(&linear, "MyIssues")["and"][1]["labels"]["some"]["name"]["in"]
+            == serde_json::json!(["bug", "api"])
+    })
+    .unwrap_or_else(|why| panic!("{why:?}: {:?}", linear.variables_of("MyIssues")));
+    // A press in the card is not one outside the row: the row and the card stay.
+    assert!(picker_open(&page), "the card stays");
+    assert!(pressable(&page, "filters:project"), "{}", said(&page));
+    // With the row put away the chip that is set stays; while its card is open, it stays though its
+    // last value is taken off.
+    close_picker(&mut page);
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| !pressable(page, "filters:project"))
+        .unwrap_or_else(|why| panic!("the row is put away: {why:?}: {}", said(&page)));
+    page.click("filters:labels").expect("labels");
+    let chip = page.bounds("filters:labels").expect("the chip");
+    turn(&mut page, "bug");
+    turn(&mut page, "api");
+    // (The list is whole again: an issue of neither label is in it.)
+    page.wait_for(WITHIN, |page| page.says("ACM-377"))
+        .unwrap_or_else(|why| panic!("{why:?}: {:?}: {}", picker_titles(&page), said(&page)));
+    assert!(picker_open(&page), "the card stays");
+    let now = page.bounds("filters:labels").expect("the chip stays");
+    assert_eq!((now.x, now.y), (chip.x, chip.y), "it does not move");
+    close_picker(&mut page);
+    page.wait_for(WITHIN, |page| page.bounds("filters:labels").is_none())
+        .unwrap_or_else(|why| panic!("the chip goes with the card: {why:?}: {}", said(&page)));
 }
 
 // --- The edit of the words of an issue ------------------------------------------------------------------
