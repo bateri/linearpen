@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-19
+
 ### Added
 
 - **Edit descriptions and comments.** `Edit description` (`E`) and `Edit comment` on your own comments
