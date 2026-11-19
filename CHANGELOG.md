@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-19
+
 ### Added
 
 - **Give the agent a prompt from Work on.** Words you write in the form's `Prompt` box, such as
