@@ -17,6 +17,13 @@ path = "src/program/main.rs"
 pencere = { git = "https://github.com/bateri/pencere", rev = "96955a55d8503d73c7d4cb13b87d3ffd427e681a" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# What a PDF's pages say of their words: the interpreter runs a page's content and says each letter it would
+# draw and where, to select, copy and find them (the terminal draws the pages; this reads the same file for
+# their text). Pure Rust, Apache-2.0 OR MIT; the version and the features are textpen's (user decision
+# 2026-11-19): `embed-fonts` so that the letters of a page whose fonts are not in the file
+# (Helvetica and the other thirteen) are said too, as pencere's sandbox draws them, and `embed-cmaps` so
+# that Chinese, Japanese and Korean text drawn through the predefined CMaps can be found and copied too.
+hayro-interpret = { version = "0.9", default-features = false, features = ["embed-fonts", "embed-cmaps"] }
 # The client's own screen where the terminal hosts no view: the page drawn as pictures in the terminal it
 # is started in, where that speaks the Kitty graphics protocol (the `terminal` feature), with the
 # interpreter compiled by the build.

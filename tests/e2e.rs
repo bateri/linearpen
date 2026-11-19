@@ -90,7 +90,11 @@ fn the_issues_topic_tells_the_lists_that_curl_brought_and_the_key_never_leaves_i
     let calls = home.calls();
     assert!(calls.len() >= 2, "{calls:?}");
     for call in &calls {
-        assert_eq!(call.argv, ["--config", "-"], "the key is not an argument");
+        assert_eq!(
+            call.argv,
+            ["-q", "--config", "-"],
+            "the key is not an argument"
+        );
         assert_eq!(
             call.env_key, "unset",
             "the key is not in curl's environment"
@@ -226,7 +230,7 @@ fn each_list_asks_linear_for_its_own_issues_and_nothing_but_reads_and_all_issues
         );
         assert!(asked_of(&home, "AllIssues").is_empty(), "{kind}");
         for call in home.calls() {
-            assert_eq!(call.argv, ["--config", "-"], "{kind}");
+            assert_eq!(call.argv, ["-q", "--config", "-"], "{kind}");
             assert!(!call.stdin.to_lowercase().contains("mutation"), "{kind}");
         }
         assert!(!log.contains(KEY), "{kind}");
@@ -731,6 +735,8 @@ fn an_agent_is_started_in_a_pane_that_is_given_the_file_of_the_issue_and_not_its
         );
     }
     assert!(!file.contains(common::KEY), "the key is not in the file");
+    // No files in this issue: no section about them.
+    assert!(!file.contains("### Files"), "{file}");
     // bateri was asked for a pane to the right, in the folder the pen began in, with the program
     // after the dashes: its prompt is the pen's own sentence, names the file and is not the issue's
     // text, and holds no word of a person's where they wrote none.
@@ -749,17 +755,6 @@ fn an_agent_is_started_in_a_pane_that_is_given_the_file_of_the_issue_and_not_its
     );
     assert_eq!(&call[4..8], ["--label", "ACM-412", "--", "claude"]);
     assert_eq!(call.len(), 9, "{call:?}");
-    // The variable the command line reads is in the environment of the `bateri` that made the pane, and
-    // in that of no other call; this issue's id is no UUID, so it is empty (and the prompt says nothing
-    // of writing), which is also what overwrites a value the pen's own environment might hold.
-    let agent = home.bateri_agent();
-    assert_eq!(agent[0], "split LINEARPEN_AGENT=", "{agent:?}");
-    assert!(
-        agent[1..]
-            .iter()
-            .all(|line| line.ends_with("LINEARPEN_AGENT unset")),
-        "{agent:?}"
-    );
     let prompt = &call[8];
     assert!(prompt.contains(context.to_str().unwrap()), "{prompt}");
     assert_eq!(
@@ -812,19 +807,61 @@ fn the_persons_words_end_the_prompt_as_one_word_byte_for_byte_and_a_worktree_nee
     assert!(!home.dir.path().join(".git").exists());
 }
 
-// A pen that was itself started for an agent (or by a shell that holds the variable) does not pass its
-// value on: the start sets the variable for the pane it makes, empty where the issue has no UUID.
 #[test]
-fn a_start_overwrites_the_variable_a_pen_was_run_with_and_not_only_sets_it_where_there_is_none() {
+fn an_issue_with_files_says_so_in_the_file_downloads_nothing_and_the_prompt_says_what_can_be_written()
+ {
+    const ID: &str = "0c9e0f1e-6d1b-4d7a-9a56-3b1c0a5e7f10";
     let home = Home::new();
     let heard = home.ask(
         &in_bateri()
-            .env("LINEARPEN_AGENT", "0c9e0f1e-6d1b-4d7a-9a56-3b1c0a5e7f10")
+            .env("STANDIN_ISSUE", "pictures-uuid")
             .call("start", hand("issue-412")),
     );
     assert_eq!(heard[0].result()["pane"], "p41");
-    let agent = home.bateri_agent();
-    assert_eq!(agent[0], "split LINEARPEN_AGENT=", "{agent:?}");
+    let context = std::path::PathBuf::from(heard[0].result()["context"].as_str().unwrap());
+    let file = std::fs::read_to_string(&context).unwrap();
+    let files = context.parent().unwrap().join("files");
+    let section = file.split("### Files\n\n").nth(1).expect(&file);
+    assert!(
+        section.starts_with(
+            "This issue has 7 files (6 pictures and 1 other file; 5 in the description, 2 in the comments). To see them, run `"
+        ),
+        "{section}"
+    );
+    let line = section.lines().next().unwrap();
+    assert!(
+        line.contains(&format!(" show {ID} --files "))
+            && line.contains(&files.display().to_string()),
+        "{line}"
+    );
+    assert!(line.ends_with("` and open the files it prints."), "{line}");
+    // Before the description, where the agent reads first; and the text of the files is the issue's.
+    assert!(file.find("### Files") < file.find("### Description"));
+    // Nothing was fetched when the agent started, and no folder was made for the files.
+    assert!(
+        home.calls()
+            .iter()
+            .all(|call| !call.stdin.contains("uploads.linear.app")),
+        "a file was fetched"
+    );
+    assert!(!files.exists());
+    // The prompt says what linearpen can do, with this issue's id in the commands.
+    let calls = home.bateri_calls();
+    let prompt = &calls[0][8];
+    for command in [
+        format!(" update {ID} --status \"<status>\"`"),
+        format!(" comment {ID} --body -`"),
+        format!(" comment {ID} --body - --attach PATH`"),
+        format!(" update {ID} --attach PATH`"),
+        " create --team KEY --title \"<title>\" --description -`".to_owned(),
+    ] {
+        assert!(prompt.contains(&command), "{command}: {prompt}");
+    }
+    for words in ["without asking", "refuses", "LINEARPEN_AGENT"] {
+        assert!(!prompt.contains(words), "{words}: {prompt}");
+    }
+    // The key is nowhere in the file or the prompt.
+    assert!(!file.contains(common::KEY) && !prompt.contains(common::KEY));
 }
 
 #[test]
@@ -867,7 +904,7 @@ fn a_start_that_asks_for_it_moves_what_has_not_begun_after_the_pane_with_the_one
     assert!(started["notMoved"].is_null(), "{started}");
     let sent = asked_of(&home, "IssueBatchUpdate");
     assert_eq!(sent.len(), 1, "{:?}", home.calls());
-    assert_eq!(sent[0].argv, ["--config", "-"]);
+    assert_eq!(sent[0].argv, ["-q", "--config", "-"]);
     assert_eq!(sent[0].env_key, "unset");
     assert!(sent[0].stdin.contains(common::KEY));
     for part in ["issue-412", "stateId", "s-prog"] {
@@ -1327,7 +1364,7 @@ fn create_sends_the_one_mutation_once_with_the_key_on_stdin_alone_and_the_issue_
     assert_eq!(made["identifier"], "ACM-900");
     let sent = asked_of(&home, "IssueCreate");
     assert_eq!(sent.len(), 1, "{:?}", home.calls());
-    assert_eq!(sent[0].argv, ["--config", "-"]);
+    assert_eq!(sent[0].argv, ["-q", "--config", "-"]);
     assert_eq!(sent[0].env_key, "unset");
     assert!(sent[0].stdin.contains(KEY));
     for part in [
@@ -1479,7 +1516,7 @@ fn change_sends_the_one_mutation_once_with_the_key_on_stdin_alone_and_the_lists_
     assert_eq!(told["issues"][0]["listed"], false, "done leaves My issues");
     let sent = asked_of(&home, "IssueBatchUpdate");
     assert_eq!(sent.len(), 1, "{:?}", home.calls());
-    assert_eq!(sent[0].argv, ["--config", "-"]);
+    assert_eq!(sent[0].argv, ["-q", "--config", "-"]);
     assert_eq!(sent[0].env_key, "unset");
     assert!(sent[0].stdin.contains(KEY));
     for part in [CHANGED, "stateId", "s-done"] {
@@ -1666,7 +1703,7 @@ fn a_comment_is_posted_with_one_mutation_once_the_key_on_stdin_alone_and_nothing
     assert_eq!(posted["comment"]["author"], "Ada");
     let sent = asked_of(&home, "CommentCreate");
     assert_eq!(sent.len(), 1, "{:?}", home.calls());
-    assert_eq!(sent[0].argv, ["--config", "-"]);
+    assert_eq!(sent[0].argv, ["-q", "--config", "-"]);
     assert_eq!(sent[0].env_key, "unset");
     assert!(sent[0].stdin.contains(KEY));
     // The words are a variable, with the issue and an id the program made; the text of the mutation

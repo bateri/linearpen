@@ -3,6 +3,7 @@
 //! wrong without asking Linear is refused here.
 
 use super::scan::{Scanned, many, one, scan, switch};
+use crate::linear::images::SEND_MOST;
 use crate::linear::limits::{BODY_MOST, DESCRIPTION_MOST, TITLE_MOST};
 use crate::linear::{BATCH_MOST, Change, Priority};
 use crate::state::draft;
@@ -81,6 +82,8 @@ pub struct Create {
     pub title: String,
     pub description: Option<Words>,
     pub fields: Fields,
+    /// Paths of the files put at the end of the description, in the order given (`--attach`).
+    pub attach: Vec<String>,
     pub json: bool,
 }
 
@@ -92,13 +95,18 @@ pub struct Update {
     pub fields: Fields,
     /// Names of labels the issues lose.
     pub unlabel: Vec<String>,
+    /// Paths of files added at the end of the description of the one issue, which is then the whole
+    /// of the update.
+    pub attach: Vec<String>,
     pub json: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Comment {
     pub issue: String,
-    pub body: Words,
+    /// Absent where there are files and no words.
+    pub body: Option<Words>,
+    pub attach: Vec<String>,
     pub json: bool,
 }
 
@@ -107,6 +115,8 @@ pub enum Command {
     List(Box<List>),
     Show {
         issue: String,
+        /// The folder the files of the issue are saved in (`--files`).
+        files: Option<String>,
         json: bool,
     },
     Create(Box<Create>),
@@ -342,13 +352,30 @@ fn the_issue(command: &str, found: &Scanned) -> Result<String, String> {
     }
 }
 
+/// The paths of `--attach`, as many as were given, at most ten.
+fn attached(found: &Scanned) -> Result<Vec<String>, String> {
+    let paths = found.values("attach");
+    if paths.iter().any(String::is_empty) {
+        return Err("--attach needs the path of a file".to_owned());
+    }
+    if paths.len() > SEND_MOST {
+        return Err(format!("at most {SEND_MOST} files are sent at once"));
+    }
+    Ok(paths)
+}
+
 fn show(args: &[String]) -> Result<Read, String> {
-    let found = scan("show", args, &[switch("json")])?;
+    let found = scan("show", args, &[switch("json"), one("files")])?;
     if found.help {
         return Ok(Read::Say(super::help::SHOW.to_owned()));
     }
+    let files = match found.value("files") {
+        Some("") => return Err("--files needs the folder to save the files in".to_owned()),
+        other => other.map(str::to_owned),
+    };
     Ok(Read::Do(Command::Show {
         issue: the_issue("show", &found)?,
+        files,
         json: found.has("json"),
     }))
 }
@@ -366,6 +393,7 @@ fn create(args: &[String]) -> Result<Read, String> {
         one("cycle"),
         one("estimate"),
         one("due"),
+        many("attach"),
         switch("json"),
     ];
     let found = scan("create", args, &spec)?;
@@ -389,6 +417,7 @@ fn create(args: &[String]) -> Result<Read, String> {
             .map(|value| words("description", value, DESCRIPTION_MOST))
             .transpose()?,
         fields: fields(&found)?,
+        attach: attached(&found)?,
         json: found.has("json"),
     }))))
 }
@@ -405,6 +434,7 @@ fn update(args: &[String]) -> Result<Read, String> {
         one("estimate"),
         one("due"),
         one("title"),
+        many("attach"),
         // Not changed by any way there is: named so that they are refused in words.
         one("description"),
         one("team"),
@@ -415,7 +445,7 @@ fn update(args: &[String]) -> Result<Read, String> {
         return Ok(Read::Say(super::help::UPDATE.to_owned()));
     }
     if found.has("description") || found.has("team") {
-        return Err("linearpen never changes an issue's description or team".to_owned());
+        return Err("linearpen never changes the words of an issue's description, or its team (--attach adds files at the end of a description)".to_owned());
     }
     let mut issues: Vec<String> = Vec::new();
     for word in &found.positional {
@@ -440,9 +470,19 @@ fn update(args: &[String]) -> Result<Read, String> {
     }
     let fields = fields(&found)?;
     let unlabel = named_all("unlabel", found.values("unlabel"))?;
+    let attach = attached(&found)?;
     let nothing = heading.is_none() && unlabel.is_empty() && fields == Fields::default();
-    if nothing {
-        return Err("update has nothing to change: give one of --status, --priority, --assignee, --label, --unlabel, --project, --cycle, --estimate, --due and --title".to_owned());
+    if !attach.is_empty() {
+        if issues.len() > 1 {
+            return Err(
+                "--attach is of one issue: its files go to the end of one description".to_owned(),
+            );
+        }
+        if !nothing {
+            return Err("--attach is the only option of its update: it adds to the description, and the other options change the issue, so run them one after the other".to_owned());
+        }
+    } else if nothing {
+        return Err("update has nothing to change: give one of --status, --priority, --assignee, --label, --unlabel, --project, --cycle, --estimate, --due, --title and --attach".to_owned());
     }
     let lower = |name: &str| name.to_lowercase();
     if let Some(both) = fields
@@ -457,22 +497,36 @@ fn update(args: &[String]) -> Result<Read, String> {
         title: heading,
         fields,
         unlabel,
+        attach,
         json: found.has("json"),
     }))))
 }
 
 fn comment(args: &[String]) -> Result<Read, String> {
-    let found = scan("comment", args, &[one("body"), switch("json")])?;
+    let found = scan(
+        "comment",
+        args,
+        &[one("body"), many("attach"), switch("json")],
+    )?;
     if found.help {
         return Ok(Read::Say(super::help::COMMENT.to_owned()));
     }
     let issue = the_issue("comment", &found)?;
-    let body = found
-        .value("body")
-        .ok_or("comment needs --body, the words, or - for the words on stdin")?;
+    let attach = attached(&found)?;
+    let body = match found.value("body") {
+        Some(body) => Some(words("body", body, BODY_MOST)?),
+        None if attach.is_empty() => {
+            return Err(
+                "comment needs --body, the words, or - for the words on stdin, or --attach"
+                    .to_owned(),
+            );
+        }
+        None => None,
+    };
     Ok(Read::Do(Command::Comment(Comment {
         issue,
-        body: words("body", body, BODY_MOST)?,
+        body,
+        attach,
         json: found.has("json"),
     })))
 }
@@ -651,7 +705,16 @@ mod tests {
             command("show", &["acm-412", "--json"]),
             Command::Show {
                 issue: "ACM-412".to_owned(),
+                files: None,
                 json: true
+            }
+        );
+        assert_eq!(
+            command("show", &["acm-412", "--files", "pics/a b"]),
+            Command::Show {
+                issue: "ACM-412".to_owned(),
+                files: Some("pics/a b".to_owned()),
+                json: false
             }
         );
         for bad in [
@@ -815,15 +878,15 @@ mod tests {
         );
         assert!(
             refused("update", &["ACM-1", "--description", "x"])
-                .contains("never changes an issue's description or team")
+                .contains("never changes the words of an issue's description, or its team")
         );
         assert!(
             refused("update", &["ACM-1", "--team", "WEB"])
-                .contains("never changes an issue's description or team")
+                .contains("never changes the words of an issue's description, or its team")
         );
         assert!(
             refused("update", &["ACM-1", "--description=x", "--status", "a"])
-                .contains("description or team")
+                .contains("description, or its team")
         );
         assert!(refused("update", &["nope", "--status", "a"]).contains("not an issue"));
     }
@@ -847,7 +910,8 @@ mod tests {
             command("comment", &["acm-412", "--body", "-"]),
             Command::Comment(Comment {
                 issue: "ACM-412".to_owned(),
-                body: Words::Stdin,
+                body: Some(Words::Stdin),
+                attach: Vec::new(),
                 json: false
             })
         );
@@ -856,7 +920,7 @@ mod tests {
         else {
             panic!()
         };
-        assert_eq!(given.body, Words::Given("Looks right".to_owned()));
+        assert_eq!(given.body, Some(Words::Given("Looks right".to_owned())));
         assert!(given.json);
         assert!(refused("comment", &["ACM-412"]).contains("--body"));
         assert!(refused("comment", &["--body", "x"]).contains("an issue"));

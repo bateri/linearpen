@@ -3,6 +3,7 @@
 use std::sync::Mutex;
 
 use super::transport::Reply;
+use super::upload::{send_file, upload};
 use super::*;
 
 /// Answers from a list, one reply to each request, and keeps the bodies it was sent.
@@ -1315,4 +1316,181 @@ fn the_choices_of_the_filters_leave_out_a_name_a_filter_would_refuse() {
             .collect::<Vec<_>>(),
         ["bug"]
     );
+}
+
+/// `Issue` answered with the description `text` (or none).
+fn detail_reply(n: usize, text: Option<&str>) -> Reply {
+    let description = match text {
+        Some(text) => serde_json::to_string(text).unwrap(),
+        None => "null".to_owned(),
+    };
+    Reply {
+        status: 200,
+        body: format!(
+            r#"{{"data":{{"issue":{}}}}}"#,
+            issue(n).replacen(
+                r#""team":"#,
+                &format!(r#""description":{description},"comments":{{"nodes":[],"pageInfo":{{"hasNextPage":false,"endCursor":null}}}},"team":"#),
+                1
+            )
+        ),
+    }
+}
+
+const LINE: &str = "![a.png](https://uploads.linear.app/stand-in/1)";
+
+#[test]
+fn pictures_go_to_the_end_of_the_description_as_linear_holds_it_now_and_nothing_else_is_written() {
+    let transport = Scripted::new(vec![
+        Ok(detail_reply(7, Some("The words\n\n- one\n- two\n"))),
+        Ok(changed_reply(true, &[7])),
+    ]);
+    add_files(&transport, &key(), "ACM-7", &[LINE.to_owned()]).unwrap();
+    let sent = transport.sent();
+    assert_eq!(sent.len(), 2, "the description is read, then written once");
+    let read: serde_json::Value = serde_json::from_str(&sent[0]).unwrap();
+    assert_eq!(read["operationName"], "Issue");
+    let write: serde_json::Value = serde_json::from_str(&sent[1]).unwrap();
+    assert_eq!(write["operationName"], "IssueBatchUpdate");
+    // The issue by the id Linear gave, which is what the batch takes.
+    assert_eq!(write["variables"]["ids"], serde_json::json!(["i7"]));
+    let input = write["variables"]["input"].as_object().unwrap();
+    assert_eq!(
+        input.keys().collect::<Vec<_>>(),
+        ["description"],
+        "the description alone"
+    );
+    let description = input["description"].as_str().unwrap();
+    // What was read is what is sent, to the letter, and the line after a blank one.
+    assert!(
+        description.starts_with("The words\n\n- one\n- two\n"),
+        "{description}"
+    );
+    assert_eq!(description, format!("The words\n\n- one\n- two\n\n{LINE}"));
+}
+
+#[test]
+fn a_description_there_is_not_is_the_pictures_alone() {
+    let transport = Scripted::new(vec![
+        Ok(detail_reply(7, None)),
+        Ok(changed_reply(true, &[7])),
+    ]);
+    add_files(&transport, &key(), "i7", &[LINE.to_owned()]).unwrap();
+    let write: serde_json::Value = serde_json::from_str(&transport.sent()[1]).unwrap();
+    assert_eq!(write["variables"]["input"]["description"], LINE);
+}
+
+#[test]
+fn a_description_that_cannot_be_read_or_would_be_too_long_is_not_written() {
+    let transport = Scripted::new(vec![Err(Error::Unreachable("down".to_owned()))]);
+    assert!(matches!(
+        add_files(&transport, &key(), "i7", &[LINE.to_owned()]),
+        Err(Step::Read(Error::Unreachable(_)))
+    ));
+    assert_eq!(transport.sent().len(), 1, "only the reading");
+    let long = "x".repeat(images::DESCRIPTION_MOST);
+    let transport = Scripted::new(vec![Ok(detail_reply(7, Some(&long)))]);
+    assert!(matches!(
+        add_files(&transport, &key(), "i7", &[LINE.to_owned()]),
+        Err(Step::TooLong)
+    ));
+    assert_eq!(transport.sent().len(), 1);
+    // No picture, no write at all.
+    let transport = Scripted::new(vec![]);
+    assert!(add_files(&transport, &key(), "i7", &[]).is_err());
+    assert!(transport.sent().is_empty());
+}
+
+#[test]
+fn a_description_that_was_sent_and_not_answered_is_a_failure_of_the_write() {
+    let transport = Scripted::new(vec![
+        Ok(detail_reply(7, Some("Words"))),
+        Err(Error::Unreachable("timed out".to_owned())),
+    ]);
+    assert!(matches!(
+        add_files(&transport, &key(), "i7", &[LINE.to_owned()]),
+        Err(Step::Write(Error::Unreachable(_)))
+    ));
+    assert_eq!(transport.sent().len(), 2, "the write is not sent again");
+}
+
+/// A copy of `bytes` as the program keeps what it sends.
+fn staged(bytes: &[u8]) -> super::staged::Staged {
+    let staged = super::staged::Staged::new().unwrap();
+    staged.copy_in(&mut &bytes[..], u64::MAX).unwrap();
+    staged
+}
+
+#[test]
+fn the_place_for_a_file_is_asked_with_what_the_file_is_and_never_with_its_name_in_the_text() {
+    let transport = Scripted::new(vec![Ok(Reply {
+        status: 200,
+        body: r#"{"data":{"fileUpload":{"success":true,"uploadFile":{"uploadUrl":"https://storage.stand-in/x?sig=SECRET","assetUrl":"https://evil.example/a.png","headers":[]}}}}"#.to_owned(),
+    })]);
+    let png = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR\0\0\0\x02\0\0\0\x02\x08\x06\0\0\0";
+    let copy = staged(png);
+    // An asset address that is not one of Linear's files is not taken, and the storage is not sent to.
+    let failed = upload(
+        &transport,
+        &key(),
+        "secret name.png",
+        "image/png",
+        copy.path(),
+        png.len() as u64,
+    );
+    assert!(matches!(failed, Err(Error::Failed(_))), "{failed:?}");
+    let sent = transport.sent();
+    let body: serde_json::Value = serde_json::from_str(&sent[0]).unwrap();
+    assert_eq!(body["operationName"], "FileUpload");
+    assert_eq!(body["variables"]["contentType"], "image/png");
+    assert_eq!(body["variables"]["filename"], "secret name.png");
+    assert_eq!(body["variables"]["size"], png.len());
+    assert!(!body["query"].as_str().unwrap().contains("secret name"));
+    // Nothing, or more than 100 MiB, asks nothing.
+    let transport = Scripted::new(vec![]);
+    assert!(upload(&transport, &key(), "a.png", "image/png", copy.path(), 0).is_err());
+    assert!(
+        upload(
+            &transport,
+            &key(),
+            "a.bin",
+            "application/octet-stream",
+            copy.path(),
+            images::FILE_MOST + 1
+        )
+        .is_err()
+    );
+    assert!(transport.sent().is_empty());
+}
+
+#[test]
+fn a_file_of_any_kind_is_sent_up_to_a_hundred_mib_and_nothing_else_is_by_whoever_asks() {
+    let transport = Scripted::new(vec![]);
+    assert_eq!(
+        send_file(&transport, &key(), "a.png", staged(b"").path()).unwrap_err(),
+        NotSent::Empty
+    );
+    assert_eq!(
+        send_file(
+            &transport,
+            &key(),
+            "a.png",
+            std::path::Path::new("/nowhere/at/all")
+        )
+        .unwrap_err(),
+        NotSent::Unreadable
+    );
+    assert!(transport.sent().is_empty(), "Linear is asked of nothing");
+    // A file that is not a picture asks for the place with what it is: a PDF, or nothing it knows.
+    for (bytes, content_type) in [
+        (&b"%PDF-1.7\n..."[..], "application/pdf"),
+        (&b"PK\x03\x04zip"[..], "application/octet-stream"),
+        (&b"GIF89a...."[..], "image/gif"),
+    ] {
+        let transport = Scripted::new(vec![]);
+        let _ = send_file(&transport, &key(), "x", staged(bytes).path());
+        let body: serde_json::Value = serde_json::from_str(&transport.sent()[0]).unwrap();
+        assert_eq!(body["variables"]["contentType"], content_type);
+        assert_eq!(body["variables"]["size"], bytes.len());
+    }
 }

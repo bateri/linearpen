@@ -128,7 +128,7 @@ fn the_key_goes_to_curl_on_its_stdin_and_nowhere_else() {
     assert!(calls[1].stdin.contains("operationName\\\":\\\"AllIssues"));
     for call in &calls {
         // Not in what `ps` shows.
-        assert_eq!(call.argv, ["--config", "-"]);
+        assert_eq!(call.argv, ["-q", "--config", "-"]);
         // Not in the environment of curl, though the program's own had it.
         assert_eq!(call.env_key, "unset");
         // In the configuration curl reads from stdin, as the header, and nowhere else.

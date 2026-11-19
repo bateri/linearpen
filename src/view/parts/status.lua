@@ -12,6 +12,7 @@ local filters = require("./filters")
 local head = require("./head")
 local list = require("./list")
 local new = require("./new")
+local pictures = require("./pictures")
 local work = require("./work")
 
 local b, u, S, SIZE, act = kit.b, kit.u, kit.S, kit.SIZE, kit.act
@@ -203,6 +204,21 @@ function status.press(id)
 end
 
 function status.view()
+	if S.screen == "list" and pictures.is_open() then
+		-- A picture is large: a key that has a button (Esc, the arrows, find, save, the matches) is written
+		-- on the button and not here; what is said here is what no button has: copying what is selected,
+		-- and selecting all the words.
+		local start = {}
+		if not pictures.find_open() then
+			if pictures.selected() then
+				start[#start + 1] = { key = "copy", words = hint({ "pdf_copy" }, "copy"), priority = 8 }
+			end
+			if pictures.readable() then
+				start[#start + 1] = { key = "all", words = hint({ "pdf_select_all" }, "select all"), priority = 6 }
+			end
+		end
+		return u:status("status", { start = start })
+	end
 	if S.editing then
 		return u:status("status", { start = edit_hints(), finish = status.finish() })
 	end

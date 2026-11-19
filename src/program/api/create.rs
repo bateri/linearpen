@@ -7,7 +7,9 @@ use std::sync::Arc;
 use pencere::Options;
 use serde::{Deserialize, Serialize};
 
+use super::pictures::{Attached, given, send, with_lines};
 use super::{Failure, call};
+use crate::linear::images;
 use crate::linear::limits::{DESCRIPTION_MOST, LABELS_MOST, REF_MOST, TITLE_MOST, is_ref};
 use crate::linear::{Created, Error, NewIssue, Priority, StateChoice, Team};
 use crate::session::Session;
@@ -212,6 +214,9 @@ struct Make {
     assignee: Option<String>,
     labels: Option<Vec<String>>,
     project: Option<String>,
+    /// The files that go in its description (up to ten), put in Linear's storage before it is made.
+    #[serde(default)]
+    files: Vec<Attached>,
 }
 
 #[derive(Debug, Serialize)]
@@ -311,10 +316,29 @@ fn told(error: Error) -> Failure {
 }
 
 fn create(session: &Session, params: Make) -> Result<CreatedMessage, Failure> {
-    let input = input_of(params)?;
+    let pictures = given(&params.files)?;
+    // The description is the words and the lines of the files: held to its bound before any file is
+    // sent, not after.
+    let names: Vec<&str> = pictures.iter().map(|one| one.name.as_str()).collect();
+    if images::with_lines_most(params.description.as_deref().unwrap_or(""), &names)
+        > DESCRIPTION_MOST
+    {
+        return Err(Failure::BadParams(format!(
+            "description with the lines of its files is at most {DESCRIPTION_MOST} characters"
+        )));
+    }
+    let mut input = input_of(params)?;
     if session.state().key.is_none() {
         return Err(Failure::NoKey(
             "there is no key to ask Linear with".to_owned(),
+        ));
+    }
+    // The files are put in Linear's storage first: where one cannot be, no issue is made.
+    let lines = send(session, &pictures, "made")?;
+    if !lines.is_empty() {
+        input.description = Some(with_lines(
+            input.description.as_deref().unwrap_or(""),
+            &lines,
         ));
     }
     let Created { id, identifier, .. } = session.create(&input).map_err(told)?;
@@ -343,6 +367,7 @@ mod tests {
             assignee: None,
             labels: None,
             project: None,
+            files: Vec::new(),
         }
     }
 

@@ -5,6 +5,7 @@
 
 local markdown = require("@pencere/markdown")
 local kit = require("./lib/kit")
+local attach = require("./parts/attach")
 local change = require("./parts/change")
 local comment = require("./parts/comment")
 local commands = require("./parts/commands")
@@ -18,6 +19,7 @@ local lists = require("./parts/lists")
 local new = require("./parts/new")
 local palette = require("./parts/palette")
 local panel = require("./parts/panel")
+local pictures = require("./parts/pictures")
 local screens = require("./parts/screens")
 local status = require("./parts/status")
 local work = require("./parts/work")
@@ -29,7 +31,7 @@ local b, u, S, SIZE, act, lib = kit.b, kit.u, kit.S, kit.SIZE, kit.act, kit.lib
 -- What a command can be done under: what the page shows, never where the keyboard is, but for the one
 -- whose key a field would take (`idle`).
 local function modal()
-	return palette.is_open() or help.is_open() or lists.is_open()
+	return palette.is_open() or help.is_open() or lists.is_open() or pictures.is_open()
 end
 
 -- While a form (the one for an agent, the one for a new issue) is open, or the title of the issue is
@@ -38,6 +40,88 @@ end
 local function form_open()
 	return work.is_open() or new.is_open() or panel.editing()
 end
+-- Where files are put: the key of the place (`attach.lua`). The comment, while its field has the
+-- keyboard; the issue being made, while its form is open; else the description of the issue that is open
+-- (not while a form for an agent has the pane, nor while the title is written). Nil where there is none.
+local function attach_key()
+	if S.screen ~= "list" or modal() or work.is_open() then
+		return nil
+	end
+	if new.is_open() then
+		return "new"
+	end
+	local detail = panel.detail()
+	if detail == nil or change.editing() then
+		return nil
+	end
+	if comment.typing() then
+		return "comment:" .. detail.id
+	end
+	return "describe:" .. detail.id
+end
+
+-- The key of the place a kind of Attach file (`comment`, `new` or `describe`) is of: its own, whatever the
+-- keyboard is on.
+local function attach_key_of(kind)
+	if S.screen ~= "list" or modal() or work.is_open() then
+		return nil
+	end
+	if kind == "new" then
+		return new.is_open() and "new" or nil
+	end
+	local detail = panel.detail()
+	if detail == nil or new.is_open() then
+		return nil
+	end
+	return kind .. ":" .. detail.id
+end
+
+-- The kind of place the key of Attach file is for now (the button that has the key written in it).
+act.attach_kind = function()
+	local key = attach_key()
+	if key == nil then
+		return nil
+	end
+	return string.match(key, "^(%a+)")
+end
+
+-- Whether the point (x, y) is in the element named `name`.
+local function inside(name, x, y)
+	local at = b.layout.bounds(name)
+	return at ~= nil and x >= at.x and x < at.x + at.w and y >= at.y and y < at.y + at.h
+end
+
+-- Whether the point is in the room the issue is read in: what is scrolled out of it is not under the
+-- pointer, whatever the box of it says.
+local function in_the_room(x, y)
+	local at = act.panel_view()
+	return at ~= nil and x >= at.x and x < at.x + at.w and y >= at.y and y < at.y + at.h
+end
+
+-- The place a drop at (x, y) is on: the form of a new issue anywhere on it, or the comment's field and its
+-- pictures, or the description of the issue open with what is under it.
+local function drop_key(x, y)
+	if S.screen ~= "list" or modal() or work.is_open() then
+		return nil
+	end
+	if new.is_open() then
+		return inside("new-form", x, y) and "new" or nil
+	end
+	local detail = panel.detail()
+	if detail == nil then
+		return nil
+	end
+	if not in_the_room(x, y) then
+		return nil
+	end
+	if inside("comment-box", x, y) then
+		return "comment:" .. detail.id
+	elseif inside("describe-zone", x, y) then
+		return "describe:" .. detail.id
+	end
+	return nil
+end
+
 commands.when.list = function()
 	return S.screen == "list" and not modal() and not form_open()
 end
@@ -119,6 +203,60 @@ end
 -- own, and a key pressed elsewhere sends nothing the person wrote).
 commands.when.commentable = function()
 	return commands.when.idle() and panel.detail() ~= nil
+end
+-- Attach file: where there is a place for files (the key does not need the list's keys, since the field
+-- of the comment has the keyboard where it is the comment's).
+commands.when.attachable = function()
+	return attach_key() ~= nil
+end
+-- Add to description: files are chosen for it, and the keyboard is not in a field (⌘Enter there is the
+-- field's: the comment is posted, the issue made, the words searched for). The comment's field and the
+-- head's (the filter, the search) have the keyboard even when they are empty, and ⌘Enter does not go to
+-- the description then.
+commands.when.describable = function()
+	return S.screen == "list"
+		and not modal()
+		and not form_open()
+		and not comment.typing()
+		and not head.typing()
+		and attach.describable()
+end
+-- Save the file, Open the PDF: a card of the issue open has the keyboard, or is the only one there is.
+commands.when.file_openable = function()
+	return S.screen == "list" and not modal() and not form_open() and pictures.openable()
+end
+commands.when.file_linkable = function()
+	return S.screen == "list" and not modal() and not form_open() and pictures.linkable()
+end
+-- The arrows turn the page of the PDF that is large.
+commands.when.paging = function()
+	return S.screen == "list" and pictures.paging()
+end
+-- The words of a PDF that is large: to find (it has some), to go from match to match (there are some),
+-- to copy (some are selected) and to select all.
+local function reading_pdf()
+	return S.screen == "list"
+		and pictures.is_open()
+		and not palette.is_open()
+		and not help.is_open()
+		and not lists.is_open()
+end
+-- Save: a card of the issue (the one that has the keyboard, or the only one there is), or the PDF that is
+-- large.
+commands.when.file_saveable = function()
+	if pictures.is_open() then
+		return reading_pdf() and pictures.saveable()
+	end
+	return S.screen == "list" and not modal() and not form_open() and pictures.saveable()
+end
+commands.when.pdf_readable = function()
+	return reading_pdf() and pictures.readable()
+end
+commands.when.pdf_found = function()
+	return reading_pdf() and pictures.found()
+end
+commands.when.pdf_selected = function()
+	return reading_pdf() and pictures.selected()
 end
 commands.when.postable = function()
 	local detail = panel.detail()
@@ -261,6 +399,10 @@ end
 -- it goes with the list (`commands.when.headed`).
 local function listing()
 	local page = b.div():col():grow(1):min_h(0)
+	if pictures.is_open() then
+		-- A picture is large: it has the pane, the head and the list are not on the page.
+		return page:child(pictures.view())
+	end
 	if S.covered then
 		return page:child(b.div():row():grow(1):min_h(0):child(side(S.width)))
 	end
@@ -284,6 +426,8 @@ end
 
 local function render(size, now, reduce_motion)
 	u:begin(size, now, reduce_motion)
+	pictures.begin()
+	attach.begin()
 	S.now, S.width, S.height = now, size.w, size.h
 	S.screen = screen()
 	S.work_open = S.screen == "list" and work.is_open()
@@ -317,6 +461,7 @@ local function render(size, now, reduce_motion)
 		lists.view(root)
 		help.view(root)
 	end
+	kit.start_toasts(u.now)
 	kit.lib.toasts_prune(S.toasts, u.now)
 	if #S.toasts > 0 then
 		root:child(u:toasts("toasts", { items = S.toasts }))
@@ -371,6 +516,29 @@ local function command(id)
 	elseif id == "comment_send" then
 		local detail = panel.detail()
 		return detail ~= nil and comment.send(detail.id) or true
+	elseif id == "attach_file" then
+		local key = attach_key()
+		return key ~= nil and attach.choose(key) or true
+	elseif id == "pdf_find" then
+		return pictures.find()
+	elseif id == "pdf_find_next" then
+		return pictures.step(1)
+	elseif id == "pdf_find_previous" then
+		return pictures.step(-1)
+	elseif id == "pdf_copy" then
+		return pictures.copy()
+	elseif id == "pdf_select_all" then
+		return pictures.select_all()
+	elseif id == "file_save" then
+		return pictures.save_target()
+	elseif id == "file_open" then
+		return pictures.open_target()
+	elseif id == "file_link" then
+		return pictures.link_target()
+	elseif id == "file_copy_link" then
+		return pictures.copy_link_target()
+	elseif id == "describe" then
+		return attach.describe()
 	elseif id == "parent" then
 		return panel.open_parent()
 	elseif id == "near" then
@@ -446,6 +614,28 @@ local function press(id)
 		panel.close()
 	elseif id == "panel-title-edit" then
 		return panel.rename()
+	elseif id == "picture-close" then
+		return pictures.close()
+	elseif string.sub(id, 1, 4) == "pic:" or string.sub(id, 1, 10) == "file-open:" then
+		return pictures.open(id)
+	elseif string.sub(id, 1, 10) == "file-save:" or id == "pdf-save" then
+		return pictures.save(id)
+	elseif id == "pdf-find-open" then
+		return pictures.find()
+	elseif id == "pdf-find-next" then
+		return pictures.step(1)
+	elseif id == "pdf-find-previous" then
+		return pictures.step(-1)
+	elseif id == "pdf-find-close" then
+		return pictures.close_find()
+	elseif id == "pdf-previous" then
+		return pictures.turn(-1)
+	elseif id == "pdf-next" then
+		return pictures.turn(1)
+	elseif string.sub(id, 1, 9) == "pic-link:" or string.sub(id, 1, 8) == "pic-ext:" then
+		return pictures.link(id)
+	elseif string.sub(id, 1, 10) == "file-card:" then
+		return pictures.card_press(id)
 	elseif string.sub(id, 1, 5) == "near:" then
 		return panel.open_near(string.sub(id, 6))
 	elseif id == "issue-retry" then
@@ -467,6 +657,9 @@ local function press(id)
 		end
 		if reply == nil then
 			reply = change.press(id)
+		end
+		if reply == nil then
+			reply = attach.press(id, attach_key_of)
 		end
 		if reply ~= nil then
 			return reply
@@ -508,6 +701,12 @@ local function on_action(action)
 	if reply ~= nil then
 		return reply
 	end
+	if reply == nil then
+		reply = pictures.action(action)
+	end
+	if reply ~= nil then
+		return reply
+	end
 	if from == "toasts" and kind == "close" then
 		for index, item in S.toasts do
 			if item.key == action.key then
@@ -540,6 +739,9 @@ local function back()
 		work.close()
 	elseif filters.is_open() then
 		filters.close()
+	elseif attach.cancel() then
+		-- (The files chosen for the description are let go before the issue is put away.)
+		return true
 	elseif panel.is_open() then
 		panel.close()
 	elseif list.marked() > 0 then
@@ -600,6 +802,10 @@ local function key(event)
 	if S.screen == "list" and help.is_open() then
 		return help.key(event)
 	end
+	if S.screen == "list" and pictures.is_open() and not help.is_open() then
+		-- The picture is large: Esc puts it away, and no other key is the list's.
+		return pictures.key(event)
+	end
 	if S.screen ~= "list" or modal() then
 		return nil
 	end
@@ -636,7 +842,10 @@ end
 local function shape(event)
 	local over = b.layout.hit({ x = event.x, y = event.y })
 	local wanted = nil
-	if
+	if pictures.over_text(event) then
+		-- The words of a PDF that is large are selected.
+		wanted = "text"
+	elseif
 		over ~= nil
 		and (
 			kit.buttons[over]
@@ -657,6 +866,8 @@ end
 local function follow()
 	work.sync()
 	change.sync()
+	-- The pictures held are the open issue's: they go with it, and come with the one that opens.
+	pictures.track(panel.id(), panel.detail())
 	if not panel.is_open() then
 		return
 	end
@@ -762,9 +973,16 @@ local function handle(event)
 		reply = b.merge(reply, on_action(action))
 	end
 	if kind == "move" then
+		reply = b.merge(reply, pictures.dragged(event))
 		reply = b.merge(reply, shape(event))
 	elseif kind == "leave" then
 		S.cursor = nil
+	elseif kind == "files" then
+		-- Files were pasted, dropped or chosen in the Open panel: they are put where they go.
+		reply = b.merge(reply, attach.files(event, { paste = attach_key, drop = drop_key }))
+	elseif kind == "saving" then
+		-- The person chose where a file of Linear is saved: the program writes it there.
+		reply = b.merge(reply, pictures.saving(event))
 	elseif kind == "carried" then
 		-- The system's drag of a line out of the page is over, and the page did not hear the pointer
 		-- while it went: what it was told of the pointer (the shape, the button down) is no longer so.
@@ -777,10 +995,15 @@ local function handle(event)
 		if (event.button or "left") == "left" then
 			S.armed = b.layout.hit({ x = event.x, y = event.y })
 			filters.outside(S.armed)
+			pictures.unpoint()
+		end
+		if not taken and pictures.is_open() then
+			-- The page of a PDF that is large: a press on its words begins a selection.
+			reply = b.merge(reply, pictures.pressed(event))
 		end
 		if not taken and S.screen == "list" and not modal() then
 			if (event.button or "left") == "right" then
-				reply = b.merge(reply, context.press(event))
+				reply = b.merge(reply, context.press(event) or pictures.menu(event))
 			elseif list.press(event) then
 				reply = b.merge(reply, true)
 			end
@@ -789,6 +1012,7 @@ local function handle(event)
 			reply = b.merge(reply, markdown.handle(event))
 		end
 	elseif kind == "release" then
+		reply = b.merge(reply, pictures.released())
 		local armed, over = S.armed, b.layout.hit({ x = event.x, y = event.y })
 		S.armed = nil
 		if
@@ -817,6 +1041,7 @@ return {
 	render = render,
 	settle = function()
 		local moved = list.settle()
+		moved = attach.settle() or moved
 		return u:settle() or moved
 	end,
 	handle = handle,

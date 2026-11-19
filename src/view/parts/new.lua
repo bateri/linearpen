@@ -10,6 +10,7 @@
 -- where the person presses Create again after a failure.
 
 local kit = require("../lib/kit")
+local attach = require("./attach")
 local commands = require("./commands")
 local filters = require("./filters")
 local head = require("./head")
@@ -237,14 +238,16 @@ local function why_not()
 	return nil
 end
 
--- The draft is made: what the next begins with is kept, the rest goes.
-local function finish()
+-- The draft is made: what the next begins with is kept, the rest goes. (Of the files, only the ones that
+-- were sent: one added while it was on its way stays in the tray.)
+local function finish(sent)
 	N.carry = { team = N.team, project = N.project }
 	N.live = false
 	N.draft = nil
 	N.title.value = ""
 	N.about, N.restoring = "", false
 	N.error = nil
+	attach.release("new", sent)
 end
 
 -- Sends the draft to the program. What comes back is the issue made (shown in the list when the
@@ -274,6 +277,9 @@ function new.create()
 	if N.project ~= nil then
 		params.project = N.project
 	end
+	-- The files chosen go with it: they are sent to Linear first, and named at the end of the
+	-- description.
+	params.files = attach.params("new")
 	-- Where the issue will be: the list of the person's own where it is theirs, and the group of its
 	-- state (`kind:name`, as the program names the groups).
 	local me = me_of(data)
@@ -292,7 +298,7 @@ function new.create()
 			return true
 		end
 		local shown = N.open and N.serial == serial
-		finish()
+		finish(params.files)
 		if not shown then
 			-- The form was put away while it was on its way: it is not opened again, and the issue is
 			-- in the lists when they come.
@@ -491,6 +497,12 @@ function new.view(width)
 	)
 	content:child(title_box())
 	content:child(about_box(compact))
+	-- Attach file is under the description, where the files are put (the tray under it).
+	content:child(b.div():row():items_center():gap(8):no_shrink():child(attach.button("new", N.creating)))
+	local tray = attach.tray("new", N.creating)
+	if tray ~= nil then
+		content:child(tray)
+	end
 	if N.options == nil or N.options.status == "loading" then
 		content:child(b.div():row():items_center():gap(8):no_shrink():child(kit.spinner(14, "quiet")):child(
 			b.text("Loading the choices"):color("dim"):text_size(SIZE.small)
@@ -509,14 +521,19 @@ function new.view(width)
 		)
 	end
 	local reason = why_not()
-	content:child(b.div():row():no_shrink():child(kit.button("new-create", "Create issue", {
+	local made = b.div():row():items_center():gap(10):no_shrink():child(kit.button("new-create", "Create issue", {
 		primary = true,
 		suffix = commands.label("create"),
 		busy = N.creating,
 		disabled = not new.creatable(),
 		tip = reason,
-	})))
-	local side = b.div():row():w(width):no_shrink():min_h(0)
+	}))
+	if N.creating and attach.count("new") > 0 then
+		made:child(b.text(attach.uploading("new")):text_size(SIZE.small):color("dim"))
+	end
+	content:child(made)
+	-- (The form has a name: a drop on it is the new issue's.)
+	local side = b.div():id("new-form"):row():w(width):no_shrink():min_h(0)
 	if width < S.width then
 		side:child(b.div():w(1):bg(b.alpha("foreground", 0.23)):no_shrink())
 	end
@@ -574,6 +591,9 @@ end
 -- drawn, Create and Close.
 local function order()
 	local names = { TITLE_FIELD, u:field(about_name()) }
+	if b.layout.bounds("attach-file:new") ~= nil then
+		names[#names + 1] = "attach-file:new"
+	end
 	for _, kind in KINDS do
 		local name = VALUE .. kind
 		if b.layout.bounds(name) ~= nil then

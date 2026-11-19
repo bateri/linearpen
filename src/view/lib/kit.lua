@@ -164,6 +164,33 @@ local function button(id, label, o)
 	return el
 end
 
+-- What is said for a moment. The kit's `pencere.time.now()` is the time the host last gave the page,
+-- which a page left idle is far behind (a toast made then would have run out when it is drawn), so the
+-- toast has no end until it is drawn, and its seconds run from that frame (`kit.start_toasts`).
+local function toast(words, tone, seconds)
+	local item = lib.toast(S.toasts, words, tone, 0)
+	item.lasts = seconds or 4
+	return item
+end
+
+local function start_toasts(now)
+	for _, item in S.toasts do
+		if item.lasts ~= nil then
+			item.at, item.lasts = now + item.lasts, nil
+		end
+	end
+end
+
+-- A box that zooms, on a terminal whose kit has them (`zoom`, `layout.zoom_of`). On an older kit the box
+-- only scrolls: a picture stays at its fit, and the page goes on as it was. The kit's own new yoke is
+-- asked about, as it is not told by the version (`rules/penler.md`).
+local function zoom(element, rule)
+	if element.zoom ~= nil then
+		element:zoom(rule)
+	end
+	return element
+end
+
 -- The actions of the page, by name, filled by the parts that do them: a part calls another's action
 -- through here, so that no two parts require each other.
 local act = {}
@@ -179,6 +206,9 @@ return {
 	take = take,
 	call = call,
 	icon = icon,
+	zoom = zoom,
+	toast = toast,
+	start_toasts = start_toasts,
 	keys_of = keys_of,
 	spinner = spinner,
 	button = button,

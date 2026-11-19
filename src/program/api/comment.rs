@@ -8,7 +8,9 @@ use pencere::Options;
 use serde::{Deserialize, Serialize};
 
 use super::issue::{CommentMessage, check_id, comment_of};
+use super::pictures::{Attached, given, send, with_lines};
 use super::{Failure, call};
+use crate::linear::images;
 use crate::linear::limits::BODY_MOST;
 use crate::linear::{Error, NOT_POSTED};
 use crate::session::Session;
@@ -20,6 +22,9 @@ use crate::state::draft;
 struct Write {
     issue: String,
     body: String,
+    /// The files that go with it (up to ten), put in Linear's storage before the comment is posted.
+    #[serde(default)]
+    files: Vec<Attached>,
 }
 
 #[derive(Debug, Serialize)]
@@ -27,17 +32,27 @@ struct PostedMessage {
     comment: CommentMessage,
 }
 
-/// The issue and the words, or why they are not one comment. The words are the person's, as they were
-/// written: only a comment of no words at all, or of too many, is not one.
-fn read(params: Write) -> Result<(String, String), Failure> {
+/// The issue, the words and the files, or why they are not one comment. The words are the
+/// person's, as they were written: only a comment of no words at all and no file, or of too many
+/// words, is not one.
+fn read(params: Write) -> Result<(String, String, Vec<crate::pictures::Given>), Failure> {
     check_id(&params.issue)?;
+    let pictures = given(&params.files)?;
     let length = params.body.chars().count();
-    if params.body.trim().is_empty() || length > BODY_MOST {
+    if (params.body.trim().is_empty() && pictures.is_empty()) || length > BODY_MOST {
         return Err(Failure::BadParams(format!(
-            "body is the words of the comment, from one to {BODY_MOST} characters"
+            "body is the words of the comment, from one to {BODY_MOST} characters (empty only where there are files)"
         )));
     }
-    Ok((params.issue, params.body))
+    // The text that is posted is the words and the lines of the files: it is held to the same bound
+    // before any file is sent, not after.
+    let names: Vec<&str> = pictures.iter().map(|one| one.name.as_str()).collect();
+    if images::with_lines_most(&params.body, &names) > BODY_MOST {
+        return Err(Failure::BadParams(format!(
+            "body with the lines of its files is at most {BODY_MOST} characters"
+        )));
+    }
+    Ok((params.issue, params.body, pictures))
 }
 
 /// The words of why a comment was not posted, for the person.
@@ -70,12 +85,19 @@ fn told(error: Error) -> Failure {
 }
 
 fn comment(session: &Session, params: Write) -> Result<PostedMessage, Failure> {
-    let (issue, body) = read(params)?;
+    let (issue, body, pictures) = read(params)?;
     if session.state().key.is_none() {
         return Err(Failure::NoKey(
             "there is no key to ask Linear with".to_owned(),
         ));
     }
+    // The files are put in Linear's storage first: where one cannot be, nothing is posted.
+    let lines = send(session, &pictures, "posted")?;
+    let body = if lines.is_empty() {
+        body
+    } else {
+        with_lines(&body, &lines)
+    };
     let id = draft::new_id().map_err(|why| Failure::Linear(Error::Failed(why)))?;
     let posted = session.comment(&id, &issue, &body).map_err(told)?;
     Ok(PostedMessage {
@@ -94,7 +116,9 @@ mod tests {
 
     fn write(params: serde_json::Value) -> Result<(String, String), String> {
         let write: Write = super::super::params::parse(params)?;
-        read(write).map_err(|failure| format!("{failure:?}"))
+        read(write)
+            .map(|(issue, body, _)| (issue, body))
+            .map_err(|failure| format!("{failure:?}"))
     }
 
     #[test]
@@ -127,6 +151,27 @@ mod tests {
         assert!(write(json!({"issue": "i", "body": most})).is_ok());
         let more = "\u{e7}".repeat(BODY_MOST + 1);
         assert!(write(json!({"issue": "i", "body": more})).is_err());
+    }
+
+    #[test]
+    fn a_comment_that_would_be_too_long_with_the_lines_of_its_files_is_refused_before_they_are_sent()
+     {
+        let file = |name: &str| json!({"handle": "ab12", "name": name});
+        let with = |words: &str, files: Vec<serde_json::Value>| {
+            write(json!({"issue": "i", "body": words, "files": files}))
+        };
+        // The words alone are within the most; their files' lines are what would take it over.
+        let nearly = "x".repeat(BODY_MOST - 100);
+        assert!(with(&nearly, vec![]).is_ok());
+        assert!(with(&nearly, vec![file("shot.png")]).is_err());
+        // With room it goes, and a name that is long is cut to what a line takes.
+        let room = "x".repeat(BODY_MOST - 1000);
+        assert!(with(&room, vec![file("shot.png")]).is_ok());
+        assert!(with(&room, vec![file(&"n".repeat(255))]).is_ok());
+        // Ten files are ten lines.
+        assert!(with(&room, (0..10).map(|_| file("shot.png")).collect()).is_err());
+        // Files and no words are the lines alone.
+        assert!(with("", vec![file("shot.png")]).is_ok());
     }
 
     #[test]

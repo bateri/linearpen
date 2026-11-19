@@ -7,9 +7,11 @@ local markdown = require("@pencere/markdown")
 local kit = require("../lib/kit")
 local change = require("./change")
 local comment = require("./comment")
+local attach = require("./attach")
 local commands = require("./commands")
 local icons = require("./icons")
 local list = require("./list")
+local pictures = require("./pictures")
 local values = require("./values")
 
 local b, u, S, SIZE, act = kit.b, kit.u, kit.S, kit.SIZE, kit.act
@@ -23,7 +25,9 @@ local panel = {}
 -- (it may have left the list) until the cursor is moved by the person (`{ id, moves }`). `near` is
 -- the id of an issue the person came to from the one that was open, which the list does not hold.
 -- `serial` numbers the menu of the neighbours (a pick of an older one is not one).
-local P = { open = nil, kept = {}, pin = nil, near = nil, serial = 0 }
+-- `room` is the points the text of an issue has across, as it was drawn last (the pictures of the text
+-- are no wider).
+local P = { open = nil, kept = {}, pin = nil, near = nil, serial = 0, room = 400 }
 panel.state = P
 
 -- The box that scrolls: the description and the comments.
@@ -62,6 +66,9 @@ local function ask(id)
 			entry.status, entry.error = "failed", err.message or err.code
 		else
 			entry.status, entry.issue = "ready", result
+			if P.open ~= nil and P.open.id == id then
+				pictures.track(id, result)
+			end
 		end
 		return true
 	end)
@@ -76,6 +83,9 @@ function panel.reask(id, done)
 	kit.call("issue", { id = id }, function(result, err)
 		if not err then
 			P.kept[id] = { status = "ready", issue = result }
+			if P.open ~= nil and P.open.id == id then
+				pictures.track(id, result)
+			end
 		end
 		done()
 		return true
@@ -218,6 +228,17 @@ end
 
 -- What the change part and the comment part ask of the issue open (they do not require this part).
 act.panel_id = panel.id
+-- How far the issue is read to (nil asks), or reads it to there: a picture put away leaves the issue where it was.
+act.panel_scroll = function(y)
+	if y == nil then
+		return kit.offset(SCROLL)
+	end
+	kit.scroll_to(SCROLL, y)
+end
+-- The room the issue is read in, as laid out (nil where it is not).
+act.panel_view = function()
+	return b.layout.bounds(SCROLL)
+end
 act.panel_end = function()
 	-- (Past the end is the end, as the next frame is laid out.)
 	kit.scroll_to(SCROLL, 1e9, true)
@@ -422,11 +443,12 @@ end
 
 -- Markdown written by someone else, drawn as text. A part that is not valid is shown as it came.
 local function words(text, id)
-	local ok, tree = pcall(markdown.parse, text)
-	if not ok then
+	local tree = pictures.tree(text)
+	if tree == nil then
 		return b.text(text):wrap()
 	end
-	return markdown.render(tree, { id = id, gap = 8 })
+	-- The pictures in it are drawn where they are (`pictures.lua`), as wide as the room and no wider.
+	return markdown.render(tree, { id = id, gap = 8, image = pictures.drawer(P.open.id, P.room) })
 end
 
 local function comments(detail)
@@ -647,11 +669,14 @@ local function body(entry)
 		end
 		box:child(rows)
 	end
+	local about
 	if detail.description ~= nil and detail.description ~= "" then
-		box:child(words(detail.description, "description"))
+		about = words(detail.description, "description")
 	else
-		box:child(b.text("No description"):text_size(SIZE.small):color("dim"))
+		about = b.text("No description"):text_size(SIZE.small):color("dim")
 	end
+	-- Under it, Add image: pictures put at the end of the description (it is not written otherwise).
+	box:child(attach.zone(detail.id, about))
 	box:child(comments(detail))
 	box:child(comment.view(detail.id))
 	if detail.more then
@@ -666,6 +691,7 @@ end
 -- facts, then what scrolls.
 function panel.view(width)
 	local info = P.open
+	P.room = math.max(width - 2 * SIZE.pad - 2, 120)
 	local entry = P.kept[info.id]
 	local detail = entry ~= nil and entry.status == "ready" and entry.issue or nil
 	local top = b.div():col():no_shrink():pt(SIZE.head_top):px(SIZE.pad):pb(14)
@@ -677,11 +703,19 @@ function panel.view(width)
 		suffix = commands.label("work"),
 		tip = "Start an agent on it, in a pane beside this one",
 	}))
+	-- Esc is written on the one place it does something: Close, unless the keyboard is in the comment (the line
+	-- of keys says Esc leaves) or files wait for the description (Cancel says it). Close is as wide as it is
+	-- with the key, so that nothing beside it moves when the key goes.
+	local at = b.layout.bounds("panel-close")
+	if at ~= nil and P.close_keyed then
+		P.close_width = at.w
+	end
+	P.close_keyed = not comment.typing() and not attach.cancelable()
 	buttons:child(b.spacer()):child(kit.button("open-linear", "Open in Linear", {
 		suffix = commands.label("link"),
 		disabled = detail == nil,
 		tip = detail == nil and "Linear has not told where it is" or "Open the issue in your browser",
-	})):child(kit.button("panel-close", "Close", { suffix = "Esc" }))
+	})):child(kit.button("panel-close", "Close", { suffix = P.close_keyed and "Esc" or nil }):min_w(P.close_width or 0))
 	top:child(buttons)
 	top:child(b.text(info.identifier):text_size(SIZE.small):color("dim"):mt(14):no_shrink())
 	local now = panel.info()

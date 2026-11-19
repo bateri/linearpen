@@ -20,6 +20,8 @@
 //!   cli/      the commands of the command line; knows nothing of the page
 //!   linear/   what is asked of Linear and how the answers are read; knows nothing of the page
 //!   model/    the list: filtered, grouped and sorted; knows nothing of the page
+//!   pictures/ the pictures of Linear the page draws and the ones the person gives it; knows nothing
+//!             of the page
 //!   state/    the key and the files kept between runs; knows nothing of the page
 //!   text/     the issues as text for a terminal that shows no views; knows nothing of the page
 //!   work/     handing issues to an agent in a pane of bateri; knows nothing of the page
@@ -31,9 +33,12 @@ mod icons;
 mod linear;
 mod model;
 #[cfg(test)]
+mod page_pictures;
+#[cfg(test)]
 mod page_shots;
 #[cfg(test)]
 mod page_tests;
+mod pictures;
 mod session;
 mod state;
 mod text;
@@ -144,7 +149,6 @@ fn run_command(command: &command_line::Command) -> u8 {
             transport: &connection.transport,
             key: &connection.key,
             key_source: &connection.source,
-            guard: cli::Guard::of(std::env::var_os(work::AGENT_VARIABLE).as_deref()),
         },
         command,
         &mut std::io::stdin().lock(),
@@ -175,7 +179,10 @@ fn options(session: &Arc<Session>, fallen_back: &Arc<Mutex<Option<u8>>>) -> Opti
         .app(pencere::app!())
         .program("linearpen")
         // What a terminal writes above the view.
-        .title("Linear");
+        .title("Linear")
+        // The pictures the page draws are given to the view through it, and the files the person
+        // gives it are read.
+        .control(session.control());
     for icon in icons::all() {
         options = options.icon(icon);
     }

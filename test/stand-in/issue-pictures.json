@@ -1,0 +1,102 @@
+{
+  "data": {
+    "issue": {
+      "id": "issue-412",
+      "identifier": "ACM-412",
+      "title": "Add rate limiting to the public API",
+      "priority": 2.0,
+      "updatedAt": "2026-11-09T14:20:00.000Z",
+      "url": "https://linear.app/acme/issue/ACM-412/add-rate-limiting-to-the-public-api",
+      "branchName": "ada/acm-412-add-rate-limiting-to-the-public-api",
+      "state": {
+        "id": "s-prog",
+        "name": "In Progress",
+        "type": "started",
+        "position": 2.0
+      },
+      "labels": {
+        "nodes": [
+          {
+            "id": "l-api",
+            "name": "api",
+            "color": "#3e63dd"
+          }
+        ]
+      },
+      "team": {
+        "id": "team-acm",
+        "key": "ACM"
+      },
+      "cycle": {
+        "id": "c-12",
+        "number": 12
+      },
+      "project": null,
+      "estimate": null,
+      "dueDate": null,
+      "parent": {
+        "id": "issue-400",
+        "identifier": "ACM-400",
+        "title": "Billing limits per plan",
+        "state": {
+          "id": "s-todo",
+          "name": "Todo",
+          "type": "unstarted",
+          "position": 1.0
+        }
+      },
+      "children": {
+        "nodes": []
+      },
+      "relations": {
+        "nodes": []
+      },
+      "inverseRelations": {
+        "nodes": [
+          {
+            "type": "blocks",
+            "issue": {
+              "id": "issue-389",
+              "identifier": "ACM-389",
+              "title": "Cache the pricing table at the edge",
+              "state": {
+                "id": "s-review",
+                "name": "In Review",
+                "type": "started",
+                "position": 3.0
+              }
+            }
+          }
+        ]
+      },
+      "assignee": {
+        "id": "u-ada",
+        "displayName": "Ada",
+        "isMe": true
+      },
+      "description": "Broken: ![Checkout error](https://uploads.linear.app/stand-in/checkout.png) and\n![](https://uploads.linear.app/stand-in/trace.jpg) and ![elsewhere](https://example.com/y.png)\n\nToo big: ![huge](https://uploads.linear.app/stand-in/big.png), not a picture: ![odd](https://uploads.linear.app/stand-in/text.png).",
+      "comments": {
+        "nodes": [
+          {
+            "body": "Looks like ![](https://uploads.linear.app/stand-in/missing.png) and the log [build log.txt](https://uploads.linear.app/stand-in/build.log) or [a site](https://example.com/z)",
+            "createdAt": "2026-11-06T09:12:00.000Z",
+            "user": {
+              "displayName": "Deniz"
+            }
+          },
+          {
+            "body": "Keep a fallback for when Redis is down. We cannot fail closed on reads.",
+            "createdAt": "2026-11-08T16:40:00.000Z",
+            "user": {
+              "displayName": "Mert"
+            }
+          }
+        ],
+        "pageInfo": {
+          "hasNextPage": false,
+          "endCursor": null
+        }
+      }
+    }
+  }
+}

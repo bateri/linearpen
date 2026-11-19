@@ -46,6 +46,39 @@ local TABLE = {
 	{ id = "work", title = "Work on the issue", group = "Issue", keys = { "w" }, when = "workable" },
 	{ id = "comment", title = "Leave a comment", group = "Issue", keys = { "shift+m" }, when = "commentable" },
 	{ id = "comment_send", title = "Post the comment", group = "Issue", keys = { "mod+enter" }, when = "postable" },
+	-- One key for the three places files are put: the comment while its field has the keyboard, the
+	-- issue that is being made while its form is open, else the description of the issue that is open.
+	{ id = "attach_file", title = "Attach file", group = "Issue", keys = { "mod+shift+u" }, when = "attachable" },
+	{
+		id = "describe",
+		title = "Add the files to the description",
+		group = "Issue",
+		keys = { "mod+enter" },
+		when = "describable",
+	},
+	-- The files of an issue are cards in its text, and a picture that is not Linear's is a link: what a card
+	-- does (Save, Open a PDF) and what its right-click menu does (Open the link, Copy the file's link) are
+	-- the commands of the card that has the keyboard, or of the only one there is. Save is also the large
+	-- PDF's.
+	{ id = "file_save", title = "Save the file", group = "Issue", keys = { "mod+s" }, when = "file_saveable" },
+	{ id = "file_open", title = "Read the PDF", group = "Issue", keys = { "mod+shift+r" }, when = "file_openable" },
+	{ id = "file_link", title = "Open the link", group = "Issue", keys = { "mod+shift+e" }, when = "file_linkable" },
+	{
+		id = "file_copy_link",
+		title = "Copy the file's link",
+		group = "Issue",
+		keys = { "mod+shift+k" },
+		when = "file_linkable",
+	},
+	-- A PDF that is large turns its pages with the arrows, and has words to find and to copy.
+	{ id = "pdf_next", title = "Next page", group = "PDF", keys = { "right" }, native = true },
+	{ id = "pdf_previous", title = "Previous page", group = "PDF", keys = { "left" }, native = true },
+	-- The words of a PDF that is large: find them, go from match to match, copy what is selected.
+	{ id = "pdf_find", title = "Find in the PDF", group = "PDF", keys = { "mod+f" }, when = "pdf_readable" },
+	{ id = "pdf_find_next", title = "Next match", group = "PDF", keys = { "mod+g" }, when = "pdf_found" },
+	{ id = "pdf_find_previous", title = "Previous match", group = "PDF", keys = { "mod+shift+g" }, when = "pdf_found" },
+	{ id = "pdf_copy", title = "Copy the selection", group = "PDF", keys = { "mod+c" }, when = "pdf_selected" },
+	{ id = "pdf_select_all", title = "Select all the words of the page", group = "PDF", keys = { "mod+a" }, when = "pdf_readable" },
 	{ id = "new", title = "New issue", group = "Issue", keys = { "c" }, when = "idle" },
 	{ id = "next_field", title = "Next field", group = "Work on, New issue", keys = { "tab" }, native = true },
 	{ id = "choose", title = "Choose", group = "Work on, New issue", keys = { "left", "right", "enter" }, native = true },

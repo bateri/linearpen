@@ -4,9 +4,11 @@
 use std::io::Read;
 
 use super::json::{self, Added, Changed, Made};
+use super::pictures::{self, with_words};
 use super::resolve::{Lookups, cycle, estimate, pick};
 use super::{Access, Stop, asked_wrong, json as print_json, written_wrong};
 use crate::command_line::{Comment, Create, Fields, Setting, Update, Words};
+use crate::linear::images;
 use crate::linear::limits::{BODY_MOST, DESCRIPTION_MOST, LABELS_MOST};
 use crate::linear::types::TeamRef;
 use crate::linear::{
@@ -187,12 +189,20 @@ fn settle(access: &Access, id: &str, failure: &Error) -> Result<Created, Stop> {
 }
 
 pub fn create(access: &Access, create: &Create, stdin: &mut dyn Read) -> Result<String, Stop> {
-    access.guard.creates()?;
     let description = create
         .description
         .as_ref()
         .map(|words| words_of("description", words, DESCRIPTION_MOST, stdin))
         .transpose()?;
+    // The files are read and checked before Linear is asked anything, and what the description is with
+    // their lines is held to its bound before any is sent.
+    let files = pictures::read_files(&create.attach)?;
+    let names: Vec<&str> = files.iter().map(|file| file.name.as_str()).collect();
+    if images::with_lines_most(description.as_deref().unwrap_or(""), &names) > DESCRIPTION_MOST {
+        return Err(Stop::usage(format!(
+            "the description with the lines of its files is over {DESCRIPTION_MOST} characters"
+        )));
+    }
     let mut lookups = Lookups::new(access);
     let team = lookups.team(&create.team)?;
     let options = lookups.options(&team)?;
@@ -208,6 +218,17 @@ pub fn create(access: &Access, create: &Create, stdin: &mut dyn Read) -> Result<
             "an issue is given at most {LABELS_MOST} labels"
         )));
     }
+    // The files go to Linear's storage once every name is found out, and their lines are put after
+    // the words of the description.
+    let lines = pictures::put(access, &files)?;
+    let description = if lines.is_empty() {
+        description
+    } else {
+        Some(images::with_lines(
+            description.as_deref().unwrap_or(""),
+            &lines,
+        ))
+    };
     let id = draft::new_id().map_err(Stop::no)?;
     let input = NewIssue {
         id: id.clone(),
@@ -240,10 +261,16 @@ pub fn create(access: &Access, create: &Create, stdin: &mut dyn Read) -> Result<
         });
     }
     let identifier = super::plain(&created.identifier);
-    Ok(if created.url.is_empty() {
-        format!("{identifier}\n")
+    let with = with_words(files.len());
+    let with = if with.is_empty() {
+        String::new()
     } else {
-        format!("{identifier}  {}\n", super::plain(&created.url))
+        format!("  {with}")
+    };
+    Ok(if created.url.is_empty() {
+        format!("{identifier}{with}\n")
+    } else {
+        format!("{identifier}  {}{with}\n", super::plain(&created.url))
     })
 }
 
@@ -294,9 +321,10 @@ fn issues_of(access: &Access, keys: &[String]) -> Result<(Vec<Issue>, TeamRef), 
 /// Changes the issues; what is printed on stdout, and a note for stderr where Linear did not say how
 /// an issue it changed is now.
 pub fn update(access: &Access, update: &Update) -> Result<(String, String), Stop> {
-    access.guard.updates(update)?;
+    if !update.attach.is_empty() {
+        return add_files(access, update).map(|out| (out, String::new()));
+    }
     let (issues, team) = issues_of(access, &update.issues)?;
-    access.guard.only(&issues)?;
     let team = Team {
         id: team.id,
         key: super::plain(&team.key),
@@ -372,15 +400,67 @@ pub fn update(access: &Access, update: &Update) -> Result<(String, String), Stop
     Ok((out, note))
 }
 
+/// Adds the files of `update` at the end of the description of its one issue. The files are read
+/// and checked first (status 2), the issue is asked for so that one Linear does not have is told before
+/// anything is put in storage, the files go to storage (status 1 if one cannot, nothing written),
+/// and then the description is read whole from Linear again and sent with the lines after it, once:
+/// `linear::add_files`, which the pane's `describe` is.
+fn add_files(access: &Access, update: &Update) -> Result<String, Stop> {
+    let files = pictures::read_files(&update.attach)?;
+    let issue = issue_of(access, &update.issues[0])?;
+    let lines = pictures::put(access, &files)?;
+    let now = match linear::add_files(access.transport, access.key, &issue.id, &lines) {
+        Ok(now) => now,
+        Err(linear::Step::Read(error)) => {
+            let why = asked_wrong(access, &error).words;
+            return Err(Stop::no(format!(
+                "the description of {} could not be read whole, so nothing was written ({why})",
+                super::plain(&issue.identifier)
+            )));
+        }
+        Err(linear::Step::TooLong) => {
+            return Err(Stop::no(format!(
+                "the description of {} would be too long with the files, so nothing was written",
+                super::plain(&issue.identifier)
+            )));
+        }
+        Err(linear::Step::Write(error)) => return Err(written_wrong(access, &error)),
+    };
+    if update.json {
+        return print_json(&Changed {
+            issues: vec![json::IssueRow::of(&now)],
+        });
+    }
+    let line = stated_lines(std::slice::from_ref(&now));
+    Ok(format!(
+        "{}  {}\n",
+        line.trim_end(),
+        with_words(files.len())
+    ))
+}
+
 pub fn comment(access: &Access, comment: &Comment, stdin: &mut dyn Read) -> Result<String, Stop> {
-    access.guard.comments()?;
-    let body = words_of("body", &comment.body, BODY_MOST, stdin)?;
+    let body = comment
+        .body
+        .as_ref()
+        .map(|words| words_of("body", words, BODY_MOST, stdin))
+        .transpose()?;
+    // The files are read and checked before Linear is asked anything, and what the comment is with their
+    // lines is held to its bound before any is sent.
+    let files = pictures::read_files(&comment.attach)?;
+    let names: Vec<&str> = files.iter().map(|file| file.name.as_str()).collect();
+    if images::with_lines_most(body.as_deref().unwrap_or(""), &names) > BODY_MOST {
+        return Err(Stop::usage(format!(
+            "the comment with the lines of its files is over {BODY_MOST} characters"
+        )));
+    }
     // The issue is asked for first, so that an issue Linear does not have is told before anything is
     // written, and the comment goes to the issue's own id, as the page sends it.
     let issue = issue_of(access, &comment.issue)?;
-    access.guard.only(std::slice::from_ref(&issue))?;
+    let lines = pictures::put(access, &files)?;
+    let text = images::with_lines(body.as_deref().unwrap_or(""), &lines);
     let id = draft::new_id().map_err(Stop::no)?;
-    let posted = linear::comment(access.transport, access.key, &id, &issue.id, &body)
+    let posted = linear::comment(access.transport, access.key, &id, &issue.id, &text)
         .map_err(|error| written_wrong(access, &error))?;
     let identifier = super::plain(&issue.identifier);
     if comment.json {
@@ -389,5 +469,10 @@ pub fn comment(access: &Access, comment: &Comment, stdin: &mut dyn Read) -> Resu
             comment: json::Said::of(&posted),
         });
     }
-    Ok(format!("{identifier}: comment added\n"))
+    let with = with_words(files.len());
+    Ok(if with.is_empty() {
+        format!("{identifier}: comment added\n")
+    } else {
+        format!("{identifier}: comment added {with}\n")
+    })
 }

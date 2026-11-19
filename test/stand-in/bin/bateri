@@ -4,8 +4,6 @@
 # It records each call in $STANDIN_BATERI_LOG: every argument followed by a NUL, then a byte 1 and a
 # NUL where the call ends (a prompt holds line breaks, so a line is not an argument).
 #
-# Each call's LINEARPEN_AGENT (its value, or that it is unset) is kept in "$STANDIN_BATERI_LOG.agent".
-#
 #   split, tab   say the id of the pane made, p41
 #   wait         returns at once, or, with STANDIN_WAIT set, when that file is gone
 #   ls --json    tells the terminals, p41 only, as bateri does (it says more of each than the pen reads);
@@ -24,13 +22,6 @@ if [ -n "${STANDIN_BATERI_LOG-}" ]; then
 	} >"$mine"
 	cat "$mine" >>"$STANDIN_BATERI_LOG"
 	rm -f "$mine"
-	# What the call found in its environment: the pane's program is started in it, so it is how a test
-	# tells what the agent is given. One line, one write.
-	if [ -n "${LINEARPEN_AGENT+x}" ]; then
-		echo "${1-} LINEARPEN_AGENT=$LINEARPEN_AGENT" >>"$STANDIN_BATERI_LOG.agent"
-	else
-		echo "${1-} LINEARPEN_AGENT unset" >>"$STANDIN_BATERI_LOG.agent"
-	fi
 fi
 
 case "${1-}" in

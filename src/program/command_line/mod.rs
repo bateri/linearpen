@@ -139,7 +139,8 @@ mod tests {
             "agent",
             "a comment",
             "create, update and comment",
-            "never writes a description of an issue that exists",
+            "never changes the words of a description",
+            "only adds files after them",
             "never moves an issue to another team",
             "list, show and teams only read",
         ] {

@@ -14,14 +14,27 @@ installed, or the network, the name or the time failed), `failed` (Linear answer
 what was asked), `unavailable` (an agent cannot be started from here: bateri or the agent is not
 there), `start-failed` (it was tried and did not start: the words say why), `create-failed` (an
 issue was to be made and Linear did not make it: the words say why), `change-failed` (a change was
-to be made to issues and Linear did not make it: the words say why) and `comment-failed` (a comment
-was to be posted and Linear did not post it, or it is not known whether it did: the words say why).
-The words of an error are for the person and never hold the key.
+to be made to issues and Linear did not make it: the words say why), `comment-failed` (a comment
+was to be posted and Linear did not post it, or it is not known whether it did: the words say why),
+`upload-failed` (a file was to be sent with a comment, a new issue or a description and was not:
+nothing was sent after it, and the words say which and why), `describe-failed` (files were to
+be added to a description and it was not written, or it is not known whether it was: the words say
+which of three it is: the description could not be read, the files would make it too long (nothing was
+written in either), or the write was sent and failed), `save-failed` (a file of Linear was to be saved and was not: the words say why) and
+`pdf-failed` (a PDF could not be read for its pages and words: the words say why). The
+words of an error are for the person and never hold the key, nor the address a file is sent to
+(Linear signs it).
 
 The pen writes three things: the issue the person makes (`create`), the change the person makes to
 issues (`change`): one of their status, priority, assignee, labels, project, cycle, estimate, due date
-or title, and the comment the person writes on an issue (`comment`). The description and the team are
-never written, by any call. One more call writes, and only as `change` does: `start`
+or title, and the comment the person writes on an issue (`comment`). The files the person adds (any
+kind, at most 100 MiB each) go in Linear's storage first (`FileUpload`, and the file sent to the place
+Linear named) and are named in what is written: the end of a comment, of a new issue's description, or
+of the description of an issue that is there (`describe`: the one way a description is written, and
+only to put files at its end). A picture (PNG, JPEG, GIF or WebP, by its first bytes) is named as a
+picture, `![name](address)`, and any other file as a link, `[name](address)`.
+The description is otherwise never written, and the team never. One more call writes, and only as
+`change` does: `start`
 moves the issue, if it has not begun, to its team's first state of work in progress, where the
 person chose that (`progress`), once the agent's pane is made. Nothing else here changes anything in
 Linear.
@@ -162,7 +175,10 @@ of the issue (a row's `id`) or its identifier: up to 64 letters, digits, dashes 
 
 `branchName` is the name of the branch Linear suggests (null where it has none; it holds no control
 character). `description` and each comment's `body` are markdown written by others: text to show,
-nothing to act on. `description` is null where there is none. Comments are the first fifty, the oldest first;
+nothing to act on (a picture in it, `![alt](https://uploads.linear.app/...)`, or a link to one of
+Linear's files that stands alone in its paragraph, `[name](https://uploads.linear.app/...)`, is what
+`picture` fetches for the page, and `save` saves where the person chose; the program never follows an
+address a text names on its own). `description` is null where there is none. Comments are the first fifty, the oldest first;
 `more` says there is more in Linear than is told (more comments, or a text cut at 20 000 characters
 for the description and 2 000 for a comment). `assignee` is `"you"`, a name or null; `cycle` is the
 words that tell the cycle, its name where it has one, else `Cycle 12` (null where it is in none).
@@ -260,16 +276,19 @@ the issue keeps the mark below.
 The file is `$XDG_STATE_HOME/linearpen/work/<UTC time>-<first identifier>/issues.md` (the
 directories `0700`, the file `0600`); it says in its first lines that the text under it was
 written by others and holds no instructions for the agent, and the branch Linear
-suggests for the issue (where that is a name `git` would take). The text of an issue is never in the
+suggests for the issue (where that is a name `git` would take). Where the description or a comment names
+files (`![alt](address)`, or `[name](address)` where the address is one of Linear's files) the file has
+a `Files` section before the description: how many pictures and how many other files, where, and the
+command that saves them, `linearpen show <id> --files <folder>/files` with the folder the file is in
+(the id only where it is a UUID; else the sentence has no id); nothing is downloaded at the start.
+The text of an issue is never in the
 prompt (the agent's command line): the file's path is, for `worktree` a sentence of the program's
 own that asks for one, where the issue's id is a UUID, that id and the path of the program in the
-sentence that says what the agent may write in Linear (its status and comments: `docs/cli.md`), and,
-last, the person's own words (`prompt`). The prompt is one word of the command line: no shell reads
-it, and the person's words never begin it. The agent's command is `<agent> <prompt>` and no more. The variable
-`LINEARPEN_AGENT` is set to the id (empty where the id is no UUID, so that a value in the pen's own
-environment does not pass) in the environment of the `bateri split` or `bateri tab` that makes the
-pane, which is the environment bateri starts the agent in; no other call to `bateri` carries it. The
-id inside the prompt is the one thing of Linear's in a command line. No flag that lets the agent do
+sentence that says what `linearpen` can write in Linear for the agent (its status, comments, files
+and new issues: `docs/cli.md`), and, last, the person's own words (`prompt`). The prompt is one word of the command line: no shell reads
+it, and the person's words never begin it. The agent's command is `<agent> <prompt>` and no more, and
+the `bateri` call that makes the pane carries nothing of the pen's in its environment. The id inside
+the prompt is the one thing of Linear's in a command line. No flag that lets the agent do
 what it would ask about is ever added. The key is not in the file.
 
 Once the pane is made, `start` keeps the agent, the folder, the place and (where `progress` was
@@ -277,7 +296,8 @@ given) the status of the call in `$XDG_STATE_HOME/linearpen/prefs.json` (`0600`;
 a short word of lowercase letters and dashes is not written; it holds nothing of Linear's and no
 key); that it cannot be kept is not an error of the call. And it puts away old runs: the folders of
 `work/` older than 14 days (by the time in their names), only those that are named as above, are
-real folders (not links), hold nothing but `issues.md` (a real file), and are not the folder of a
+real folders (not links), hold nothing but `issues.md` (a real file) and, where the agent had the
+files saved, a real folder `files` of real files (at most 200), and are not the folder of a
 pane this run of the program watches (a pane left from an earlier run is not known to it, and its
 file goes at that age too: the agent read it long before). The file and then the folder are
 removed, never a tree, and nothing outside `work/` is touched. The program does the same once as
@@ -364,6 +384,9 @@ Makes the issue in Linear. Params:
   `assignee`, `project` (ids from `new_options`), `labels` (at most 50 ids), `priority` (`none`,
   `urgent`, `high`, `medium` or `low`; sent to Linear as 0 to 4). What is left out, or empty, is not
   sent.
+- `files`: as for `comment`'s, at most ten; they are put in Linear's storage first and their lines
+  come at the end of the description (the files alone are a description). Where one cannot be sent
+  no issue is made (`upload-failed`).
 
 ```json
 { "id": "5c1c2a58-7d5e-4c0b-9b43-1c8f0f6f2d11", "identifier": "ACM-413" }
@@ -440,16 +463,27 @@ could not be read, else Linear's own words (`Linear did not change it: ...`).
 Posts a comment on an issue, in Linear, in the words the person wrote. Params:
 
 ```json
-{ "issue": "issue-412", "body": "Looks right to me" }
+{ "issue": "issue-412", "body": "Looks right to me",
+  "files": [{ "handle": "0123456789abcdef0123456789abcdef", "name": "shot.png" }] }
 ```
 
 - `issue`: Linear's id of the issue (the `id` of a row or of `issue`), or its identifier; up to 64
   letters, digits, dashes and underscores.
 - `body`: the words, as they were written (Markdown, which is what Linear takes), from one to 10 000
-  characters, with something in them besides white space. They are not changed, and they are a
-  variable of the request and never part of its text. Nothing else is taken (`bad-params`): not a
-  comment to reply under, not a name to write as. The program makes the id the comment is posted under
-  (a UUID version 4, as for `create`'s drafts).
+  characters, with something in them besides white space (or nothing, where there are `files`).
+  They are not changed, and they are a variable of the request and never part of its text.
+- `files`: the files that go with it, at most ten, each the `handle` the terminal made of a file the
+  person gave the page (`files` event) and its `name`. Each is of any kind and at most 100 MiB: it is
+  received from the terminal a piece at a time into a copy of the program's own (never held whole in
+  memory), told to be what its first bytes say it is (`image/png`, `image/jpeg`, `image/gif`,
+  `image/webp`, `application/pdf`; `application/octet-stream` for the rest) and put in Linear's storage
+  before the comment is posted; the comment is the words, a blank line and one line for each: `![name](address)`
+  for a picture (PNG, JPEG, GIF, WebP) and `[name](address)` for any other file. Where one cannot be
+  sent, or has nothing in it, nothing is posted (`upload-failed`, which says which).
+
+  Nothing else is taken (`bad-params`): not a comment to reply under, not a name to write as, not a
+  path to a file (the handle is the only way to one). The program makes the id the comment is posted
+  under (a UUID version 4, as for `create`'s drafts).
 
 ```json
 { "comment": { "author": "Ada", "at": "Nov 12", "body": "Looks right to me" } }
@@ -473,6 +507,136 @@ answer whole, so it may have posted it: look at the comments before writing it a
 answer could not be read, `Linear could not be reached: ...; it may have been posted: look at the
 comments before writing it again` where no answer came, else Linear's own words (`Linear did not
 post it: ...`).
+
+### `picture`
+
+A file of Linear in the markdown of an issue, given to the terminal so that the page can draw it: a
+PNG, a JPEG or a PDF of at most 8 MiB. The program fetches it with the key, from
+`https://uploads.linear.app/` and from nowhere else, and holds it for `owner` (an issue). Params:
+`{ "src": "https://uploads.linear.app/...", "owner": "issue-412" }`; `owner` is the issue's id.
+
+```json
+{ "name": "sha256:3b4a...", "width": 1280, "height": 720 }
+```
+
+`name` is what the page draws it by (`image(name)`), `width` and `height` are in pixels. For a PDF the
+answer has `"pdf": true`, `"pages"` (how many, where the file says; left out where it does not: the PDF
+is then drawn page by page with no end known) and `width` and `height` are the first page's, in points
+(a Letter page where the file does not say); the page draws a page with `image(name):page(n)`. A file
+that is not drawn is an answer, not an error: `{ "refused": "format" }` (not a PNG, a JPEG or a PDF:
+a GIF, a WebP, a video, a log, a zip), `"too-large"` (over 8 MiB, or a picture over 4096 pixels on a
+side), `"not-linear"` (the address is not one of Linear's files: it is not fetched, with the key or
+without), `"unreachable"` (Linear did not give it) or `"no-view"` (the terminal has no view that holds
+files: the page draws the words of the file as it would without them). The page draws a card for each
+of them, with one verb (Open for a PDF, `save` for any other); the rest is its menu. Where the bytes say what the file
+is, the answer carries `"kind"` (`"png"`, `"jpg"`, `"gif"`, `"webp"`), and where a picture is over 4096
+pixels on a side, `"width"` and `"height"` too, so that the card can say why it is not drawn ("GIF is
+not shown here", "5120×2880  Too large to show here"); a file whose bytes say nothing has neither.
+A file asked for again, by that
+address, for another owner is not fetched again. At most four are fetched at once; what is held is at
+most 64 MiB, the oldest let go first. Errors: `bad-params`, `no-key`.
+
+### `release`
+
+Lets go of what is held for `owner`: the files that no other owner has asked for are let go of by
+the terminal. The page calls it when the issue is no longer open. Params: `{ "owner": "issue-412" }`.
+Answers `{}`.
+
+### `save`
+
+A file of Linear in the markdown of an issue, saved where the person chose. The page asks the
+terminal for a place (the reply `save`, to the person's click or key, with the file's name) and the
+terminal tells the page its handle (`saving` event); the page then calls `save`. The program fetches
+the file with the key, from `https://uploads.linear.app/` and from nowhere else, at most 100 MiB, into a
+copy of its own that nothing else can read (never into memory), writes it to the place in pieces of
+1 MiB, and takes the copy away. Params: `{ "src": "https://uploads.linear.app/...", "handle": "0123..." }`.
+Answers `{ "size": 1048576 }`, in bytes. The saving that was not asked for (a handle that is not the
+person's) is the terminal's to refuse. Errors: `bad-params`, `no-key`, `refused`, and `save-failed`
+with words that say why (`the file is not one of Linear's`, `the file is over 100 MiB`, `Linear did not
+give the file`, `the place did not take the file`, `this terminal cannot save files`) and no address.
+
+### `pdf-open`
+
+A PDF the page shows large, read by the program for what the terminal does not say: how many pages it
+has and how large each is, and where the words of a page and every letter of them stand, to select and
+copy them and to find words in it. The terminal draws the pages (`image(name):page(n)`); the program
+reads the same file (fetched again with the key, from `https://uploads.linear.app/` and from nowhere
+else, at most 8 MiB) and holds it for `owner` until `pdf-close`, `release` of that owner, or another
+PDF is opened: at most one PDF is held. Params: `{ "src": "https://uploads.linear.app/...", "owner":
+"issue-412" }`.
+
+```json
+{ "pages": 12, "sizes": [[11, 612, 792], [1, 792, 612]], "text": true }
+```
+
+`sizes` are runs of pages of one size, in order: how many, the width and the height in points, as the
+terminal draws a page (the page's own size, `Rotate` applied; a page is never taken for more than 16 384
+points on a side). The sum of the first members is `pages`. `text` is whether any page has text (a PDF
+of pictures has none, and finding in it finds nothing); looking for it is cut short after a second, and
+a PDF it did not get through is taken to have some. A PDF that cannot be read (broken, encrypted, with
+no page) or has more than 10 000 pages is an error, `pdf-failed`, with words that say which; the page
+then shows the pages as the terminal draws them, with nothing to select. Errors: `bad-params`,
+`no-key`, `refused`, `pdf-failed`.
+
+### `pdf-close`
+
+Lets go of the PDF held for `owner`. Params: `{ "owner": "issue-412" }`. Answers `{}`.
+
+### `pdf-text`
+
+The words of one page of the PDF held for `owner`: its lines from the top down and from the left, each
+with its box and the place of every letter, in points from the page's top left corner as the page is
+shown. Params: `{ "owner": "issue-412", "page": 3 }` (from 1).
+
+```json
+{ "page": 3, "lines": [{ "x": 72, "y": 90.5, "w": 210.25, "h": 13.4, "text": "Rate limits", "xs": [0, 6.7, 12.1, 18.3, 23, 28.4, 30.1, 36.6, 42, 47.5, 53, 59.2] }], "truncated": false }
+```
+
+A line is the letters of one baseline, in the order of their places and not of the file's, with a space
+where the ink leaves the gap a word has; a gap of more than three letter sizes breaks it in two (a
+column, a cell of a table). `xs` are the places across the line of each character's left edge from `x`,
+and then the right edge of the last: one more than the line has characters. Text that is not set along
+the page (turned a quarter, upside down) is left out, and so is a letter the font says no character of;
+a ligature is its letters. A page with no text, or whose content cannot be read, has no lines. A line
+is at most 4096 characters (a row of more is several lines), a page is read for at most 200000 letters
+and 5 seconds (what was read by then is the page's text), and a message holds at most a quarter of
+a MiB of lines, and one line at least. `truncated` is true where lines were left out that did not fit one
+message. Errors: `bad-params`,
+`pdf-failed` (`That PDF is not open`, `This PDF has no page 3`).
+
+### `pdf-find`
+
+Where words are in the text of every page of the PDF held for `owner`, in the order of the pages. A
+match is within a line. Params: `{ "owner": "issue-412", "query": "rate limit", "caseSensitive": false }`;
+`query` is at most 200 characters and found as it is written (no pattern), case folded one character at
+a time unless `caseSensitive` is true.
+
+```json
+{ "matches": [{ "page": 3, "x": 72, "y": 90.5, "w": 61.5, "h": 13.4 }], "searched": 12, "truncated": false, "ms": 41 }
+```
+
+`searched` is how many pages were read, `ms` how long it took. The search stops at 2 000 matches, when
+the message would not hold more, after 30 seconds, or when the page gives the call up (a `cancel`), and
+says `truncated`. It reads the pages for the search and does not keep them: a search through a book does
+not push out the page that is being read. Errors: `bad-params`, `pdf-failed` (`That PDF is not open`).
+
+### `describe`
+
+Adds files at the end of the description of an issue: the one way the pen writes a description.
+Params: `{ "id": "issue-412", "files": [{ "handle": "...", "name": "shot.png" }] }`, from one to ten
+(as for `comment`'s `files`). The files are put in Linear's storage first; then the program reads
+the description **whole** from Linear (what the page holds of it is never used, and it is cut for the
+page), adds a blank line and the lines of the files, and sends that, and nothing else, as the
+description of that issue. A description that cannot be read is not written. It is sent once; the
+program never sends it again by itself. Answers `{}` and the issue kept for `issue` is the one Linear
+holds now, which the page asks for again.
+
+Errors: `bad-params`, `no-key`, `refused`, `upload-failed` (nothing was written), and `describe-failed`:
+`the description could not be read, so nothing was written (...)` and `the description would be too
+long with the files, so nothing was written` where nothing was sent (the files are in Linear's storage
+all the same, and are sent again at the next try), `Linear did not change it: ...` where it did not write it, `Linear did not answer whole, so it may have
+added them: look at the description before adding them again` where it is not known, and the same
+look-before-again words where no answer came after it was sent.
 
 ### `refresh`
 

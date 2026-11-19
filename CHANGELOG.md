@@ -2,6 +2,36 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Files in issues.** The pictures in a description or a comment are drawn where they are written, and
+  a click opens one over the pane. Any other file is a card with the icon of its kind, its name and one
+  verb, `Save` (it is written where you choose, up to 100 MiB); a picture that is not drawn says why. The
+  rest of what you can do with a file (open its link, copy it) is in its right-click menu. A picture of an
+  address that is not Linear's is a link that opens in your browser. You can add any file up to
+  100 MiB to a comment, to a new issue or to the end of an issue's description with `Attach file`
+  (`Cmd Shift U`), by pasting or by dropping it.
+- **PDFs, read in the pane.** A PDF's card has `Open`, which shows it over the pane a page at a time
+  (`Save` and `Close` are at the top, and a key is written on its button).
+  Select its words with the pointer or with `Shift` and the arrows, copy them with `Cmd C`, and look for
+  words with `Find` (`Cmd F`): the matches are marked on the page and `Enter` goes from one to the next.
+- **Files on the command line, and for the agent.** `linearpen show` prints each picture and file as
+  `[image N: name]` or `[file N: name]` and `--files DIR` saves them. `--attach PATH` adds a file to a
+  `comment`, a `create` or the end of a description with `update`. The file Work on writes for an agent
+  says when its issue has files and how to get them.
+
+### Fixed
+
+- Files added while others are being sent stay in the tray, and `show --files` saves at most 100 files
+  and 1 GiB.
+
+### Changed
+
+- **The agent is no longer held to its own issue.** linearpen does not refuse a write from the pane
+  Work on opens: the agent runs the same commands you do, with your key. What it asks you before
+  running a command is its own question, as before. The prompt now says what `linearpen` can do for
+  it.
+
 ## [0.4.0] - 2026-11-19
 
 ### Added

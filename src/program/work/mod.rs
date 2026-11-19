@@ -42,13 +42,6 @@ pub struct Setup {
     pub exe: Option<PathBuf>,
 }
 
-/// The variable that tells a `linearpen` run in an agent's pane that it was started for an agent,
-/// and for which issue (Linear's id of it): the command line then writes nothing but that issue's
-/// status and comments (`cli/guard.rs`). A start sets it in the environment of the `bateri` that makes
-/// the pane, and bateri starts the pane's program in that environment, so the agent's own command is
-/// as it is for any run; `main.rs` reads it.
-pub const AGENT_VARIABLE: &str = "LINEARPEN_AGENT";
-
 /// The variables that hold the address of the pane the pen runs in: the first is in the shells
 /// bateri holds on its own machine, the second is what `ssh` carries to a server, whose shells have
 /// no other. bateri's own command takes either to know whose pane asks, so a pane on a server is
@@ -181,11 +174,14 @@ pub fn start(env: &Env<'_>, request: &Request<'_>) -> Result<Started, Refused> {
     let state = env
         .state
         .ok_or_else(|| Refused::Failed("there is no folder to keep the issue in".to_owned()))?;
-    let context = handoff::write(state, &handoff::stamp(env.now), issue)
-        .map_err(|why| Refused::Failed(format!("the issue could not be written: {why}")))?;
-    // The one thing of Linear's in the prompt is the id of the issue, and only where it is a UUID. The
-    // variable is set for the pane in either case (empty where there is no id), so that one in the
-    // pen's own environment does not go to the agent.
+    let context = handoff::write(
+        state,
+        &handoff::stamp(env.now),
+        issue,
+        env.setup.exe.as_deref(),
+    )
+    .map_err(|why| Refused::Failed(format!("the issue could not be written: {why}")))?;
+    // The one thing of Linear's in the prompt is the id of the issue, and only where it is a UUID.
     let id = draft::is_uuid(&issue.id).then_some(issue.id.as_str());
     let prompt = handoff::prompt(
         &context,
@@ -202,7 +198,6 @@ pub fn start(env: &Env<'_>, request: &Request<'_>) -> Result<Started, Refused> {
         &here,
         &issue.identifier,
         &request.agent.command(&prompt),
-        &[(AGENT_VARIABLE, id.unwrap_or_default())],
     )
     .map_err(|no| {
         // Nothing runs there, so the file made for it goes. (Where a pane may be there, it is

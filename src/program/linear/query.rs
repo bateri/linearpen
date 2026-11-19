@@ -1,7 +1,8 @@
 //! What is asked of Linear: every operation of the program, as constant text. The pen reads, and
 //! writes three things: the issue the person makes, the change the person makes to issues and the
-//! comment the person writes. Every operation is a plain `query` except `IssueCreate`,
-//! `IssueBatchUpdate` and `CommentCreate`, and `ALLOWED_MUTATIONS`
+//! comment the person writes; and for the pictures the person adds it asks Linear where to put one
+//! (`FileUpload`). Every operation is a plain `query` except `IssueCreate`, `IssueBatchUpdate`,
+//! `CommentCreate` and `FileUpload`, and `ALLOWED_MUTATIONS`
 //! is the one list of what may be a `mutation`: the client refuses to send any other (`mod.rs`), and
 //! the tests scan `ALL` for one. Nothing from outside is put into the text: what varies goes in the
 //! `variables` of the request.
@@ -10,7 +11,12 @@ use serde::Serialize;
 
 /// The mutations the program may send, by name: the one list of what it may write. Anything else
 /// that is a `mutation` is refused before it is sent, however it is named.
-pub const ALLOWED_MUTATIONS: [&str; 3] = ["IssueCreate", "IssueBatchUpdate", "CommentCreate"];
+pub const ALLOWED_MUTATIONS: [&str; 4] = [
+    "IssueCreate",
+    "IssueBatchUpdate",
+    "CommentCreate",
+    "FileUpload",
+];
 
 /// One operation: its name (which the stand-in `curl` of the tests tells them apart by) and its text.
 #[derive(Debug, Clone, Copy)]
@@ -278,9 +284,19 @@ pub const COMMENT_CREATE: Operation = Operation {
            success comment { id body createdAt user { displayName } } } }",
 };
 
+/// The fourth: where Linear takes a picture the person adds (to a comment, a new issue or the end of
+/// a description). It makes nothing of the person's: it gives an address to send the file to and the
+/// address the file will have. Sent by `linear::upload` and by nothing else.
+pub const FILE_UPLOAD: Operation = Operation {
+    name: "FileUpload",
+    text: "mutation FileUpload($contentType: String!, $filename: String!, $size: Int!) { \
+           fileUpload(contentType: $contentType, filename: $filename, size: $size) { \
+           success uploadFile { uploadUrl assetUrl headers { key value } } } }",
+};
+
 /// Every operation there is, for the test that scans for a `mutation`.
 #[cfg(test)]
-pub const ALL: [Operation; 20] = [
+pub const ALL: [Operation; 21] = [
     VERIFY,
     MY_ISSUES,
     ALL_ISSUES,
@@ -301,6 +317,7 @@ pub const ALL: [Operation; 20] = [
     ISSUE_CREATE,
     ISSUE_BATCH_UPDATE,
     COMMENT_CREATE,
+    FILE_UPLOAD,
 ];
 
 /// The variables of the question for one issue: Linear's id of it, or its identifier.
@@ -327,11 +344,21 @@ pub struct Commented<'a> {
     pub input: super::comment::Input<'a>,
 }
 
-/// The variables of `IssueBatchUpdate`: the issues by Linear's id, and what is changed in them.
+/// The variables of `IssueBatchUpdate`: the issues by Linear's id, and what is changed in them (a
+/// `Change`'s input, or the one description the pictures are added to: `describe.rs`).
 #[derive(Debug, Serialize)]
-pub struct Batch<'a> {
+pub struct Batch<'a, I: Serialize> {
     pub ids: &'a [String],
-    pub input: super::change::Input<'a>,
+    pub input: I,
+}
+
+/// The variables of `FileUpload`: what the file is, and how large.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Upload<'a> {
+    pub content_type: &'a str,
+    pub filename: &'a str,
+    pub size: u64,
 }
 
 /// The variables of a page of issues: the filter is Linear's `IssueFilter` (`Filters::to_value`),
@@ -403,12 +430,25 @@ mod tests {
                 writes.push(operation.name);
             }
         }
-        // The pen writes three things, and the list says which.
+        // The pen writes three things and asks where to put a picture, and the list says which.
         assert_eq!(
             ALLOWED_MUTATIONS,
-            ["IssueCreate", "IssueBatchUpdate", "CommentCreate"]
+            [
+                "IssueCreate",
+                "IssueBatchUpdate",
+                "CommentCreate",
+                "FileUpload"
+            ]
         );
-        assert_eq!(writes, ["IssueCreate", "IssueBatchUpdate", "CommentCreate"]);
+        assert_eq!(
+            writes,
+            [
+                "IssueCreate",
+                "IssueBatchUpdate",
+                "CommentCreate",
+                "FileUpload"
+            ]
+        );
     }
 
     /// A query added and left out of `ALL` would not be scanned: every `Operation` of this file is in it.
@@ -475,7 +515,25 @@ mod tests {
             "CommentDelete",
             "mutation CommentDelete($id: String!) { commentDelete(id: $id) { success } }",
         );
+        // The picture's place is listed; the ways to take a file away or to make another are not.
+        not_allowed("Other", FILE_UPLOAD.text);
+        not_allowed("FileUpload", COMMENT_CREATE.text);
+        not_allowed(
+            "FileUpload",
+            "mutation FileUpload($id: String!) { fileUpload(id: $id) { success } } \
+             mutation ImageUploadFromUrl($url: String!) { imageUploadFromUrl(url: $url) { success } }",
+        );
+        not_allowed(
+            "ImageUploadFromUrl",
+            "mutation ImageUploadFromUrl($url: String!) { imageUploadFromUrl(url: $url) { success } }",
+        );
+        not_allowed(
+            "AttachmentDelete",
+            "mutation AttachmentDelete($id: String!) { attachmentDelete(id: $id) { success } }",
+        );
         // The ones listed are allowed and are not queries.
+        assert!(FILE_UPLOAD.allowed());
+        assert!(!FILE_UPLOAD.reads_only());
         assert!(COMMENT_CREATE.allowed());
         assert!(!COMMENT_CREATE.reads_only());
         assert!(ISSUE_CREATE.allowed());

@@ -1,26 +1,33 @@
 //! Linear: the questions the program asks it and how the answers are read. It reads, and writes three
 //! things, the issue the person makes, the change the person makes to issues and the comment the
-//! person writes: the operations are in `query.rs`, all of them plain `query` but `IssueCreate`,
-//! `IssueBatchUpdate` and `CommentCreate`, and `run` refuses anything that is not listed there.
-//! `create`, `change`, `change_all` and `comment` are the only functions that send them, and each sends
-//! once; the page's session and the command line are the two that call them. The way to Linear is
+//! person writes, and it puts the pictures the person adds in Linear's storage: the operations are in
+//! `query.rs`, all of them plain `query` but `IssueCreate`, `IssueBatchUpdate`, `CommentCreate` and
+//! `FileUpload`, and `run` refuses anything that is not listed there. `create`, `change`,
+//! `change_all`, `comment`, `add_files` (the one other write of `IssueBatchUpdate`, the end of a
+//! description) and `upload` are the only functions that send them, and each sends once; the page's session and the command line are the two that call them. The way to Linear is
 //! `curl` (`transport.rs`). It knows nothing of the page; it takes and gives plain Rust values.
 
 mod change;
 mod comment;
+mod describe;
 mod error;
 mod filter_options;
 mod filters;
+pub mod images;
 mod key;
 pub mod limits;
 mod names;
 mod new_issue;
+pub mod pdf;
 pub mod query;
+pub mod staged;
 pub mod transport;
 pub mod types;
+mod upload;
 
 pub use change::{Change, Changes};
 pub use comment::{NOT_POSTED, post as comment};
+pub use describe::{Step, add_files};
 pub use error::{Error, lines, plain, tidy};
 pub use filter_options::{FilterOptions, filter_options};
 pub use filters::{Filters, ME, NONE};
@@ -29,6 +36,7 @@ pub use names::{Entry, names};
 pub use new_issue::{Created, CycleChoice, NewIssue, Options, StateChoice, Team};
 pub use transport::Transport;
 pub use types::{Issue, Priority, Viewer};
+pub use upload::{NotSent, send_file};
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -173,7 +181,7 @@ fn run<V: Serialize, T: DeserializeOwned>(
 ) -> Result<T, Error> {
     if !operation.allowed() {
         return Err(Error::Failed(format!(
-            "{} is not a query, and what this program writes is a new issue, the changes of issues and comments",
+            "{} is not a query, and what this program writes is a new issue, the changes of issues, comments and the pictures of them",
             operation.name
         )));
     }
@@ -474,11 +482,11 @@ pub fn change_all(
 }
 
 /// The one place `IssueBatchUpdate` is sent from.
-fn send_batch(
+fn send_batch<I: Serialize>(
     transport: &dyn Transport,
     key: &Key,
     ids: &[String],
-    input: change::Input<'_>,
+    input: I,
 ) -> Result<Vec<Issue>, Error> {
     if ids.is_empty() || ids.len() > BATCH_MOST {
         return Err(Error::Failed(format!(

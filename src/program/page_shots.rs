@@ -15,6 +15,10 @@ use std::time::Duration;
 use pencere_drive::headless::Error;
 use pencere_drive::shot::{Fonts, Palette};
 
+use crate::page_pictures::{
+    REPLY, SHOT, given, on_the_page, open_filed, open_pictured, png_header, read_to,
+    read_to_the_end,
+};
 use crate::page_tests::{
     Canned, Mode, PANE, Page, cursor, ls_of_p41, open, pressable, rig, rig_polling, session_over,
 };
@@ -549,5 +553,148 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     let session = session_over(&linear, Some("lin_api_test"), None);
     let page = open(&session, BIG, Some(&fonts), "Linear did not answer")?;
     save(&page, &fonts, Palette::Dark, "error.png");
+    Ok(())
+}
+
+/// An issue with pictures open at `size`, the first of them drawn.
+fn pictured(size: (f32, f32), fonts: &Fonts) -> Result<crate::page_pictures::Pictured, Error> {
+    let mut rig = open_pictured(size, Some(fonts))?;
+    rig.page.press("enter")?;
+    rig.page.wait_for(Duration::from_secs(20), |page| {
+        page.bounds("pic:1").is_some() && page.bounds("pic:3").is_some()
+    })?;
+    rig.page.advance(0.6)?;
+    Ok(rig)
+}
+
+#[test]
+#[ignore = "shots: draws the page in the fonts of this machine into docs/; make shots"]
+fn the_pictures_of_the_docs_with_images() -> Result<(), Error> {
+    use pencere_view::FileSource;
+    let fonts = fonts();
+    let wait = Duration::from_secs(20);
+
+    // The pictures of an issue, in place: in the colours of a dark and of a light terminal, and in an
+    // 80 by 24 pane.
+    let mut rig = pictured(BIG, &fonts)?;
+    save(&rig.page, &fonts, Palette::Dark, "images.png");
+    save(&rig.page, &fonts, Palette::Light, "light-images.png");
+    // One of them large, over the pane.
+    rig.page.click("pic:1")?;
+    rig.page
+        .wait_for(wait, |page| page.bounds("picture-close").is_some())?;
+    rig.page.advance(0.6)?;
+    save(&rig.page, &fonts, Palette::Dark, "image-view.png");
+    let mut rig = pictured(PANE, &fonts)?;
+    // (Read on, as a person does, to where the picture is.)
+    rig.page.wheel("panel-scroll", 0.0, 60.0)?;
+    rig.page.advance(0.6)?;
+    save(&rig.page, &fonts, Palette::Dark, "narrow-images.png");
+
+    // A picture Linear gives that is not one: why, and where it is.
+    let mut rig = open_pictured(BIG, Some(&fonts))?;
+    rig.linear
+        .store(SHOT, b"GIF89a, as far as its first bytes go".to_vec());
+    rig.linear.store(REPLY, png_header(5120, 2880));
+    rig.page.press("enter")?;
+    rig.page
+        .wait_for(wait, |page| page.bounds("file-card:1").is_some())?;
+    rig.page.advance(0.6)?;
+    save(&rig.page, &fonts, Palette::Dark, "image-refused.png");
+
+    // Two pictures pasted into a comment, and words after them.
+    let mut rig = pictured(BIG, &fonts)?;
+    let (one, two) = (given(200), given(90));
+    rig.page.press("shift+m")?;
+    rig.page.advance(0.6)?;
+    read_to_the_end(&mut rig.page);
+    rig.page.give_files(
+        "comment-box",
+        FileSource::Paste,
+        &[("checkout-error.png", &one), ("retry-log.png", &two)],
+    )?;
+    rig.page
+        .type_text("Both from the failing run last night.")?;
+    rig.page.advance(0.8)?;
+    save(&rig.page, &fonts, Palette::Dark, "comment-image.png");
+
+    // The same on an issue that is being made.
+    let mut rig = open_pictured(BIG, Some(&fonts))?;
+    rig.page.press("c")?;
+    rig.page
+        .wait_for(wait, |page| page.bounds("new-value:state").is_some())?;
+    rig.page.type_text("Retry the webhook with a backoff")?;
+    rig.page.click("attach-file:new")?;
+    rig.page
+        .choose_files(&[("sketch.png", &one), ("flow.png", &two)])?;
+    rig.page.advance(0.8)?;
+    save(&rig.page, &fonts, Palette::Dark, "new-image.png");
+
+    // Pictures chosen for the description of an issue that is open, before they are added.
+    let mut rig = pictured(BIG, &fonts)?;
+    read_to(&mut rig.page, "attach-file:describe");
+    rig.page.click("attach-file:describe")?;
+    rig.page.choose_files(&[("sketch.png", &one)])?;
+    rig.page.advance(0.8)?;
+    save(&rig.page, &fonts, Palette::Dark, "describe-image.png");
+
+    // The files of an issue that are not pictures: cards, and the PDF read page by page over the pane.
+    let mut rig = open_filed(BIG, Some(&fonts))?;
+    rig.page.press("enter")?;
+    rig.page.wait_for(wait, |page| {
+        page.bounds("file-card:1").is_some() && page.bounds("pic:3").is_some()
+    })?;
+    rig.page.advance(0.6)?;
+    save(&rig.page, &fonts, Palette::Dark, "file-card.png");
+    rig.page.click("file-open:1")?;
+    rig.page
+        .wait_for(wait, |page| page.bounds("picture-close").is_some())?;
+    rig.page.click("pdf-next")?;
+    rig.page
+        .wait_for(wait, |page| page.bounds("pdf-find-open").is_some())?;
+    rig.page.advance(0.8)?;
+    // Some of the words of the page selected, as a person does with the pointer.
+    let from = on_the_page(&rig.page, 41.0, 236.0);
+    let to = on_the_page(&rig.page, 120.0, 236.0);
+    rig.page.drag_between(from, to)?;
+    rig.page.advance(0.4)?;
+    save(&rig.page, &fonts, Palette::Dark, "pdf-view.png");
+
+    // The same PDF searched: the matches marked on the page, the one it is at the more.
+    let mut rig = open_filed(BIG, Some(&fonts))?;
+    rig.page.press("enter")?;
+    rig.page
+        .wait_for(wait, |page| page.bounds("file-open:1").is_some())?;
+    rig.page.advance(0.6)?;
+    rig.page.click("file-open:1")?;
+    rig.page
+        .wait_for(wait, |page| page.bounds("pdf-find-open").is_some())?;
+    rig.page.press("mod+f")?;
+    rig.page.type_text("page")?;
+    rig.page.wait_for(wait, |page| page.says("1 of 6"))?;
+    rig.page.press("enter")?;
+    rig.page.wait_for(wait, |page| page.says("2 of 6"))?;
+    rig.page.advance(0.8)?;
+    save(&rig.page, &fonts, Palette::Dark, "pdf-find.png");
+
+    // A zip, a PDF and a picture pasted into a comment: each with its kind and its size.
+    let mut rig = pictured(BIG, &fonts)?;
+    let zip = b"PK\x03\x04 the logs of the failing run".repeat(900);
+    let paper = crate::pictures::double::pdf(3);
+    rig.page.press("shift+m")?;
+    rig.page.advance(0.6)?;
+    read_to_the_end(&mut rig.page);
+    rig.page.give_files(
+        "comment-box",
+        FileSource::Paste,
+        &[
+            ("run-logs.zip", &zip),
+            ("spec.pdf", &paper),
+            ("checkout-error.png", &one),
+        ],
+    )?;
+    rig.page.type_text("Logs, the spec and the screenshot.")?;
+    rig.page.advance(0.8)?;
+    save(&rig.page, &fonts, Palette::Dark, "comment-file.png");
     Ok(())
 }

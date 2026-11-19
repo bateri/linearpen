@@ -15,10 +15,16 @@ const FILTER_OPTIONS: &str = include_str!("../../../test/stand-in/filter-options
 /// What a stand-in for Linear says to an operation (its name, the body).
 type Answer = Box<dyn Fn(&str, &str) -> Result<Reply, Error> + Send + Sync>;
 
+/// A picture of Linear the stand-in has: its bytes, or why they cannot be had.
+type Held = Result<Vec<u8>, String>;
+
 /// Answers by the name of the operation, and keeps the bodies it was sent.
 struct Memory {
     answer: Answer,
     sent: Mutex<Vec<String>>,
+    /// The pictures of Linear it has, by address, and the addresses it was asked for.
+    pictures: Mutex<Vec<(String, Held)>>,
+    fetched: Mutex<Vec<String>>,
 }
 
 impl Memory {
@@ -26,7 +32,22 @@ impl Memory {
         Self {
             answer: Box::new(answer),
             sent: Mutex::new(Vec::new()),
+            pictures: Mutex::new(Vec::new()),
+            fetched: Mutex::new(Vec::new()),
         }
+    }
+
+    /// Has the picture at `url`: its bytes, or why they cannot be had.
+    fn with_picture(self, url: &str, bytes: Result<Vec<u8>, &str>) -> Self {
+        self.pictures
+            .lock()
+            .unwrap()
+            .push((url.to_owned(), bytes.map_err(str::to_owned)));
+        self
+    }
+
+    fn fetched(&self) -> Vec<String> {
+        self.fetched.lock().unwrap().clone()
     }
 
     fn sent(&self) -> Vec<String> {
@@ -59,6 +80,33 @@ impl Transport for Memory {
             .unwrap_or_default()
             .to_owned();
         (self.answer)(&name, body)
+    }
+
+    fn fetch(&self, _: &Key, url: &str) -> Result<Vec<u8>, Error> {
+        self.fetched.lock().unwrap().push(url.to_owned());
+        let held = self.pictures.lock().unwrap();
+        match held.iter().find(|(held, _)| held == url) {
+            Some((_, Ok(bytes))) => Ok(bytes.clone()),
+            Some((_, Err(why))) => Err(Error::Failed(why.clone())),
+            None => Err(Error::Unreachable("no such picture".to_owned())),
+        }
+    }
+
+    fn fetch_to(
+        &self,
+        key: &Key,
+        url: &str,
+        to: &std::path::Path,
+        most: u64,
+    ) -> Result<u64, Error> {
+        let bytes = self.fetch(key, url)?;
+        if bytes.len() as u64 > most {
+            return Err(Error::Failed(
+                crate::linear::transport::TOO_LARGE.to_owned(),
+            ));
+        }
+        std::fs::write(to, &bytes).map_err(|_| Error::Unreachable("write".to_owned()))?;
+        Ok(bytes.len() as u64)
     }
 }
 
@@ -137,10 +185,6 @@ fn command(args: &[&str]) -> Command {
 }
 
 fn run_with(memory: &Memory, args: &[&str], stdin: &str) -> Done {
-    run_guarded(memory, Guard::Off, args, stdin)
-}
-
-fn run_guarded(memory: &Memory, guard: Guard, args: &[&str], stdin: &str) -> Done {
     let key = Key::new("lin_api_test").unwrap();
     let mut input = stdin.as_bytes();
     run(
@@ -148,7 +192,6 @@ fn run_guarded(memory: &Memory, guard: Guard, args: &[&str], stdin: &str) -> Don
             transport: memory,
             key: &key,
             key_source: "LINEAR_API_KEY",
-            guard,
         },
         &command(args),
         &mut input,
@@ -706,255 +749,7 @@ fn a_create_that_linear_says_it_did_not_make_is_a_no_and_not_a_not_known() {
     );
 }
 
-// What a `linearpen` run in an agent's pane may write (`guard`): the issue it was started on, by
-// Linear's id (the stand-in curl answers a UUID with "not found", so what is allowed is tried here).
-
 const MINE: &str = "11111111-2222-4333-8444-555555555555";
-const OTHER: &str = "99999999-2222-4333-8444-555555555555";
-
-/// A world of two issues of ACM: `ACM-5` with the id `MINE` and `ACM-6` with the id `OTHER`; an
-/// update answers with `MINE`, as changed.
-fn agent_world() -> Memory {
-    Memory::new(|name, body| {
-        let asked = |key: &str| body.contains(&format!("\"id\":\"{key}\""));
-        match name {
-            "Issue" if asked(MINE) || asked("ACM-5") => issue_reply(MINE, "ACM-5", "acm"),
-            "Issue" if asked(OTHER) || asked("ACM-6") => issue_reply(OTHER, "ACM-6", "acm"),
-            "Issue" => {
-                ok(r#"{"data":{"issue":null},"errors":[{"message":"Entity not found: Issue"}]}"#)
-            }
-            "IssueBatchUpdate" => ok(&format!(
-                r#"{{"data":{{"issueBatchUpdate":{{"success":true,"issues":[{}]}}}}}}"#,
-                issue_of(MINE, "ACM-5", "acm")
-            )),
-            _ => world().post(&Key::new("k").unwrap(), body),
-        }
-    })
-}
-
-fn for_agent() -> Guard {
-    Guard::of(Some(std::ffi::OsStr::new(MINE)))
-}
-
-#[test]
-fn the_variable_makes_the_guard_and_only_an_id_that_is_a_uuid_gives_it_an_issue() {
-    use std::os::unix::ffi::OsStrExt;
-    assert_eq!(Guard::of(None), Guard::Off);
-    assert_eq!(
-        Guard::of(Some(std::ffi::OsStr::new(MINE))),
-        Guard::Issue(MINE.to_owned())
-    );
-    // The case of the letters of an id is not what it is.
-    let loud = "ABCDEF01-2222-4333-8444-555555555555";
-    assert_eq!(
-        Guard::of(Some(std::ffi::OsStr::new(loud))),
-        Guard::Issue(loud.to_lowercase())
-    );
-    // A variable that is set is an agent's run, whatever it holds: it is not "no agent".
-    for value in [
-        std::ffi::OsStr::new(""),
-        std::ffi::OsStr::new("ACM-5"),
-        std::ffi::OsStr::new("issue-412"),
-        std::ffi::OsStr::new(" 11111111-2222-4333-8444-555555555555"),
-        std::ffi::OsStr::from_bytes(b"11111111-2222-4333-8444-55555555555\xff"),
-    ] {
-        assert_eq!(Guard::of(Some(value)), Guard::Nothing, "{value:?}");
-    }
-}
-
-#[test]
-fn an_agent_may_change_the_status_of_its_issue_and_comment_on_it_and_each_is_one_write() {
-    let memory = agent_world();
-    let done = run_guarded(
-        &memory,
-        for_agent(),
-        &["update", MINE, "--status", "Done"],
-        "",
-    );
-    assert_eq!(done.status, 0, "{}", done.err);
-    assert_eq!(memory.wrote(), 1);
-    let sent = memory.of("IssueBatchUpdate");
-    assert_eq!(sent.len(), 1);
-    assert!(
-        sent[0].contains(MINE) && sent[0].contains("s-done"),
-        "{}",
-        sent[0]
-    );
-    assert!(
-        !sent[0].to_lowercase().contains("description"),
-        "{}",
-        sent[0]
-    );
-
-    // The same issue by its identifier, and an id written in capitals, are the same issue.
-    let memory = agent_world();
-    let done = run_guarded(
-        &memory,
-        for_agent(),
-        &["update", "acm-5", "--status", "Done"],
-        "",
-    );
-    assert_eq!(done.status, 0, "{}", done.err);
-    assert_eq!(memory.wrote(), 1);
-    let memory = agent_world();
-    let loud = MINE.to_uppercase();
-    let done = run_guarded(
-        &memory,
-        for_agent(),
-        &["update", &loud, "--status", "Done"],
-        "",
-    );
-    assert_eq!(done.status, 0, "{}", done.err);
-    assert_eq!(memory.wrote(), 1);
-
-    let memory = agent_world();
-    let done = run_guarded(
-        &memory,
-        for_agent(),
-        &["comment", MINE, "--body", "-"],
-        "Done; the limiter is in.\n",
-    );
-    assert_eq!(
-        (done.status, done.out.as_str()),
-        (0, "ACM-5: comment added\n"),
-        "{}",
-        done.err
-    );
-    assert_eq!(memory.wrote(), 1);
-    let sent = memory.of("CommentCreate");
-    assert_eq!(sent.len(), 1);
-    assert!(sent[0].contains(MINE), "{}", sent[0]);
-    assert!(sent[0].contains("Done; the limiter is in."), "{}", sent[0]);
-}
-
-#[test]
-fn an_agent_is_refused_any_other_issue_before_anything_is_written() {
-    for args in [
-        &["update", OTHER, "--status", "Done"][..],
-        &["update", "ACM-6", "--status", "Done"],
-        &["update", MINE, OTHER, "--status", "Done"],
-        &["update", "ACM-5", "ACM-6", "--status", "Done"],
-        &["comment", OTHER, "--body", "x"],
-        &["comment", "ACM-6", "--body", "x"],
-    ] {
-        let memory = agent_world();
-        let done = run_guarded(&memory, for_agent(), args, "");
-        assert_eq!(done.status, 1, "{args:?}: {}", done.err);
-        assert_eq!(
-            done.err,
-            "linearpen: linearpen was started for an agent on another issue; it may change only that issue's status and comment on it\n",
-            "{args:?}"
-        );
-        assert_eq!(memory.wrote(), 0, "{args:?}");
-        assert!(done.out.is_empty(), "{args:?}");
-    }
-}
-
-#[test]
-fn an_agent_makes_no_issue_and_changes_nothing_but_the_status_and_asks_linear_nothing_first() {
-    for (args, said) in [
-        (
-            &["create", "--team", "ACM", "--title", "x"][..],
-            "it makes no issues",
-        ),
-        (
-            &["update", MINE, "--priority", "low"],
-            "it changes only the status",
-        ),
-        (
-            &["update", MINE, "--title", "New"],
-            "it changes only the status",
-        ),
-        (
-            &["update", MINE, "--label", "bug"],
-            "it changes only the status",
-        ),
-        (
-            &["update", MINE, "--unlabel", "bug"],
-            "it changes only the status",
-        ),
-        (
-            &["update", MINE, "--assignee", "me"],
-            "it changes only the status",
-        ),
-        (
-            &["update", MINE, "--project", "none"],
-            "it changes only the status",
-        ),
-        (
-            &["update", MINE, "--cycle", "none"],
-            "it changes only the status",
-        ),
-        (
-            &["update", MINE, "--estimate", "none"],
-            "it changes only the status",
-        ),
-        (
-            &["update", MINE, "--due", "none"],
-            "it changes only the status",
-        ),
-        (
-            &["update", MINE, "--status", "Done", "--priority", "low"],
-            "it changes only the status",
-        ),
-    ] {
-        let memory = agent_world();
-        let done = run_guarded(&memory, for_agent(), args, "");
-        assert_eq!(done.status, 1, "{args:?}: {}", done.err);
-        assert!(done.err.contains(said), "{args:?}: {}", done.err);
-        assert!(
-            done.err
-                .starts_with("linearpen: linearpen was started for an agent"),
-            "{args:?}: {}",
-            done.err
-        );
-        // Not a word went to Linear: not a write, and not a read.
-        assert!(memory.sent().is_empty(), "{args:?}: {:?}", memory.sent());
-    }
-}
-
-#[test]
-fn an_agent_whose_variable_names_no_issue_writes_nothing_at_all() {
-    for args in [
-        &["create", "--team", "ACM", "--title", "x"][..],
-        &["update", "ACM-5", "--status", "Done"],
-        &["update", MINE, "--status", "Done"],
-        &["comment", MINE, "--body", "x"],
-        &["comment", "ACM-5", "--body", "-"],
-    ] {
-        for value in ["", "ACM-5", "not-an-id"] {
-            let memory = agent_world();
-            let done = run_guarded(
-                &memory,
-                Guard::of(Some(std::ffi::OsStr::new(value))),
-                args,
-                "words",
-            );
-            assert_eq!(done.status, 1, "{args:?} {value:?}: {}", done.err);
-            assert_eq!(
-                done.err,
-                "linearpen: linearpen was started for an agent with no issue of its own; it writes nothing\n",
-                "{args:?} {value:?}"
-            );
-            assert!(memory.sent().is_empty(), "{args:?} {value:?}");
-        }
-    }
-}
-
-#[test]
-fn an_agent_reads_what_it_likes() {
-    for guard in [for_agent(), Guard::Nothing] {
-        let memory = world();
-        let done = run_guarded(&memory, guard.clone(), &["show", "ACM-412"], "");
-        assert_eq!(done.status, 0, "{guard:?}: {}", done.err);
-        assert!(done.out.contains("ACM-412"), "{}", done.out);
-        let done = run_guarded(&memory, guard.clone(), &["teams"], "");
-        assert_eq!(done.status, 0, "{guard:?}: {}", done.err);
-        let done = run_guarded(&memory, guard.clone(), &["teams", "ACM"], "");
-        assert_eq!(done.status, 0, "{guard:?}: {}", done.err);
-        assert_eq!(memory.wrote(), 0);
-    }
-}
 
 /// The words of `line` as a shell would give them: white space between them, single and double
 /// quotes and a backslash outside quotes to hold what would end a word.
@@ -994,10 +789,10 @@ fn shell_words(line: &str) -> Vec<String> {
     words
 }
 
-// The two commands the agent is told to run are commands `linearpen` takes, as the program the agent
-// is told to run is written whatever its path is, and what they come to is what the guard lets by.
+// The commands the agent is told to run are commands `linearpen` takes, as the program the agent is told
+// to run is written whatever its path is.
 #[test]
-fn the_two_commands_the_prompt_gives_the_agent_are_the_two_the_command_line_takes() {
+fn the_commands_the_prompt_gives_the_agent_are_ones_the_command_line_takes() {
     for exe in [
         None,
         Some("/usr/local/bin/linearpen"),
@@ -1014,27 +809,348 @@ fn the_two_commands_the_prompt_gives_the_agent_are_the_two_the_command_line_take
         );
         // The commands are what is between the backticks.
         let spans: Vec<&str> = said.split('`').skip(1).step_by(2).collect();
-        assert_eq!(spans.len(), 2, "{said}");
-        for span in &spans {
-            let words = shell_words(&span.replace("<status>", "In Review"));
+        assert_eq!(spans.len(), 5, "{said}");
+        let read = |span: &str| {
+            let words = shell_words(
+                &span
+                    .replace("<status>", "In Review")
+                    .replace("<title>", "A title")
+                    .replace("PATH", "/tmp/shot.png")
+                    .replace("KEY", "ACM"),
+            );
             assert_eq!(words[0], exe.unwrap_or("linearpen"), "{span}");
-        }
-        let update = shell_words(&spans[0].replace("<status>", "In Review"));
-        let Asked::Do(Command::Update(update)) = command_line::read(update[1..].iter().cloned())
-        else {
+            match command_line::read(words[1..].iter().cloned()) {
+                Asked::Do(command) => command,
+                other => panic!("{span}: {other:?}"),
+            }
+        };
+        let Command::Update(update) = read(spans[0]) else {
             panic!("not an update: {}", spans[0]);
         };
         assert_eq!(update.issues, [MINE]);
         assert_eq!(update.fields.status.as_deref(), Some("In Review"));
-        // It is what the guard of that very run lets by.
-        for_agent().updates(&update).unwrap();
-        let comment = shell_words(spans[1]);
-        let Asked::Do(Command::Comment(comment)) = command_line::read(comment[1..].iter().cloned())
-        else {
+        let Command::Comment(comment) = read(spans[1]) else {
             panic!("not a comment: {}", spans[1]);
         };
         assert_eq!(comment.issue, MINE);
-        assert_eq!(comment.body, crate::command_line::Words::Stdin);
-        for_agent().comments().unwrap();
+        assert_eq!(comment.body, Some(crate::command_line::Words::Stdin));
+        assert!(comment.attach.is_empty());
+        let Command::Comment(with_picture) = read(spans[2]) else {
+            panic!("not a comment: {}", spans[2]);
+        };
+        assert_eq!(with_picture.attach, ["/tmp/shot.png"]);
+        let Command::Update(describe) = read(spans[3]) else {
+            panic!("not an update: {}", spans[3]);
+        };
+        assert_eq!(describe.issues, [MINE]);
+        assert_eq!(describe.attach, ["/tmp/shot.png"]);
+        let Command::Create(create) = read(spans[4]) else {
+            panic!("not a create: {}", spans[4]);
+        };
+        assert_eq!(create.title, "A title");
     }
+}
+
+// --- Pictures ---------------------------------------------------------------------------------------
+
+const PNG: &[u8] = b"\x89PNG\r\n\x1a\nthe-first";
+const JPEG: &[u8] = &[0xff, 0xd8, 0xff, 0xe0, 1, 2, 3];
+const LOG: &[u8] = b"line one\nline two\n";
+
+/// The issue of the fixture with pictures in its description and its first comment: three in the
+/// description (one of them not Linear's), and in the comment a picture, a file of Linear's (a link)
+/// and a link to another site, which is words.
+fn picture_issue() -> String {
+    let mut value: serde_json::Value = serde_json::from_str(ISSUE).unwrap();
+    let issue = &mut value["data"]["issue"];
+    issue["description"] = "Broken: ![Checkout error](https://uploads.linear.app/w/1/checkout.png) and\n![](https://uploads.linear.app/w/2/trace.jpg) and ![elsewhere](https://example.com/y.png)\n\nThen done.".into();
+    issue["comments"]["nodes"][0]["body"] =
+        "Looks like ![](https://uploads.linear.app/w/3/other.png) and the log [build log.txt](https://uploads.linear.app/w/4/build.log) or [a site](https://example.com/z)".into();
+    value.to_string()
+}
+
+fn picture_world() -> Memory {
+    let issue = picture_issue();
+    Memory::new(move |name, body| match name {
+        "Issue" => ok(&issue),
+        _ => world().post(&Key::new("k").unwrap(), body),
+    })
+    .with_picture(
+        "https://uploads.linear.app/w/1/checkout.png",
+        Ok(PNG.to_vec()),
+    )
+    .with_picture(
+        "https://uploads.linear.app/w/2/trace.jpg",
+        Ok(JPEG.to_vec()),
+    )
+    .with_picture("https://uploads.linear.app/w/3/other.png", Ok(PNG.to_vec()))
+    .with_picture("https://uploads.linear.app/w/4/build.log", Ok(LOG.to_vec()))
+}
+
+#[test]
+fn show_puts_each_file_as_a_numbered_placeholder_lists_them_and_says_how_to_save_them() {
+    let memory = picture_world();
+    let done = run_with(&memory, &["show", "ACM-412"], "");
+    assert_eq!(done.status, 0, "{}", done.err);
+    let out = done.out;
+    // In the order of the issue, every picture and file counted, the name of the address for one with no
+    // name; a link to another site is words and no file.
+    for placeholder in [
+        "[image 1: Checkout error]",
+        "[image 2: trace.jpg]",
+        "[image 3: elsewhere]",
+        "[image 4: other.png]",
+        "[file 5: build log.txt]",
+        "[a site](https://example.com/z)",
+    ] {
+        assert!(out.contains(placeholder), "{placeholder}: {out}");
+    }
+    assert!(!out.contains("!["), "{out}");
+    assert!(out.contains("\nFiles\n"), "{out}");
+    assert!(
+        out.contains("  1  description  https://uploads.linear.app/w/1/checkout.png\n"),
+        "{out}"
+    );
+    assert!(
+        out.contains("  3  description  https://example.com/y.png\n"),
+        "{out}"
+    );
+    assert!(
+        out.contains("  4  comment by Deniz  https://uploads.linear.app/w/3/other.png\n"),
+        "{out}"
+    );
+    assert!(
+        out.contains("  5  comment by Deniz  https://uploads.linear.app/w/4/build.log\n"),
+        "{out}"
+    );
+    assert!(
+        out.ends_with("\n5 files: linearpen show ACM-412 --files DIR saves them\n"),
+        "{out}"
+    );
+    // Nothing was fetched, and nothing was written.
+    assert!(memory.fetched().is_empty());
+    assert_eq!(memory.wrote(), 0);
+    // An issue with none has no section and no hint.
+    let plain = run_with(&world(), &["show", "ACM-412"], "");
+    assert!(
+        !plain.out.contains("Files") && !plain.out.contains("--files"),
+        "{}",
+        plain.out
+    );
+}
+
+#[test]
+fn show_json_keeps_the_texts_as_they_are_and_lists_the_files() {
+    let memory = picture_world();
+    let done = run_with(&memory, &["show", "ACM-412", "--json"], "");
+    assert_eq!(done.status, 0, "{}", done.err);
+    let value: serde_json::Value = serde_json::from_str(&done.out).unwrap();
+    assert!(
+        value["description"]
+            .as_str()
+            .unwrap()
+            .contains("![Checkout error](https://uploads.linear.app/w/1/checkout.png)")
+    );
+    assert!(
+        value["comments"][0]["body"]
+            .as_str()
+            .unwrap()
+            .contains("![](")
+    );
+    let files = value["files"].as_array().unwrap();
+    assert_eq!(files.len(), 5);
+    assert_eq!(
+        files[0],
+        serde_json::json!({"n": 1, "kind": "image", "name": "Checkout error", "url": "https://uploads.linear.app/w/1/checkout.png", "in": "description", "comment": null, "path": null, "refused": null})
+    );
+    assert_eq!(files[3]["in"], "comment");
+    assert_eq!(files[3]["comment"], 0);
+    assert_eq!(files[3]["name"], "");
+    assert_eq!(files[4]["kind"], "file");
+    assert_eq!(files[4]["name"], "build log.txt");
+    assert!(value.get("images").is_none(), "the old name is gone");
+    assert!(memory.fetched().is_empty());
+}
+
+#[test]
+fn files_saves_the_files_of_linear_in_a_folder_of_its_own_and_tells_each_by_its_file() {
+    let memory = picture_world();
+    let temp = tempfile::tempdir().unwrap();
+    let dir = temp.path().join("made/for/it");
+    let dir_arg = dir.to_str().unwrap();
+    let done = run_with(&memory, &["show", "ACM-412", "--files", dir_arg], "");
+    assert_eq!(done.status, 0, "{}", done.err);
+    let at = |name: &str| {
+        std::path::absolute(dir.join(name))
+            .unwrap()
+            .display()
+            .to_string()
+    };
+    assert!(
+        done.out.contains(&format!(
+            "  1  description  {}\n",
+            at("1-Checkout-error.png")
+        )),
+        "{}",
+        done.out
+    );
+    assert!(
+        done.out
+            .contains(&format!("  2  description  {}\n", at("2-trace.jpg"))),
+        "{}",
+        done.out
+    );
+    assert!(
+        done.out
+            .contains("  3  description  not on Linear  https://example.com/y.png\n"),
+        "{}",
+        done.out
+    );
+    assert!(
+        done.out
+            .contains(&format!("  4  comment by Deniz  {}\n", at("4-other.png"))),
+        "{}",
+        done.out
+    );
+    assert!(
+        done.out.contains(&format!(
+            "  5  comment by Deniz  {}\n",
+            at("5-build-log.txt")
+        )),
+        "{}",
+        done.out
+    );
+    assert!(!done.out.contains("--files DIR"), "{}", done.out);
+    // The extension is the bytes' own, the folder is the person's and the files are too.
+    assert_eq!(
+        std::fs::read(dir.join("1-Checkout-error.png")).unwrap(),
+        PNG
+    );
+    assert_eq!(std::fs::read(dir.join("2-trace.jpg")).unwrap(), JPEG);
+    // A file that is not a picture is saved as it is, with the extension its name has.
+    assert_eq!(std::fs::read(dir.join("5-build-log.txt")).unwrap(), LOG);
+    use std::os::unix::fs::PermissionsExt;
+    let mode =
+        |path: &std::path::Path| std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode(&dir), 0o700);
+    assert_eq!(mode(&dir.join("1-Checkout-error.png")), 0o600);
+    // Only the files of Linear were asked for.
+    assert_eq!(memory.fetched().len(), 4);
+    assert!(
+        !memory
+            .fetched()
+            .iter()
+            .any(|url| url.contains("example.com"))
+    );
+    // JSON tells the path and the reason.
+    let json = run_with(
+        &memory,
+        &["show", "ACM-412", "--files", dir_arg, "--json"],
+        "",
+    );
+    let value: serde_json::Value = serde_json::from_str(&json.out).unwrap();
+    assert_eq!(value["files"][0]["path"], at("1-Checkout-error.png"));
+    assert_eq!(value["files"][2]["path"], serde_json::Value::Null);
+    assert_eq!(value["files"][2]["refused"], "not on Linear");
+    // The same bytes are the file that is there: nothing is made twice.
+    assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 4);
+}
+
+#[test]
+fn another_file_under_a_name_that_is_taken_gets_a_number_and_nothing_is_written_over() {
+    let memory = picture_world();
+    let temp = tempfile::tempdir().unwrap();
+    let dir = temp.path().join("pics");
+    std::fs::create_dir(&dir).unwrap();
+    std::fs::write(dir.join("1-Checkout-error.png"), b"mine").unwrap();
+    let elsewhere = temp.path().join("elsewhere");
+    std::fs::write(&elsewhere, b"keep").unwrap();
+    std::os::unix::fs::symlink(&elsewhere, dir.join("2-trace.jpg")).unwrap();
+    let done = run_with(
+        &memory,
+        &["show", "ACM-412", "--files", dir.to_str().unwrap()],
+        "",
+    );
+    assert_eq!(done.status, 0, "{}", done.err);
+    assert_eq!(
+        std::fs::read(dir.join("1-Checkout-error.png")).unwrap(),
+        b"mine"
+    );
+    assert_eq!(
+        std::fs::read(dir.join("1-Checkout-error-2.png")).unwrap(),
+        PNG
+    );
+    // A link is never followed: what it leads to is as it was, and the picture is beside it.
+    assert_eq!(std::fs::read(&elsewhere).unwrap(), b"keep");
+    assert_eq!(std::fs::read(dir.join("2-trace-2.jpg")).unwrap(), JPEG);
+}
+
+#[test]
+fn a_file_that_cannot_be_had_gets_its_reason_and_the_command_still_succeeds() {
+    let issue = picture_issue()
+        .replace("w/1/checkout.png", "w/1/big.png")
+        .replace("w/2/trace.jpg", "w/2/text.png")
+        .replace("w/3/other.png", "w/3/gone.png");
+    let memory = Memory::new(move |name, body| match name {
+        "Issue" => ok(&issue),
+        _ => world().post(&Key::new("k").unwrap(), body),
+    })
+    .with_picture(
+        "https://uploads.linear.app/w/1/big.png",
+        Err(crate::linear::transport::TOO_LARGE),
+    )
+    .with_picture(
+        "https://uploads.linear.app/w/2/text.png",
+        Ok(b"<html>".to_vec()),
+    )
+    .with_picture("https://uploads.linear.app/w/3/gone.png", Err("HTTP 404"));
+    let temp = tempfile::tempdir().unwrap();
+    let dir = temp.path().join("pics");
+    let done = run_with(
+        &memory,
+        &["show", "ACM-412", "--files", dir.to_str().unwrap()],
+        "",
+    );
+    assert_eq!(done.status, 0, "{}", done.err);
+    // What is not a picture is a file all the same: it is saved as it is.
+    assert_eq!(std::fs::read(dir.join("2-text.png")).unwrap(), b"<html>");
+    assert!(dir.exists());
+    for line in [
+        "  1  description  too large  https://uploads.linear.app/w/1/big.png\n",
+        "  3  description  not on Linear  https://example.com/y.png\n",
+        "  4  comment by Deniz  could not be fetched  https://uploads.linear.app/w/3/gone.png\n",
+    ] {
+        assert!(done.out.contains(line), "{line}: {}", done.out);
+    }
+}
+
+#[test]
+fn no_folder_is_made_where_nothing_could_be_had() {
+    let memory = picture_world_without_files();
+    let temp = tempfile::tempdir().unwrap();
+    let dir = temp.path().join("pics");
+    let done = run_with(
+        &memory,
+        &["show", "ACM-412", "--files", dir.to_str().unwrap()],
+        "",
+    );
+    assert_eq!(done.status, 0, "{}", done.err);
+    assert!(done.out.contains("could not be fetched"), "{}", done.out);
+    assert!(!dir.exists());
+}
+
+/// The issue with pictures and a file that none of Linear's answers for.
+fn picture_world_without_files() -> Memory {
+    let issue = picture_issue();
+    Memory::new(move |name, body| match name {
+        "Issue" => ok(&issue),
+        _ => world().post(&Key::new("k").unwrap(), body),
+    })
+    .with_picture(
+        "https://uploads.linear.app/w/1/checkout.png",
+        Err("HTTP 404"),
+    )
+    .with_picture("https://uploads.linear.app/w/2/trace.jpg", Err("HTTP 404"))
+    .with_picture("https://uploads.linear.app/w/3/other.png", Err("HTTP 404"))
+    .with_picture("https://uploads.linear.app/w/4/build.log", Err("HTTP 404"))
 }

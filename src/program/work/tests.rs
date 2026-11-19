@@ -402,16 +402,14 @@ fn asked_for(issue: &Issue, folder: Folder) -> (String, Vec<(String, String)>) {
     (asked[at].clone(), given[at].clone())
 }
 
-// The variable the command line reads is in the environment of the `bateri` that makes the pane (bateri
-// starts the pane's program in it), and the agent's own command is what it always was: the one thing of
-// Linear's in the command line is the id inside the prompt.
+// The agent's own command is what it always was: the one thing of Linear's in the command line is the
+// id inside the prompt, and the environment the pane is made in carries nothing of the pen's.
 #[test]
-fn the_pane_is_made_with_the_variable_set_to_the_id_of_the_issue_and_the_agent_is_run_as_ever() {
+fn the_pane_is_made_with_no_variable_and_the_agent_is_run_as_ever() {
     let mut issue = fixture_issue();
     issue.id = UUID.to_owned();
     let (line, given) = asked_for(&issue, Folder::Here);
-    assert_eq!(AGENT_VARIABLE, "LINEARPEN_AGENT");
-    assert_eq!(given, [("LINEARPEN_AGENT".to_owned(), UUID.to_owned())]);
+    assert!(given.is_empty(), "{given:?}");
     let (head, prompt) = line
         .split_once(" claude ")
         .unwrap_or_else(|| panic!("{line}"));
@@ -419,8 +417,8 @@ fn the_pane_is_made_with_the_variable_set_to_the_id_of_the_issue_and_the_agent_i
         head,
         "bateri split --right --cwd /work/acme-app/api --label ACM-412 --"
     );
-    // The id is in the prompt and nowhere else of the command.
-    assert_eq!(line.matches(UUID).count(), 2, "{line}");
+    // The id is in the prompt, once in each command and in no other place.
+    assert_eq!(line.matches(UUID).count(), 4, "{line}");
     let file = prompt
         .strip_prefix("Work on the Linear issue in ")
         .and_then(|rest| rest.split_once(". It was written").map(|(file, _)| file))
@@ -437,16 +435,24 @@ fn the_pane_is_made_with_the_variable_set_to_the_id_of_the_issue_and_the_agent_i
             None,
         )
     );
-    assert!(
-        prompt.contains(&format!(
-            "`/opt/bin/linearpen update {UUID} --status \"<status>\"`"
-        )),
-        "{prompt}"
-    );
-    assert!(
-        prompt.contains(&format!("`/opt/bin/linearpen comment {UUID} --body -`")),
-        "{prompt}"
-    );
+    for command in [
+        format!("`/opt/bin/linearpen update {UUID} --status \"<status>\"`"),
+        format!("`/opt/bin/linearpen comment {UUID} --body -`"),
+        format!("`/opt/bin/linearpen comment {UUID} --body - --attach PATH`"),
+        format!("`/opt/bin/linearpen update {UUID} --attach PATH`"),
+        "`/opt/bin/linearpen create --team KEY --title \"<title>\" --description -`".to_owned(),
+    ] {
+        assert!(prompt.contains(&command), "{command}: {prompt}");
+    }
+    // The prompt says what can be done, never that it is done unasked or that anything is refused.
+    for words in [
+        "without asking",
+        "refuses",
+        "LINEARPEN_AGENT",
+        "--dangerously",
+    ] {
+        assert!(!prompt.contains(words), "{words}: {prompt}");
+    }
     // Linear's other words are not in it: the id is all.
     // (The identifier is in the name of the file's folder, as it is the label of the pane.)
     for words in [
@@ -459,7 +465,7 @@ fn the_pane_is_made_with_the_variable_set_to_the_id_of_the_issue_and_the_agent_i
     }
     // With a worktree the order is the file, the worktree, and then the writes.
     let (line, given) = asked_for(&issue, Folder::Worktree);
-    assert_eq!(given, [("LINEARPEN_AGENT".to_owned(), UUID.to_owned())]);
+    assert!(given.is_empty(), "{given:?}");
     let at = |words: &str| {
         line.find(words)
             .unwrap_or_else(|| panic!("{words}: {line}"))
@@ -468,11 +474,9 @@ fn the_pane_is_made_with_the_variable_set_to_the_id_of_the_issue_and_the_agent_i
     assert!(at(handoff::WORKTREE) < at("When the work is done"));
 }
 
-// A start sets the variable in every case, empty where the issue has no UUID: a value in the pen's own
-// environment is then overwritten and does not reach the agent.
+// An issue whose id is no UUID is told nothing of writing: the id is not in the command at all.
 #[test]
-fn an_issue_whose_id_is_no_uuid_makes_a_pane_with_the_variable_empty_and_is_told_nothing_of_writing()
- {
+fn an_issue_whose_id_is_no_uuid_makes_a_pane_and_is_told_nothing_of_writing() {
     for id in [
         "issue-412",
         "",
@@ -483,11 +487,7 @@ fn an_issue_whose_id_is_no_uuid_makes_a_pane_with_the_variable_empty_and_is_told
         let mut issue = fixture_issue();
         issue.id = id.to_owned();
         let (line, given) = asked_for(&issue, Folder::Here);
-        assert_eq!(
-            given,
-            [("LINEARPEN_AGENT".to_owned(), String::new())],
-            "{id:?}"
-        );
+        assert!(given.is_empty(), "{id:?}: {given:?}");
         assert!(
             line.starts_with("bateri split --right --cwd /work/acme-app/api --label ACM-412 -- claude Work on the Linear issue in "),
             "{id:?}: {line}"

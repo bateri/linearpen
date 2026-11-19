@@ -4,7 +4,8 @@ Your Linear issues in a terminal pane, and an agent started on the one you open:
 by state, an issue beside it with its description and comments, and Claude, Codex or Cursor
 working on it in the pane next to it. You can write a new issue in it too, change
 the status, priority, assignee, labels, project and title of the issues you have, and leave a
-comment; those are the three things it writes to Linear, and never the description.
+comment, and add files to them (pictures, PDFs, anything up to 100 MiB); those are the only things it
+writes to Linear, and it never changes the words of a description.
 
 <img src="docs/list.png" width="720" alt="linearpen: the issues assigned to you, grouped by state">
 
@@ -68,11 +69,13 @@ linearpen show ACM-412
 linearpen create --team ACM --title "Fix the login" --priority high --label bug
 linearpen update ACM-412 ACM-413 --status Done --unlabel wip
 git diff | linearpen comment ACM-412 --body -
+linearpen comment ACM-412 --body "It looks like this" --attach shot.png
+linearpen show ACM-412 --files files    # the files of the issue, saved as files in files
 linearpen teams ACM        # the names a team's issues can be given
 ```
 
-`list`, `show` and `teams` only read; `create`, `update` and `comment` write what the three things
-below say. Each takes `--json`, whose fields are in [docs/cli.md](docs/cli.md), and
+`list`, `show` and `teams` only read (`show --files DIR` also writes files, in DIR, and nothing in
+Linear); `create`, `update` and `comment` write what the things below say. Each takes `--json`, whose fields are in [docs/cli.md](docs/cli.md), and
 `linearpen help COMMAND` tells its options. A command ends with 0 when it is done, 1 where Linear could
 not do it or has nothing by a name, 2 where the command is not understood or there is no key, and 3
 where a write was sent and it is not known whether Linear made it: look in Linear before running it
@@ -199,7 +202,8 @@ change a value stay with the selection.
 <img src="docs/edit-many.png" width="720" alt="linearpen: three issues selected, which the status key changes together">
 
 The change is sent once. Where no answer comes it is not sent again by the program: it tells you, and
-asks Linear what the issue holds now. The description and the team are never written.
+asks Linear what the issue holds now. The words of the description and the team are never written
+(files are added to the end of a description: see Files below).
 
 A line can be dragged out of the page: into a terminal's pane it brings the issue as one line
 (`ACM-412 Add rate limiting to the public API https://linear.app/...`), put at the cursor and not run
@@ -221,6 +225,90 @@ the page says so under the field and the words stay, and where no answer came it
 may have been posted, and asks Linear for the issue instead of sending it again.
 
 <img src="docs/comment.png" width="720" alt="linearpen: a comment being written under the comments of an issue">
+
+### Files
+
+<img src="docs/images.png" width="720" alt="linearpen: an issue whose description and comments hold pictures, drawn where they are written">
+
+A picture in a description or a comment (`![alt](https://uploads.linear.app/...)`) is drawn where it
+is written, as wide as the panel at most and never larger than it is. While it comes there is a pale
+box with its name. A click, or `Enter` on it, opens it over the pane (`Esc` closes it and the keyboard
+stays on the picture, and a pinch zooms it where the terminal's pencere can). A link to a file of
+Linear that stands alone in its paragraph (`[name](https://uploads.linear.app/...)`) is a file too. A picture
+of an address that is not Linear's is never fetched: it is a link in its words (the host where it has none),
+and a click, or `Enter` on it, opens the address in your browser (only `http` and `https`; the tip says the
+whole address).
+
+<img src="docs/image-view.png" width="720" alt="linearpen: a picture opened over the pane">
+
+A PDF (up to 8 MiB) and every other file (a GIF, a WebP, a video, a log, a zip, a picture that is too
+large to show) is a card: the icon of what it is, its name, what it is, and why it is not drawn where it
+is a picture ("GIF is not shown here", "5120×2880 Too large to show here", "Could not be fetched"; a picture
+written as one is always an `Image` with its reason). A card has one verb, `Open` for a PDF and `Save` for any
+other, and the whole card is pressed for it. The rest is in its right-click menu and in the commands, for
+the card that has the keyboard or the one you opened the menu on: `Save` of a PDF (`⌘S`), `Open the link`
+(`⇧⌘E`, in your browser) and `Copy the file's link` (`⇧⌘K`); `Open` on a PDF is also `⇧⌘R`.
+
+<img src="docs/file-card.png" width="720" alt="linearpen: an issue whose description holds a PDF and a zip, each a card, and a picture">
+
+`Save` asks where, in the panel of the terminal, and linearpen writes the file there, up to 100 MiB, from
+Linear (the key goes to `uploads.linear.app` and nothing else; a copy of its own, that only you can read,
+is made on the way and taken away). The keys do the same: `Tab` to a card's button and `Enter`, or `⌘S` for the card whose button
+has the keyboard (or for the only card the issue has, or the one you opened the menu on). Only
+`uploads.linear.app` is fetched, with your key, by `curl`, and any other address is never asked for, with the
+key or without it. Where the terminal speaks only Kitty's graphics protocol a picture is its name (not tried
+in Kitty).
+
+`Open` on a PDF's card opens it over the pane, a page at a time: `Previous` (`←`) and `Next` (`→`).
+`Close` (`Esc`) is at the top, and `Find` (`⌘F`) and `Save` (`⌘S`) end the row of the pages. A key that has a
+button is written on the button, and the line under the page says only what no button has (`⌘C` copy, `⌘A`
+select all). Opening the search moves none of these buttons.
+
+<img src="docs/pdf-view.png" width="720" alt="linearpen: a PDF opened over the pane, with some of its words selected">
+
+The words of a PDF can be selected with the pointer (a double click takes a word, a triple click the line,
+a drag more) or with `Shift` and the arrows, copied with `⌘C`, and looked for: `Find` (`⌘F`) opens a field
+under the pages, every match is marked on the page it is on, `Enter` and `⇧Enter` (or `⌘G` and `⇧⌘G`) go from
+match to match (`Previous match`, `Next match`), and a match on another page turns the page to it. `Esc` is
+written on the button it does: `Done` while the search is open (`Close` has no `Esc` then), else `Close`; it
+never clears the selection (a press elsewhere does). A selection is of one page; what the search looks for is written as it is
+(capitals do not count), not a pattern. Where a PDF has no words (it is pictures) there is no `Find`.
+
+<img src="docs/pdf-find.png" width="720" alt="linearpen: a PDF searched, the matches marked on its page">
+
+`Attach file` (`⌘⇧U`) puts a file, of any kind up to 100 MiB, in the comment you write, in the form of a new
+issue or at the end of the description of the issue that is open, whichever has the keyboard; it opens
+the Open panel, and where bateri hosts the view a file can also be pasted (`⌘V`) or dropped on the
+comment, on the description or on the form. Up to ten go at a time. What is added waits under the field:
+a picture as a small picture, any other file as a card with the icon of its kind, its name and its size, each
+with `Remove`; the cards are all of one width (the name is shortened where it does not fit, and the tip says
+it whole; a narrow pane gives each a row); nothing is sent until you press Comment, Create issue or `Add to description`.
+
+<img src="docs/comment-file.png" width="720" alt="linearpen: a comment with a zip, a PDF and a picture waiting under the field">
+
+The files are put in Linear's storage first, one after the other, and then the text is written once,
+with a line for each after your words (the comment may have no words, and the issue no description):
+`![name](address)` for a picture (PNG, JPEG, GIF or WebP, told by its first bytes, not by its name) and
+`[name](address)` for any other file. If a file cannot be put in storage, nothing is written and what you added is
+still there. A file the storage took stays there, with no issue to show it: linearpen cannot delete it. The
+file is read from the terminal in pieces, into a copy of its own, and is not held in memory.
+
+<img src="docs/describe-image.png" width="720" alt="linearpen: a picture waiting to be added to the description of an issue">
+
+Linear has no way to add to the end of a description, so linearpen reads the whole description from
+Linear just before it writes, puts the file lines after it and sends that, the description and
+nothing else. It is never sent from what the page holds. Where the description cannot be read whole,
+nothing is written. A description is Markdown that Linear stores in its own form, and a part of it
+that is not plain text (a mention, say) may not come back as it was: this is not tried on a real
+Linear workspace, so look at the issue after the first time.
+
+On the command line the same: `show` prints each file where it stands as `[image N: name]` or
+`[file N: name]` and lists them at the end; `--files DIR` saves the ones on Linear as files (up to
+100 MiB each, 100 files and 1 GiB in all) and tells where; `--attach PATH` adds a file to a comment (`comment`), to the new issue
+(`create`) or to the end of the description (`update KEY-N --attach PATH`, which is all that update does),
+as many times as there are files (ten at most). See [docs/cli.md](docs/cli.md). An agent started with Work on
+uses the same commands, and the file of an issue that has files says how many and gives the command that
+saves them where it can read them.
 
 ### Work on an issue
 
@@ -277,14 +365,15 @@ How it starts one:
   begins and after each start, the folders under `work` that it made and that are older than that
   are removed, unless it is the file of a pane that this run of linearpen started and still
   watches. A folder with anything else in it is left, and nothing outside `work` is touched.
-- The agent is told that it may move its issue to another status and comment on it (`linearpen update`
-  and `linearpen comment`) and write nothing else in Linear. This is a guard and not a lock: the agent
-  is started with `LINEARPEN_AGENT` set in its environment to the id of its issue, and a `linearpen`
-  run with it set refuses
-  every other write (see [docs/cli.md](docs/cli.md)). An agent that unsets the variable or reads your
-  key goes round it; what keeps it in bounds is the agent's own question before it runs a command.
-  What it writes is in Linear under your name. The id is the one thing of Linear's in the command
-  line (in the sentence it is given), and only where it is a UUID.
+- The agent is told what `linearpen` can do for it in Linear: move its issue to another status, comment
+  on it (and put a file, such as a screenshot or a log, at the end of the comment), add files to
+  the end of the issue's description and make another issue (`linearpen update`, `comment` and `create`;
+  [docs/cli.md](docs/cli.md)). Nothing in the program stops it from any of these: it is your key, so
+  what it writes is in Linear under your name, and what keeps it in bounds is the agent's own question
+  before it runs a command. The id is the one thing of Linear's in the command line (in the sentence
+  it is given), and only where it is a UUID.
+- Where the issue has files (pictures and others) the file says so, how many and where, and gives the command
+  that saves them (`linearpen show <id> --files <folder>`): nothing is downloaded when the agent starts.
 - No option that lets an agent skip its questions is ever given.
 
 ### The keyboard, and the mouse
@@ -315,32 +404,42 @@ or `Space` then presses.
 | `g`                   | go to a list (`1` `2`: My issues, All issues; `3`-`9`: favorites)    |
 | `/`                   | filter by words (`⌘Enter`: search all of Linear)                     |
 | `f`, `⇧F`             | filter by status, priority, assignee, labels or project; clear them  |
+| `⌘S` `⇧⌘R`            | save the file of the card that has the keyboard, read a PDF          |
+| `⇧⌘E` `⇧⌘K`           | open that card's link in your browser, copy it                       |
 | `⌘R`                  | ask Linear again                                                     |
 | `⌘K`, `?`             | find a command, the card of keys                                     |
 | `Esc`                 | close what is on top: the form, the issue, the selection, the search |
 
-## It writes three things
+## It writes four things
 
-linearpen tells Linear a new issue, a change to the issues you have and a comment you wrote, and
-nothing else, from the interface and from the command line (`create`, `update`, `comment`). It has three mutations, `IssueCreate` (sent when you press Create in the form),
+linearpen tells Linear a new issue, a change to the issues you have, a comment you wrote and the
+files you add, and nothing else, from the interface and from the command line (`create`, `update`,
+`comment`). It has four mutations, `IssueCreate` (sent when you press Create in the form),
 `IssueBatchUpdate` (sent when you choose a status, a priority, an assignee, a label, a project, a
-cycle, an estimate, a due date or a title, for one issue or for those you selected; and sent once more,
-only for the status, when you start an agent with `Status` set to move the issue that has not begun)
-and `CommentCreate` (sent when you press Comment, `⌘Enter`, under the comments of the issue open, with
-the words you wrote and nothing else), and the list of mutations it may send is one place in the
-program that a test checks every query against, refusing any other before it is sent. What a change
-can be is a type of its own with those fields in it: the description and the team of an issue cannot
-be written by it, and a test looks for them in what is sent. An archive, a deletion, an edit of a
-comment or of a description changed from here would be a decision of its own. It does not send
-anything twice by itself: a new issue has an identity the draft was given, and an issue whose answer
-was lost is asked for by it; a change or a comment whose answer was lost is not sent again, and the
-issue is asked for (the comment says that it may have been posted, and your words stay in the field).
+cycle, an estimate, a due date or a title, for one issue or for those you selected; sent once more,
+only for the status, when you start an agent with `Status` set to move the issue that has not begun;
+and sent with a description when you add files to one, which is all it can change a description
+to), `CommentCreate` (sent when you press Comment, `⌘Enter`, under the comments of the issue open,
+with the words you wrote and the lines of the files) and `FileUpload` (sent for each file, to
+be given a place in Linear's storage). The list of mutations it may send is one place in the program
+that a test checks every query against, refusing any other before it is sent. What a change can be is
+a type of its own with those fields in it: it carries neither a description nor a team, and a test
+looks for them in what is sent; the only description linearpen writes is the one it read whole from
+Linear a moment before with the file lines after it. An archive, a deletion, an edit of a comment
+or of the words of a description from here would be a decision of its own. It does not send anything
+twice by itself: a new issue has an identity the draft was given, and an issue whose answer was lost
+is asked for by it; a change or a comment whose answer was lost is not sent again, and the issue is
+asked for (the comment says that it may have been posted, and your words stay in the field).
 
 ## It talks to Linear with `curl`
 
 There is no HTTP or TLS library in linearpen: Linear is asked by the `curl` of your machine, with
 the key on its standard input, so it is not in its arguments (where `ps` shows them) or in its
-environment. The key is not written to a log, to an error message, to the page or to the file an
+environment. The key goes to `api.linear.app` and, to fetch a file, to `uploads.linear.app` (exactly
+that host, over https) and to no other; where the storage that takes a file is asked, with the
+address Linear signed for it, there is no key at all. The file is read from a file of its own
+that only you can read, which is deleted afterwards, and the signed address is in no log, error or
+page. The key is not written to a log, to an error message, to the page or to the file an
 agent reads. What Linear sends back is treated as what other people wrote: a branch name does not
 reach `git` before `git check-ref-format` has passed it, and no text of Linear goes through a shell.
 

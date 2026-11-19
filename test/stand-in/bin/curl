@@ -24,10 +24,27 @@
 #   STANDIN_COMMENT=refused   Linear does not post the comment: a GraphQL error, HTTP 400
 #   STANDIN_COMMENT=forbidden the key may not comment: HTTP 403
 #   STANDIN_COMMENT=lost      Linear posts the comment and the answer never comes: curl times out
+#   STANDIN_PUT=refused       the storage a file is sent to does not take it: HTTP 403
+#   (A file of Linear: a GET of an address with `max-filesize` in the configuration. It answers with
+#   a picture of test/stand-in/ by the name the address ends in (.jpg, .gif, .webp, else a PNG), and
+#   `.../big` exceeds the size (curl exits 63), `.../missing` is an HTTP error (22), `.../moved` is sent
+#   on to cdn.stand-in (a redirect, 302), `.../moved-away` to a place that is not https and
+#   `.../moved-forever` to itself, `.../text` is a
+#   file that is no picture, a name that ends in .log is two lines of words. A file sent to the
+#   storage (`request = "PUT"` in the configuration) is kept in "$STANDIN_LOG.put.N", N the order it
+#   came in, and answered with HTTP 200; `FileUpload` answers the place:
+#   https://storage.stand-in/put/N?sig=SECRET and the file's address
+#   https://uploads.linear.app/stand-in/N.)
 #   STANDIN_ISSUE=todo        `Issue` tells the issue it answers with (issue.json) as one in Todo, which
 #                             has not begun, where it is In Progress
 #   STANDIN_ISSUE=family      `Issue` tells it with sub-issues and ties of each kind (issue-family.json),
 #                             where issue.json has a parent and one issue that blocks it
+#   STANDIN_ISSUE=pictures    `Issue` tells it with pictures in its description and its first comment
+#                             (issue-pictures.json): the ones of the address names above, and one that
+#                             is not on uploads.linear.app
+#   STANDIN_ISSUE=moved       the same, with three of the files sent on elsewhere (`.../moved`,
+#                             `.../moved-away`, `.../moved-forever`)
+#   STANDIN_ISSUE=pictures-uuid  the same, with a UUID as the issue's id
 #
 # Each call is recorded with how many calls the stand-in `bateri` (STANDIN_BATERI_LOG) had had by
 # then, so that a test can say which came first: Linear or the pane.
@@ -91,6 +108,56 @@ broken)
 down)
 	echo "curl: (6) Could not resolve host" >&2
 	exit 6
+	;;
+esac
+
+# A file sent to the storage Linear named: a `PUT` of the file `upload-file` names. It is copied to
+# "$STANDIN_LOG.put.N" before curl's caller puts it away.
+case "$config" in
+*'request = "PUT"'*)
+	if [ -n "${STANDIN_LOG-}" ]; then
+		file=$(printf '%s\n' "$config" | sed -n 's/^upload-file = "\(.*\)"$/\1/p')
+		n=$(ls "$STANDIN_LOG".put.* 2>/dev/null | wc -l | tr -d ' ')
+		n=$((n + 1))
+		cp "$file" "$STANDIN_LOG.put.$n"
+	fi
+	if [ "${STANDIN_PUT-}" = refused ]; then
+		printf '\n403'
+	else
+		printf '\n200'
+	fi
+	exit 0
+	;;
+esac
+
+# A file of Linear (or the place Linear sent it on to): a GET with a size to keep to. After the body
+# curl writes what `write-out` asks for: a line break, the status, a line break, the address of a
+# redirect (none otherwise) and a line break. An address with `/moved` in it is sent on to the same name
+# on cdn.stand-in; `/moved-away` is sent on to a place that is not https; an address on cdn.stand-in is
+# the file, and the key is not given there.
+case "$config" in
+*'max-filesize'*)
+	address=$(printf '%s\n' "$config" | sed -n 's/^url = "\(.*\)"$/\1/p')
+	case "$address" in
+	*/big*) exit 63 ;;
+	*/missing*) exit 22 ;;
+	https://cdn.stand-in/*) cat "$here/picture.png" ;;
+	*/moved-away*) printf '\n302\nhttp://cdn.stand-in/away.png\n' ; exit 0 ;;
+	*/moved-forever*) printf '\n302\nhttps://uploads.linear.app/stand-in/moved-forever.png\n' ; exit 0 ;;
+	*/moved*)
+		name=${address##*/}
+		printf 'a redirect has a body that is not the file\n302\nhttps://cdn.stand-in/%s\n' "$name"
+		exit 0
+		;;
+	*/text*) printf 'this is not a picture' ;;
+	*.log*) printf 'line one\nline two\n' ;;
+	*.jpg*) cat "$here/picture.jpg" ;;
+	*.gif*) cat "$here/picture.gif" ;;
+	*.webp*) cat "$here/picture.webp" ;;
+	*) cat "$here/picture.png" ;;
+	esac
+	printf '\n200\n\n'
+	exit 0
 	;;
 esac
 
@@ -340,6 +407,17 @@ changed_node() {
 		"$cid" "${cident:-\"ACM-0\"}" "${ctitle:-\"An issue\"}" "${cpriority:-2.0}" "$cid" "$cstate" "$(labels_of "$cid")" "$ccycle" "$cpoints" "$cdue" "$cwho"
 }
 
+if is FileUpload; then
+	# Where a picture goes: the numbers are the order the places were asked for in.
+	n=1
+	if [ -n "${STANDIN_LOG-}" ]; then
+		echo x >>"$STANDIN_LOG.uploads"
+		n=$(wc -l <"$STANDIN_LOG.uploads" | tr -d ' ')
+	fi
+	printf '{"data":{"fileUpload":{"success":true,"uploadFile":{"uploadUrl":"https://storage.stand-in/put/%s?sig=SECRET","assetUrl":"https://uploads.linear.app/stand-in/%s","headers":[{"key":"x-stand-in","value":"yes"}]}}}}\n200' "$n" "$n"
+	exit 0
+fi
+
 if is IssueBatchUpdate; then
 	ids=$(printf '%s' "$plain" | sed -n 's/.*"variables":{"ids":\[\([^]]*\)\].*/\1/p' | tr -d '"' | tr ',' ' ')
 	input=$(printf '%s' "$plain" | sed -n 's/.*"input":{\(.*\)}}}".*$/\1/p')
@@ -416,6 +494,14 @@ if is Issue; then
 			-e 's/"type": "started"/"type": "unstarted"/' "$here/issue.json"
 		;;
 	family) cat "$here/issue-family.json" ;;
+	pictures) cat "$here/issue-pictures.json" ;;
+	moved)
+		sed -e 's|stand-in/checkout.png|stand-in/moved.png|' -e 's|stand-in/trace.jpg|stand-in/moved-away.jpg|' \
+			-e 's|stand-in/build.log|stand-in/moved-forever.log|' "$here/issue-pictures.json"
+		;;
+	pictures-uuid)
+		sed 's/"id": "issue-412"/"id": "0c9e0f1e-6d1b-4d7a-9a56-3b1c0a5e7f10"/' "$here/issue-pictures.json"
+		;;
 	*) cat "$here/issue.json" ;;
 	esac
 	printf '\n200'

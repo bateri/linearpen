@@ -12,6 +12,7 @@ mod filters;
 mod issue;
 mod issues;
 mod params;
+mod pictures;
 mod session;
 mod work;
 
@@ -45,6 +46,16 @@ enum Failure {
     /// A comment was to be posted, and Linear did not post it (or it is not known whether it did): the
     /// words say why.
     CommentFailed(String),
+    /// A file was to be sent with a comment, an issue or a description, and was not: nothing was
+    /// sent after it, and the words say which and why.
+    UploadFailed(String),
+    /// The files were to be added to a description and Linear did not write it (or it is not
+    /// known whether it did): the words say why.
+    DescribeFailed(String),
+    /// A file of Linear was to be saved, and was not: the words say why.
+    SaveFailed(String),
+    /// A PDF could not be read for its pages and words: the words say why.
+    PdfFailed(String),
 }
 
 impl From<Failure> for ViewError {
@@ -57,6 +68,10 @@ impl From<Failure> for ViewError {
             Failure::CreateFailed(words) => Self::with_message("create-failed", words),
             Failure::ChangeFailed(words) => Self::with_message("change-failed", words),
             Failure::CommentFailed(words) => Self::with_message("comment-failed", words),
+            Failure::UploadFailed(words) => Self::with_message("upload-failed", words),
+            Failure::DescribeFailed(words) => Self::with_message("describe-failed", words),
+            Failure::SaveFailed(words) => Self::with_message("save-failed", words),
+            Failure::PdfFailed(words) => Self::with_message("pdf-failed", words),
             Failure::Linear(error) => Self::with_message(error.kind(), error.to_string()),
         }
     }
@@ -81,6 +96,25 @@ fn call<P: DeserializeOwned + 'static, T: Serialize + 'static>(
     })
 }
 
+/// The work of a call that can be given up: the session, the params it read, and whether the page gave
+/// the call up (a `cancel`), which work that takes a while looks at.
+type Stoppable<P, T> = fn(&Session, P, &dyn Fn() -> bool) -> Result<T, Failure>;
+
+/// As `call`, for work that stops when the page gives the call up.
+fn call_stoppable<P: DeserializeOwned + 'static, T: Serialize + 'static>(
+    options: Options,
+    session: &Arc<Session>,
+    name: &'static str,
+    work: Stoppable<P, T>,
+) -> Options {
+    let session = Arc::clone(session);
+    options.call(name, move |params: Value, call: &Call| {
+        let params =
+            params::parse::<P>(params).map_err(|why| ViewError::with_message("bad-params", why))?;
+        work(&session, params, &|| call.is_cancelled()).map_err(ViewError::from)
+    })
+}
+
 /// The calls and the topic the page may use, answered from `session`.
 pub fn serve(options: Options, session: &Arc<Session>) -> Options {
     let options = session::calls(options, session);
@@ -89,6 +123,7 @@ pub fn serve(options: Options, session: &Arc<Session>) -> Options {
     let options = create::calls(options, session);
     let options = change::calls(options, session);
     let options = comment::calls(options, session);
+    let options = pictures::calls(options, session);
     let options = filters::calls(options, session);
     issues::topic(options, session)
 }

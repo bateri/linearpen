@@ -24,7 +24,7 @@ pub(crate) const WIDE: (f32, f32) = (1100.0, 720.0);
 pub(crate) const PANE: (f32, f32) = (600.0, 330.0);
 
 /// How long a test waits for what the program says on its own (a list, a call).
-const WITHIN: Duration = Duration::from_secs(20);
+pub(crate) const WITHIN: Duration = Duration::from_secs(20);
 
 pub(crate) type Page = Headless<InProcess>;
 
@@ -119,6 +119,26 @@ pub(crate) struct Canned {
     details: Mutex<std::collections::HashMap<String, serde_json::Value>>,
     /// The ids `Issue` was asked for, in order.
     issues_asked: Mutex<Vec<String>>,
+    /// The bytes of the pictures of Linear by address (the default is the picture of the fixtures), the
+    /// addresses that were fetched with the key they were fetched with, and what was put to the storage
+    /// (`PUT`: the address, the headers, the bytes), in order.
+    stored: Mutex<std::collections::HashMap<String, Vec<u8>>>,
+    lost: Mutex<std::collections::HashSet<String>>,
+    fetched: Mutex<Vec<(String, String)>>,
+    put: Mutex<Vec<Put>>,
+    /// How many `FileUpload` requests were answered, and whether the storage turns the next `PUT` away.
+    uploads: Mutex<usize>,
+    storage_refuses: Mutex<bool>,
+    /// Whether the storage holds each `PUT` (after it is written down) until a test lets it go.
+    storage_holds: Mutex<bool>,
+}
+
+/// What the storage was sent: the address, the headers and the bytes.
+#[derive(Clone)]
+pub(crate) struct Put {
+    pub url: String,
+    pub headers: Vec<(String, String)>,
+    pub body: Vec<u8>,
 }
 
 /// What came, in the order it came: `Canned`'s writes (`linear IssueBatchUpdate <input>`) and what
@@ -169,6 +189,13 @@ impl Canned {
             ledger: Mutex::new(None),
             details: Mutex::new(std::collections::HashMap::new()),
             issues_asked: Mutex::new(Vec::new()),
+            stored: Mutex::new(std::collections::HashMap::new()),
+            lost: Mutex::new(std::collections::HashSet::new()),
+            fetched: Mutex::new(Vec::new()),
+            put: Mutex::new(Vec::new()),
+            uploads: Mutex::new(0),
+            storage_refuses: Mutex::new(false),
+            storage_holds: Mutex::new(false),
         })
     }
 
@@ -213,6 +240,37 @@ impl Canned {
             .entry(id.to_owned())
             .or_default()
             .push(serde_json::json!({ "url": url }));
+    }
+
+    /// From now on the picture at `url` is `bytes`.
+    /// The file at `url` is one Linear does not give (a fetch of it is not answered).
+    pub(crate) fn lose(&self, url: &str) {
+        self.lost.lock().unwrap().insert(url.to_owned());
+    }
+
+    pub(crate) fn store(&self, url: &str, bytes: Vec<u8>) {
+        self.stored.lock().unwrap().insert(url.to_owned(), bytes);
+    }
+
+    /// The addresses of pictures that were fetched, and the key each was fetched with.
+    pub(crate) fn fetched(&self) -> Vec<(String, String)> {
+        self.fetched.lock().unwrap().clone()
+    }
+
+    /// What was put to the storage, in order.
+    pub(crate) fn put(&self) -> Vec<Put> {
+        self.put.lock().unwrap().clone()
+    }
+
+    /// From now on the storage turns a `PUT` away.
+    pub(crate) fn refuse_storage(&self) {
+        *self.storage_refuses.lock().unwrap() = true;
+    }
+
+    /// From now on (until `hold_storage(false)`) the storage answers no `PUT`: it is written down, and
+    /// the call waits, so that a test can do something while a file is being sent.
+    pub(crate) fn hold_storage(&self, hold: bool) {
+        *self.storage_holds.lock().unwrap() = hold;
     }
 
     /// The ids `Issue` was asked for, in order.
@@ -449,6 +507,12 @@ impl Canned {
                 value["data"]["issue"][key] = member.clone();
             }
         }
+        // A description written to Linear is the description from then on.
+        for edit in self.edits.lock().unwrap().get(id).into_iter().flatten() {
+            if let Some(description) = edit.get("description") {
+                value["data"]["issue"]["description"] = description.clone();
+            }
+        }
         value.to_string()
     }
 
@@ -676,6 +740,68 @@ fn reshaped(name: &str, fixture: &str) -> String {
 }
 
 impl Transport for Canned {
+    fn fetch(&self, key: &Key, url: &str) -> Result<Vec<u8>, LinearError> {
+        self.fetched
+            .lock()
+            .unwrap()
+            .push((url.to_owned(), key.expose().to_owned()));
+        if self.lost.lock().unwrap().contains(url) {
+            return Err(LinearError::Unreachable("gone".to_owned()));
+        }
+        Ok(self
+            .stored
+            .lock()
+            .unwrap()
+            .get(url)
+            .cloned()
+            .unwrap_or_else(crate::pictures::double::the_picture))
+    }
+
+    fn fetch_to(
+        &self,
+        key: &Key,
+        url: &str,
+        to: &std::path::Path,
+        most: u64,
+    ) -> Result<u64, LinearError> {
+        let bytes = self.fetch(key, url)?;
+        if bytes.len() as u64 > most {
+            return Err(LinearError::Failed(
+                crate::linear::transport::TOO_LARGE.to_owned(),
+            ));
+        }
+        std::fs::write(to, &bytes).map_err(|_| LinearError::Unreachable("write".to_owned()))?;
+        Ok(bytes.len() as u64)
+    }
+
+    fn put(
+        &self,
+        url: &str,
+        headers: &[(String, String)],
+        file: &std::path::Path,
+        size: u64,
+    ) -> Result<u16, LinearError> {
+        let body = std::fs::read(file).expect("the copy is there when it is sent");
+        assert_eq!(body.len() as u64, size);
+        self.put.lock().unwrap().push(Put {
+            url: url.to_owned(),
+            headers: headers.to_vec(),
+            body,
+        });
+        // (Held for the most of half a minute: a test that forgets to let go is not left waiting.)
+        for _ in 0..3000 {
+            if !*self.storage_holds.lock().unwrap() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        Ok(if *self.storage_refuses.lock().unwrap() {
+            403
+        } else {
+            200
+        })
+    }
+
     fn post(&self, key: &Key, body: &str) -> Result<Reply, LinearError> {
         let name = [
             "Verify",
@@ -697,6 +823,7 @@ impl Transport for Canned {
             "NewIssueOptions",
             "SearchIssues",
             "FilterOptions",
+            "FileUpload",
             "Issue",
         ]
         .into_iter()
@@ -775,6 +902,19 @@ impl Transport for Canned {
                         }
                         _ => reply(200, &self.detail_of(id)),
                     }
+                }
+                "FileUpload" => {
+                    let mut count = self.uploads.lock().unwrap();
+                    *count += 1;
+                    reply(
+                        200,
+                        &serde_json::json!({ "data": { "fileUpload": { "success": true,
+                            "uploadFile": {
+                                "uploadUrl": format!("https://storage.stand-in/put/{count}?sig=SECRET"),
+                                "assetUrl": format!("https://uploads.linear.app/stand-in/{count}"),
+                                "headers": [{ "key": "x-stand-in", "value": "yes" }] } } } })
+                        .to_string(),
+                    )
                 }
                 "NewIssueTeams" => reply(200, &self.teams_text()),
                 "NewIssueOptions" => {
@@ -915,6 +1055,19 @@ pub(crate) fn open(
     fonts: Option<&pencere_drive::shot::Fonts>,
     ready: &str,
 ) -> Result<Page, Error> {
+    open_patiently(session, size, fonts, ready, None)
+}
+
+/// `open`, with the time the page waits for the program's answer (a step that tells the page something
+/// settles it, and waits for the answers the program owes) given: a short one lets a test do something
+/// while an answer is still owed, and the step that told the page is then `Error::Slow`.
+pub(crate) fn open_patiently(
+    session: &Arc<Session>,
+    size: (f32, f32),
+    fonts: Option<&pencere_drive::shot::Fonts>,
+    ready: &str,
+    patience: Option<Duration>,
+) -> Result<Page, Error> {
     let program = InProcess::new(options(session, &Arc::new(Mutex::new(None))));
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -929,6 +1082,9 @@ pub(crate) fn open(
         ));
     if let Some(fonts) = fonts {
         opening = opening.measure(fonts.clone()).scale(2.0);
+    }
+    if let Some(patience) = patience {
+        opening = opening.patience(patience);
     }
     let mut page = opening.peer(program).open()?;
     page.wait_for(WITHIN, |page| page.says(ready))?;
@@ -960,7 +1116,7 @@ pub(crate) fn cursor(page: &Page) -> String {
 }
 
 /// Waits until the cursor is on a line that says `words`.
-fn cursor_on(page: &mut Page, words: &str) {
+pub(crate) fn cursor_on(page: &mut Page, words: &str) {
     page.wait_for(WITHIN, |page| cursor(page).contains(words))
         .unwrap_or_else(|why| {
             panic!(
@@ -1369,7 +1525,7 @@ fn letters_typed_in_the_filter_are_its_own_and_the_buttons_answer_the_keyboard()
 }
 
 /// Opens the issue under the cursor with Enter, and waits for what the program tells of it.
-fn open_the_issue(page: &mut Page) {
+pub(crate) fn open_the_issue(page: &mut Page) {
     page.press("enter").expect("enter");
     page.wait_for(WITHIN, |page| page.says("API key"))
         .unwrap_or_else(|why| panic!("the description comes: {why:?}: {}", said(page)));
@@ -2819,7 +2975,7 @@ fn what_cannot_be_chosen_here_or_is_not_a_choice_falls_back_to_the_default() {
 // --- A new issue ---------------------------------------------------------------------------------
 
 /// Opens the form with `c` and waits until the program has said what can be chosen.
-fn open_new(page: &mut Page) {
+pub(crate) fn open_new(page: &mut Page) {
     page.press("c").expect("c");
     page.wait_for(WITHIN, |page| page.bounds("new-value:state").is_some())
         .unwrap_or_else(|why| panic!("the form opens: {why:?}: {}", said(page)));
@@ -2847,7 +3003,7 @@ fn pick_value(page: &mut Page, kind: &str, title: &str) {
 }
 
 /// Waits until `linear` has been asked for `count` issues.
-fn made(linear: &Arc<Canned>, page: &mut Page, count: usize) {
+pub(crate) fn made(linear: &Arc<Canned>, page: &mut Page, count: usize) {
     page.wait_for(WITHIN, |_| linear.created().len() >= count)
         .unwrap_or_else(|why| {
             panic!(
@@ -2897,7 +3053,12 @@ fn enter_in_the_title_goes_to_the_description_and_tab_goes_through_the_values() 
         page.editor_text("new-about1").as_deref(),
         Some("wcr12 it fails")
     );
-    // Tab goes through the values, in the order they stand, each one opening its menu on Enter.
+    // Tab goes on to Add image, which asks for the Open panel on Enter (the person turns it away).
+    page.press("tab").expect("tab");
+    page.press("enter").expect("enter");
+    assert!(page.panel().is_some(), "Add image asks for the Open panel");
+    page.choose_files(&[]).expect("turned away");
+    // Then through the values, in the order they stand, each one opening its menu on Enter.
     for (kind, first) in [
         ("team", "WEB web"),
         ("state", "In Progress"),
@@ -3260,7 +3421,7 @@ fn open_the_controls(page: &mut Page) {
 }
 
 /// Waits until Linear has been sent `count` changes.
-fn changed(linear: &Arc<Canned>, page: &mut Page, count: usize) {
+pub(crate) fn changed(linear: &Arc<Canned>, page: &mut Page, count: usize) {
     page.wait_for(WITHIN, |_| linear.changed().len() >= count)
         .unwrap_or_else(|why| {
             panic!(
@@ -6090,12 +6251,12 @@ fn the_key_of_the_neighbours_opens_a_menu_of_the_parts_and_the_ties_and_a_pick_o
 // --- The comment ------------------------------------------------------------------------------------------
 
 /// The name of the editor of the comment of the issue `id` (the first one it has had).
-fn comment_editor(id: &str) -> String {
+pub(crate) fn comment_editor(id: &str) -> String {
     format!("comment-{id}-0")
 }
 
 /// Whether the keyboard is in the editor `name`.
-fn typing_in(page: &Page, name: &str) -> bool {
+pub(crate) fn typing_in(page: &Page, name: &str) -> bool {
     page.focus() == pencere_drive::headless::Focus::Editor(pencere_view::Id::named(name))
 }
 
@@ -6370,7 +6531,9 @@ fn a_button_says_its_key_and_stays_as_wide_whatever_has_the_keyboard() {
             page.words_in(name)
         );
     }
-    let alike = |page: &Page, when: &str| {
+    // (`quiet` are the buttons whose key is not theirs just now: where the keyboard is in the comment Esc is
+    // the line of keys', and Close does not say it, while it is as wide as it was.)
+    let alike = |page: &Page, when: &str, quiet: &[&str]| {
         for (name, key, was) in &before {
             let now = page.bounds(name);
             let (Some(was), Some(now)) = (was, now) else {
@@ -6383,8 +6546,9 @@ fn a_button_says_its_key_and_stays_as_wide_whatever_has_the_keyboard() {
                     && (was.h - now.h).abs() < 0.6,
                 "{name} {when}: was {was:?}, is {now:?}"
             );
-            assert!(
+            assert_eq!(
                 page.words_in(name).iter().any(|word| word == key),
+                !quiet.contains(name),
                 "{name} {when} says {key}: {:?}",
                 page.words_in(name)
             );
@@ -6395,19 +6559,23 @@ fn a_button_says_its_key_and_stays_as_wide_whatever_has_the_keyboard() {
     page.wait_for(WITHIN, |page| typing_in(page, &comment_editor("issue-412")))
         .unwrap_or_else(|why| panic!("the keyboard is in the field: {why:?}: {}", said(&page)));
     page.advance(0.3).expect("a moment");
-    alike(&page, "with the comment field empty and typed in");
+    alike(
+        &page,
+        "with the comment field empty and typed in",
+        &["panel-close"],
+    );
     page.type_text("Words").expect("the words");
     page.advance(0.3).expect("a moment");
-    alike(&page, "with words in the comment field");
+    alike(&page, "with words in the comment field", &["panel-close"]);
     page.press("escape").expect("escape");
     page.advance(0.3).expect("a moment");
-    alike(&page, "with the comment field left");
+    alike(&page, "with the comment field left", &[]);
     // The title is written.
     page.press("r").expect("r");
     page.wait_for(WITHIN, |page| page.says("save"))
         .unwrap_or_else(|why| panic!("the title is a field: {why:?}: {}", said(&page)));
     page.advance(0.3).expect("a moment");
-    alike(&page, "with the title written");
+    alike(&page, "with the title written", &[]);
     page.press("escape").expect("escape");
     page.wait_for(WITHIN, |page| !page.says("save"))
         .unwrap_or_else(|why| panic!("the title is left: {why:?}: {}", said(&page)));
@@ -6415,7 +6583,7 @@ fn a_button_says_its_key_and_stays_as_wide_whatever_has_the_keyboard() {
     page.press("/").expect("/");
     page.type_text("bug").expect("the filter is typed");
     page.advance(0.3).expect("a moment");
-    alike(&page, "with words typed in the filter");
+    alike(&page, "with words typed in the filter", &[]);
 }
 
 #[test]
@@ -6450,7 +6618,7 @@ fn command_enter_posts_a_comment_only_while_the_field_of_the_comment_has_the_key
 // --- The right button and the copies ---------------------------------------------------------------------
 
 /// The titles of the entries of the host's menu that is open.
-fn open_menu_titles(page: &Page) -> Vec<String> {
+pub(crate) fn open_menu_titles(page: &Page) -> Vec<String> {
     page.menu()
         .map(|menu| {
             menu.entries

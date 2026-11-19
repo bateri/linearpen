@@ -82,7 +82,7 @@ fn list_prints_my_issues_in_groups_and_as_json_with_the_key_nowhere() {
         assert!(first.get(field).is_some(), "{field}: {first}");
     }
     for call in home.calls() {
-        assert_eq!(call.argv, ["--config", "-"]);
+        assert_eq!(call.argv, ["-q", "--config", "-"]);
         assert_eq!(call.env_key, "unset");
     }
     assert!(!ran.stdout.contains(KEY) && !json.stdout.contains(KEY) && !json.stderr.contains(KEY));
@@ -231,7 +231,7 @@ fn what_is_not_understood_ends_with_two_and_help_and_teams_work() {
     assert_eq!(ran.status, Some(2));
     assert!(
         ran.stderr
-            .contains("never changes an issue's description or team"),
+            .contains("never changes the words of an issue's description, or its team"),
         "{}",
         ran.stderr
     );
@@ -250,90 +250,558 @@ fn what_is_not_understood_ends_with_two_and_help_and_teams_work() {
     assert!(home.calls().is_empty());
 }
 
-const AGENT: &str = "0c9e0f1e-6d1b-4d7a-9a56-3b1c0a5e7f10";
+// --- Files ---------------------------------------------------------------------------------------
 
-#[test]
-fn in_an_agents_pane_a_write_it_may_not_make_stops_before_curl() {
-    let home = Home::new();
-    let made = linearpen(
-        &home,
-        &["create", "--team", "ACM", "--title", "x"],
-        &[("LINEARPEN_AGENT", AGENT)],
-        None,
-    );
-    assert_eq!(made.status, Some(1), "{}", made.stderr);
-    assert!(
-        made.stderr.contains("it makes no issues"),
-        "{}",
-        made.stderr
-    );
-    assert!(made.stdout.is_empty(), "{}", made.stdout);
-    let more = linearpen(
-        &home,
-        &["update", "ACM-412", "--status", "Done", "--priority", "low"],
-        &[("LINEARPEN_AGENT", AGENT)],
-        None,
-    );
-    assert_eq!(more.status, Some(1), "{}", more.stderr);
-    assert!(
-        more.stderr.contains("it changes only the status"),
-        "{}",
-        more.stderr
-    );
-    // A variable that is set and holds no id is an agent's run that may write nothing.
-    for value in ["", "ACM-412", "not-an-id"] {
-        let update = linearpen(
-            &home,
-            &["update", "ACM-412", "--status", "Done"],
-            &[("LINEARPEN_AGENT", value)],
-            None,
-        );
-        assert_eq!(update.status, Some(1), "{value:?}: {}", update.stderr);
-        assert!(
-            update.stderr.contains("it writes nothing"),
-            "{}",
-            update.stderr
-        );
-        let comment = linearpen(
-            &home,
-            &["comment", "ACM-412", "--body", "-"],
-            &[("LINEARPEN_AGENT", value)],
-            Some("words"),
-        );
-        assert_eq!(comment.status, Some(1), "{value:?}: {}", comment.stderr);
-    }
-    // Not one of them reached `curl`.
-    assert!(home.calls().is_empty(), "{:?}", home.calls().len());
+const PNG: &[u8] = include_bytes!("../test/stand-in/picture.png");
+const JPG: &[u8] = include_bytes!("../test/stand-in/picture.jpg");
+const PICTURES: [(&str, &str); 1] = [("STANDIN_ISSUE", "pictures")];
+
+/// A PNG file of the home, by `name`, and its path.
+fn picture(home: &Home, name: &str) -> String {
+    let path = home.path(name);
+    std::fs::write(&path, PNG).unwrap();
+    path.display().to_string()
+}
+
+/// A file of the home with these `bytes`, by `name`, and its path.
+fn file(home: &Home, name: &str, bytes: &[u8]) -> String {
+    let path = home.path(name);
+    std::fs::write(&path, bytes).unwrap();
+    path.display().to_string()
+}
+
+/// What the stand-in storage was sent as its `n`th file (from 1).
+fn stored(home: &Home, n: usize) -> Vec<u8> {
+    std::fs::read(format!("{}.put.{n}", home.log().display())).unwrap()
+}
+
+/// The address each call of the stand-in `curl` had.
+fn addresses(home: &Home) -> Vec<String> {
+    home.calls()
+        .iter()
+        .filter_map(|call| {
+            call.stdin
+                .lines()
+                .find_map(|line| line.strip_prefix("url = \"")?.strip_suffix('"'))
+                .map(str::to_owned)
+        })
+        .collect()
 }
 
 #[test]
-fn in_an_agents_pane_another_issue_is_read_and_then_refused_with_no_write_and_the_rest_is_read() {
+fn show_numbers_the_files_of_an_issue_and_fetches_none_until_asked_to() {
     let home = Home::new();
-    // The issue the stand-in has is `issue-412`, not the agent's.
-    for args in [
-        &["update", "ACM-412", "--status", "done"][..],
-        &["comment", "ACM-412", "--body", "x"],
+    let ran = linearpen(&home, &["show", "ACM-412"], &PICTURES, None);
+    assert_eq!(ran.status, Some(0), "{}", ran.stderr);
+    for placeholder in [
+        "[image 1: Checkout error]",
+        "[image 2: trace.jpg]",
+        "[image 3: elsewhere]",
+        "[image 4: huge]",
+        "[image 5: odd]",
+        "[image 6: missing.png]",
+        "[file 7: build log.txt]",
+        "[a site](https://example.com/z)",
     ] {
-        let ran = linearpen(&home, args, &[("LINEARPEN_AGENT", AGENT)], None);
-        assert_eq!(ran.status, Some(1), "{args:?}: {}", ran.stderr);
         assert!(
-            ran.stderr.contains("on another issue"),
-            "{args:?}: {}",
-            ran.stderr
+            ran.stdout.contains(placeholder),
+            "{placeholder}: {}",
+            ran.stdout
         );
     }
-    assert_eq!(writes(&home), 0);
-    assert!(!sent(&home, "Issue").is_empty());
+    assert!(
+        ran.stdout
+            .ends_with("\n7 files: linearpen show ACM-412 --files DIR saves them\n"),
+        "{}",
+        ran.stdout
+    );
+    // Only the issue was asked for: no address of the files.
+    assert!(
+        addresses(&home)
+            .iter()
+            .all(|url| url == "http://127.0.0.1:9/graphql"),
+        "{:?}",
+        addresses(&home)
+    );
+    // The JSON keeps the texts as Linear wrote them and lists the files.
+    let json = linearpen(&home, &["show", "ACM-412", "--json"], &PICTURES, None);
+    let value: serde_json::Value = serde_json::from_str(&json.stdout).unwrap();
+    assert!(
+        value["description"]
+            .as_str()
+            .unwrap()
+            .contains("![Checkout error](")
+    );
+    assert_eq!(value["files"].as_array().unwrap().len(), 7);
+    assert_eq!(value["files"][5]["in"], "comment");
+    assert_eq!(value["files"][6]["kind"], "file");
+    assert_eq!(value["files"][6]["name"], "build log.txt");
+}
 
-    let listed = linearpen(&home, &["list"], &[("LINEARPEN_AGENT", AGENT)], None);
-    assert_eq!(listed.status, Some(0), "{}", listed.stderr);
-    assert!(listed.stdout.starts_with("My issues"), "{}", listed.stdout);
-    let shown = linearpen(
+#[test]
+fn files_saves_the_files_of_linear_sends_the_key_to_that_host_only_and_a_second_run_changes_nothing()
+ {
+    let home = Home::new();
+    let dir = home.path("pics/of/it");
+    let args = ["show", "ACM-412", "--files", dir.to_str().unwrap()];
+    let ran = linearpen(&home, &args, &PICTURES, None);
+    assert_eq!(ran.status, Some(0), "{}", ran.stderr);
+    assert_eq!(
+        std::fs::read(dir.join("1-Checkout-error.png")).unwrap(),
+        PNG
+    );
+    assert_eq!(std::fs::read(dir.join("2-trace.jpg")).unwrap(), JPG);
+    // A file that is not a picture is saved as it is, with the extension its name has; and what the
+    // stand-in gave for `text.png` (words, not a picture) is a file all the same.
+    assert_eq!(
+        std::fs::read(dir.join("7-build-log.txt")).unwrap(),
+        b"line one\nline two\n"
+    );
+    assert_eq!(
+        std::fs::read(dir.join("5-odd.png")).unwrap(),
+        b"this is not a picture"
+    );
+    for line in [
+        "  3  description  not on Linear  https://example.com/y.png\n",
+        "  4  description  too large  https://uploads.linear.app/stand-in/big.png\n",
+        "  6  comment by Deniz  could not be fetched  https://uploads.linear.app/stand-in/missing.png\n",
+    ] {
+        assert!(ran.stdout.contains(line), "{line}: {}", ran.stdout);
+    }
+    assert!(
+        ran.stdout.contains(&format!(
+            "  1  description  {}",
+            dir.join("1-Checkout-error.png").display()
+        )),
+        "{}",
+        ran.stdout
+    );
+    use std::os::unix::fs::PermissionsExt;
+    assert_eq!(
+        std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777,
+        0o700
+    );
+    // The key went to Linear's two hosts and example.com was not asked at all.
+    let urls = addresses(&home);
+    assert!(
+        urls.iter().all(|url| url == "http://127.0.0.1:9/graphql"
+            || url.starts_with("https://uploads.linear.app/stand-in/")),
+        "{urls:?}"
+    );
+    for call in home.calls() {
+        // Every curl is `curl -q --config -`: `-q` first, so that no `.curlrc` of the person's is read.
+        assert_eq!(call.argv, ["-q", "--config", "-"], "{}", call.stdin);
+        // `curl` follows no redirect: the program does.
+        assert!(!call.stdin.contains("location"), "{}", call.stdin);
+    }
+    assert_eq!(writes(&home), 0);
+    // The same again prints the same paths and makes no more files.
+    let again = linearpen(&home, &args, &PICTURES, None);
+    assert_eq!(again.stdout, ran.stdout);
+    assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 4);
+}
+
+#[test]
+fn a_file_sent_on_elsewhere_is_followed_by_the_program_and_the_key_stays_at_linear() {
+    let home = Home::new();
+    let dir = home.path("moved");
+    let ran = linearpen(
         &home,
-        &["show", "ACM-412"],
-        &[("LINEARPEN_AGENT", "")],
+        &["show", "ACM-412", "--files", dir.to_str().unwrap()],
+        &[("STANDIN_ISSUE", "moved")],
         None,
     );
-    assert_eq!(shown.status, Some(0), "{}", shown.stderr);
+    assert_eq!(ran.status, Some(0), "{}", ran.stderr);
+    // `.../moved.png` is sent on to https://cdn.stand-in/moved.png: the file is what is there, and the
+    // body of the redirect is not in it.
+    assert_eq!(
+        std::fs::read(dir.join("1-Checkout-error.png")).unwrap(),
+        PNG
+    );
+    // A place that is not https is not followed, and a file that sends itself on is given up on.
+    assert!(!dir.join("2-trace.jpg").exists());
+    assert!(!dir.join("7-build-log.txt").exists());
+    let calls = home.calls();
+    let to = |url: &str| -> Vec<&common::Call> {
+        calls
+            .iter()
+            .filter(|call| {
+                call.stdin
+                    .lines()
+                    .any(|line| line == format!("url = \"{url}\""))
+            })
+            .collect()
+    };
+    let cdn = to("https://cdn.stand-in/moved.png");
+    assert_eq!(cdn.len(), 1);
+    // The key went to Linear's file and not to the place it was sent on to.
+    assert!(!cdn[0].stdin.contains("Authorization"), "{}", cdn[0].stdin);
+    assert!(!cdn[0].stdin.contains("lin_api"), "{}", cdn[0].stdin);
+    let first = to("https://uploads.linear.app/stand-in/moved.png");
+    assert_eq!(first.len(), 1);
+    assert!(first[0].stdin.contains("Authorization"));
+    // Nothing was asked of the place that is not https, and a file that sends itself to itself was
+    // asked for five times and no more.
+    assert!(to("http://cdn.stand-in/away.png").is_empty());
+    let forever = addresses(&home)
+        .iter()
+        .filter(|url| url.contains("moved-forever"))
+        .count();
+    assert_eq!(forever, 5);
     assert_eq!(writes(&home), 0);
+}
+
+#[test]
+fn comment_with_files_puts_them_in_storage_first_and_posts_once_with_their_lines() {
+    let home = Home::new();
+    let shot = picture(&home, "shot one.png");
+    let ran = linearpen(
+        &home,
+        &[
+            "comment",
+            "ACM-412",
+            "--body",
+            "Seen here",
+            "--attach",
+            &shot,
+        ],
+        &[],
+        None,
+    );
+    assert_eq!(ran.status, Some(0), "{}", ran.stderr);
+    assert_eq!(ran.stdout, "ACM-412: comment added with 1 file\n");
+    let posted = sent(&home, "CommentCreate");
+    assert_eq!(posted.len(), 1);
+    assert_eq!(
+        posted[0]["variables"]["input"]["body"],
+        "Seen here\n\n![shot one.png](https://uploads.linear.app/stand-in/1)"
+    );
+    assert_eq!(stored(&home, 1), PNG);
+    // The key went to Linear and not to the storage; its signed address is nowhere said.
+    let calls = home.calls();
+    let put = calls
+        .iter()
+        .find(|call| call.stdin.contains("request = \"PUT\""))
+        .expect("a PUT");
+    assert!(!put.stdin.contains(KEY), "{}", put.stdin);
+    assert!(
+        put.stdin.contains("https://storage.stand-in/put/1"),
+        "{}",
+        put.stdin
+    );
+    assert!(!ran.stdout.contains("SECRET") && !ran.stderr.contains("SECRET"));
+    // Files only is a comment too.
+    let home = Home::new();
+    let shot = picture(&home, "a.png");
+    let ran = linearpen(&home, &["comment", "ACM-412", "--attach", &shot], &[], None);
+    assert_eq!(ran.status, Some(0), "{}", ran.stderr);
+    assert_eq!(
+        sent(&home, "CommentCreate")[0]["variables"]["input"]["body"],
+        "![a.png](https://uploads.linear.app/stand-in/1)"
+    );
+}
+
+#[test]
+fn a_comment_or_an_issue_that_would_be_too_long_with_the_lines_of_its_files_is_refused_before_any_is_sent()
+ {
+    let home = Home::new();
+    let shot = picture(&home, "shot.png");
+    // Under the most as words, over it with a file's line (which is at most ~250 characters).
+    let body = "x".repeat(9_900);
+    let ran = linearpen(
+        &home,
+        &["comment", "ACM-412", "--body", &body, "--attach", &shot],
+        &[],
+        None,
+    );
+    assert_eq!(ran.status, Some(2), "{}", ran.stderr);
+    assert!(
+        ran.stderr.contains("with the lines of its files"),
+        "{}",
+        ran.stderr
+    );
+    // Nothing was asked of Linear, nothing was stored, nothing was posted.
+    assert!(home.calls().is_empty(), "{:?}", addresses(&home));
+    let description = "y".repeat(49_900);
+    let ran = linearpen(
+        &home,
+        &[
+            "create",
+            "--team",
+            "ACM",
+            "--title",
+            "T",
+            "--description",
+            &description,
+            "--attach",
+            &shot,
+        ],
+        &[],
+        None,
+    );
+    assert_eq!(ran.status, Some(2), "{}", ran.stderr);
+    assert!(
+        ran.stderr.contains("with the lines of its files"),
+        "{}",
+        ran.stderr
+    );
+    assert!(home.calls().is_empty(), "{:?}", addresses(&home));
+    // Words that leave room go through.
+    let ran = linearpen(
+        &home,
+        &[
+            "comment",
+            "ACM-412",
+            "--body",
+            &"x".repeat(9_000),
+            "--attach",
+            &shot,
+        ],
+        &[],
+        None,
+    );
+    assert_eq!(ran.status, Some(0), "{}", ran.stderr);
+}
+
+#[test]
+fn a_file_of_any_kind_is_sent_as_a_link_by_what_it_holds_and_one_that_cannot_be_sent_ends_with_two()
+{
+    let home = Home::new();
+    // A PDF by its first bytes though its name says nothing, a log, bytes that are nothing known, a
+    // GIF (a picture) under a name that is not one: each is told to be what it is.
+    let pdf = file(
+        &home,
+        "report",
+        b"%PDF-1.7\n1 0 obj\n<< /Type /Pages /Count 2 >>\nendobj\n",
+    );
+    let log = file(&home, "build log.txt", b"line one\nline two\n");
+    let blob = file(&home, "blob.bin", &[0, 1, 2, 3, 4, 5]);
+    let gif = file(&home, "anim.dat", b"GIF89a.......");
+    let ran = linearpen(
+        &home,
+        &[
+            "comment", "ACM-412", "--body", "Files", "--attach", &pdf, "--attach", &log,
+            "--attach", &blob, "--attach", &gif,
+        ],
+        &[],
+        None,
+    );
+    assert_eq!(ran.status, Some(0), "{}", ran.stderr);
+    assert_eq!(ran.stdout, "ACM-412: comment added with 4 files\n");
+    let posted = sent(&home, "CommentCreate");
+    assert_eq!(
+        posted[0]["variables"]["input"]["body"],
+        "Files\n\n[report](https://uploads.linear.app/stand-in/1)\n[build log.txt](https://uploads.linear.app/stand-in/2)\n[blob.bin](https://uploads.linear.app/stand-in/3)\n![anim.dat](https://uploads.linear.app/stand-in/4)"
+    );
+    assert_eq!(stored(&home, 2), b"line one\nline two\n");
+    assert_eq!(stored(&home, 3), [0, 1, 2, 3, 4, 5]);
+    let types: Vec<String> = sent(&home, "FileUpload")
+        .iter()
+        .map(|call| {
+            call["variables"]["contentType"]
+                .as_str()
+                .unwrap()
+                .to_owned()
+        })
+        .collect();
+    assert_eq!(
+        types,
+        [
+            "application/pdf",
+            "application/octet-stream",
+            "application/octet-stream",
+            "image/gif"
+        ]
+    );
+    // The copy that was sent is not left behind: the run's temporary folder is as it was.
+    assert_eq!(std::fs::read_dir(home.path("tmp")).unwrap().count(), 0);
+}
+
+#[test]
+fn a_file_that_is_empty_or_a_folder_or_not_there_or_too_large_ends_with_two_and_asks_nothing() {
+    let home = Home::new();
+    let empty = file(&home, "empty.txt", b"");
+    let ran = linearpen(
+        &home,
+        &["comment", "ACM-412", "--attach", &empty],
+        &[],
+        None,
+    );
+    assert_eq!(ran.status, Some(2), "{}", ran.stderr);
+    assert!(ran.stderr.contains("is empty"), "{}", ran.stderr);
+    let folder = home.path("a folder");
+    std::fs::create_dir(&folder).unwrap();
+    let ran = linearpen(
+        &home,
+        &["comment", "ACM-412", "--attach", folder.to_str().unwrap()],
+        &[],
+        None,
+    );
+    assert_eq!(ran.status, Some(2), "{}", ran.stderr);
+    assert!(ran.stderr.contains("is not a file"), "{}", ran.stderr);
+    // A hundred MiB and a byte: nothing of it is read (the file is sparse), and nothing is asked.
+    let big = home.path("big.bin");
+    let opened = std::fs::File::create(&big).unwrap();
+    opened.set_len(100 * 1024 * 1024 + 1).unwrap();
+    let ran = linearpen(
+        &home,
+        &["comment", "ACM-412", "--attach", big.to_str().unwrap()],
+        &[],
+        None,
+    );
+    assert_eq!(ran.status, Some(2), "{}", ran.stderr);
+    assert!(ran.stderr.contains("is over 100 MiB"), "{}", ran.stderr);
+    let missing = linearpen(
+        &home,
+        &[
+            "comment",
+            "ACM-412",
+            "--body",
+            "x",
+            "--attach",
+            "/nowhere/a.png",
+        ],
+        &[],
+        None,
+    );
+    assert_eq!(missing.status, Some(2), "{}", missing.stderr);
+    // None of them asked Linear anything.
+    assert!(home.calls().is_empty());
+    // A hundred MiB exactly is a file: it is sent, and its transfer is given time by its size.
+    let exact = home.path("exact.bin");
+    let opened = std::fs::File::create(&exact).unwrap();
+    opened.set_len(100 * 1024 * 1024).unwrap();
+    let ran = linearpen(
+        &home,
+        &[
+            "comment",
+            "ACM-412",
+            "--body",
+            "x",
+            "--attach",
+            exact.to_str().unwrap(),
+        ],
+        &[],
+        None,
+    );
+    assert_eq!(ran.status, Some(0), "{}", ran.stderr);
+    let calls = home.calls();
+    let put = calls
+        .iter()
+        .find(|call| call.stdin.contains("request = \"PUT\""))
+        .expect("a PUT");
+    assert!(put.stdin.contains("max-time = 1168"), "{}", put.stdin);
+    assert_eq!(
+        std::fs::metadata(format!("{}.put.1", home.log().display()))
+            .unwrap()
+            .len(),
+        100 * 1024 * 1024
+    );
+}
+
+#[test]
+fn a_file_that_cannot_be_stored_writes_nothing() {
+    let home = Home::new();
+    let shot = picture(&home, "a.png");
+    let ran = linearpen(
+        &home,
+        &["comment", "ACM-412", "--body", "x", "--attach", &shot],
+        &[("STANDIN_PUT", "refused")],
+        None,
+    );
+    assert_eq!(ran.status, Some(1), "{}", ran.stderr);
+    assert!(ran.stderr.contains("nothing was written"), "{}", ran.stderr);
+    assert!(!ran.stderr.contains("SECRET") && !ran.stderr.contains("storage.stand-in"));
+    assert!(sent(&home, "CommentCreate").is_empty());
+}
+
+#[test]
+fn create_with_files_ends_its_description_with_their_lines() {
+    let home = Home::new();
+    let shot = picture(&home, "a.png");
+    let ran = linearpen(
+        &home,
+        &[
+            "create",
+            "--team",
+            "ACM",
+            "--title",
+            "Fix it",
+            "--description",
+            "Look",
+            "--attach",
+            &shot,
+        ],
+        &[],
+        None,
+    );
+    assert_eq!(ran.status, Some(0), "{}", ran.stderr);
+    assert!(ran.stdout.starts_with("ACM-900  "), "{}", ran.stdout);
+    assert!(
+        ran.stdout.trim_end().ends_with("with 1 file"),
+        "{}",
+        ran.stdout
+    );
+    let made = sent(&home, "IssueCreate");
+    assert_eq!(made.len(), 1);
+    assert_eq!(
+        made[0]["variables"]["input"]["description"],
+        "Look\n\n![a.png](https://uploads.linear.app/stand-in/1)"
+    );
+    // The files first, then the issue.
+    let order: Vec<_> = home
+        .calls()
+        .iter()
+        .filter_map(|call| {
+            ["FileUpload", "IssueCreate"].into_iter().find(|name| {
+                call.stdin
+                    .contains(&format!("operationName\\\":\\\"{name}"))
+            })
+        })
+        .collect();
+    assert_eq!(order, ["FileUpload", "IssueCreate"]);
+}
+
+#[test]
+fn update_with_files_adds_them_to_the_whole_description_read_from_linear_just_now() {
+    let home = Home::new();
+    let shot = picture(&home, "a.png");
+    let ran = linearpen(&home, &["update", "ACM-412", "--attach", &shot], &[], None);
+    assert_eq!(ran.status, Some(0), "{}", ran.stderr);
+    assert!(ran.stdout.starts_with("ACM-412  "), "{}", ran.stdout);
+    assert!(
+        ran.stdout.trim_end().ends_with("with 1 file"),
+        "{}",
+        ran.stdout
+    );
+    let batches = sent(&home, "IssueBatchUpdate");
+    assert_eq!(batches.len(), 1);
+    let input = &batches[0]["variables"]["input"];
+    // The description is all there is of it, and nothing else is in the change.
+    assert_eq!(input.as_object().unwrap().len(), 1, "{input}");
+    let description = input["description"].as_str().unwrap();
+    assert!(
+        description.starts_with("The public API has no limit per key."),
+        "{description}"
+    );
+    assert!(description.contains("(ACM-371)"), "{description}");
+    assert!(
+        description.ends_with("\n\n![a.png](https://uploads.linear.app/stand-in/1)"),
+        "{description}"
+    );
+    assert_eq!(
+        batches[0]["variables"]["ids"],
+        serde_json::json!(["issue-412"])
+    );
+    // Where the answer to the write is lost, the end is 3 and it was sent once.
+    let home = Home::new();
+    let shot = picture(&home, "a.png");
+    let lost = linearpen(
+        &home,
+        &["update", "ACM-412", "--attach", &shot],
+        &[("STANDIN_CHANGE", "lost")],
+        None,
+    );
+    assert_eq!(lost.status, Some(3), "{}", lost.stderr);
+    assert_eq!(sent(&home, "IssueBatchUpdate").len(), 1);
 }

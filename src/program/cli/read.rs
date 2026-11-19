@@ -3,6 +3,7 @@
 use std::fmt::Write as _;
 
 use super::json::{self, Issues, Shown};
+use super::pictures::{self, Marked, Place};
 use super::resolve::{Lookups, WORKSPACE, cycle, pick};
 use super::{Access, Stop, asked_wrong, json as print_json};
 use crate::command_line::{List, ListScope};
@@ -179,8 +180,28 @@ fn or_dash(text: Option<String>) -> String {
         .unwrap_or_else(|| "-".to_owned())
 }
 
-/// An issue as text: its fields, its description, the issues around it and its comments.
-fn shown(issue: &Issue) -> String {
+/// The list that ends the text of an issue with files: the number, where it stands, and where it is
+/// (the file where `--files` had it, why not where it could not be had, else its address).
+fn file_list(out: &mut String, marked: &Marked) {
+    out.push_str("\nFiles\n");
+    for one in &marked.seen {
+        let place = match &one.place {
+            Place::Description => "description".to_owned(),
+            Place::Comment { author, .. } => format!("comment by {author}"),
+        };
+        let at = match (&one.path, one.refused) {
+            (Some(path), _) => plain(&path.display().to_string()),
+            (None, Some(why)) => format!("{}  {}", why.words(), plain(&one.src)),
+            (None, None) => plain(&one.src),
+        };
+        let _ = writeln!(out, "  {}  {place}  {at}", one.n);
+    }
+}
+
+/// An issue as text: its fields, its description, the issues around it and its comments, and the
+/// pictures and files they hold (`marked`: put where they stand as `[image N: name]` or `[file N: name]`,
+/// and listed at the end).
+fn shown(issue: &Issue, marked: &Marked, saved: bool) -> String {
     let mut out = String::new();
     let _ = writeln!(
         out,
@@ -231,7 +252,7 @@ fn shown(issue: &Issue) -> String {
     field("Due", or_dash(issue.due_date.as_deref().map(plain)));
     field("Branch", or_dash(issue.branch_name.as_deref().map(plain)));
     field("Updated", short_date(&issue.updated_at));
-    if let Some(description) = issue
+    if let Some(description) = marked
         .description
         .as_deref()
         .filter(|text| !text.trim().is_empty())
@@ -262,13 +283,13 @@ fn shown(issue: &Issue) -> String {
     }
     if let Some(comments) = &issue.comments {
         let _ = writeln!(out, "\nComments ({})", comments.nodes.len());
-        for comment in &comments.nodes {
+        for (comment, body) in comments.nodes.iter().zip(&marked.comments) {
             let who = comment
                 .user
                 .as_ref()
                 .map_or_else(|| "Someone".to_owned(), |who| plain(&who.display_name));
             let _ = writeln!(out, "  {who}, {}", short_date(&comment.created_at));
-            for line in lines(comment.body.trim_end()).lines() {
+            for line in lines(body.trim_end()).lines() {
                 let _ = writeln!(out, "    {line}");
             }
         }
@@ -280,10 +301,29 @@ fn shown(issue: &Issue) -> String {
             );
         }
     }
+    if !marked.seen.is_empty() {
+        file_list(&mut out, marked);
+        if !saved {
+            let count = marked.seen.len();
+            let _ = writeln!(
+                out,
+                "\n{count} file{}: linearpen show {} --files DIR saves them",
+                if count == 1 { "" } else { "s" },
+                plain(&issue.identifier)
+            );
+        }
+    }
     out
 }
 
-pub fn show(access: &Access, identifier: &str, json: bool) -> Result<String, Stop> {
+/// An issue, printed. With `files` (a folder) the files of it that are on Linear are saved there
+/// and told by their paths.
+pub fn show(
+    access: &Access,
+    identifier: &str,
+    files: Option<&str>,
+    json: bool,
+) -> Result<String, Stop> {
     let issue = linear::fetch_issue(access.transport, access.key, identifier).map_err(|error| {
         if linear::no_such_issue(&error) {
             Stop::no(format!("Linear has no issue {identifier}"))
@@ -291,10 +331,14 @@ pub fn show(access: &Access, identifier: &str, json: bool) -> Result<String, Sto
             asked_wrong(access, &error)
         }
     })?;
-    if json {
-        return print_json(&Shown::of(&issue));
+    let mut marked = pictures::mark(&issue);
+    if let Some(dir) = files {
+        pictures::save(access, std::path::Path::new(dir), &mut marked.seen)?;
     }
-    Ok(shown(&issue))
+    if json {
+        return print_json(&Shown::of(&issue, &marked.seen));
+    }
+    Ok(shown(&issue, &marked, files.is_some()))
 }
 
 pub fn teams(access: &Access, team: Option<&str>, json: bool) -> Result<String, Stop> {

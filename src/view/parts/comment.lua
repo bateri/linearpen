@@ -5,6 +5,7 @@
 -- comment, or why not, said under the field with the words kept).
 
 local kit = require("../lib/kit")
+local attach = require("./attach")
 local commands = require("./commands")
 
 local b, u, S, SIZE, act = kit.b, kit.u, kit.S, kit.SIZE, kit.act
@@ -109,14 +110,20 @@ local function words_for(id)
 	return C.drafts[id] or ""
 end
 
--- Whether Comment can be pressed now for the issue `id`.
+-- The key of the files chosen for the comment of the issue `id`.
+local function pictures_of(id)
+	return "comment:" .. id
+end
+
+-- Whether Comment can be pressed now for the issue `id`: there are words, or files (the comment may
+-- be the files alone).
 function comment.sendable(id)
 	if id == nil or C.sending[id] then
 		return false
 	end
 	local words = words_for(id)
 	local length = utf8.len(words)
-	return trimmed(words) ~= "" and length ~= nil and length <= MOST
+	return (trimmed(words) ~= "" or attach.count(pictures_of(id)) > 0) and length ~= nil and length <= MOST
 end
 
 -- Why Comment cannot be pressed, where it cannot.
@@ -125,8 +132,8 @@ local function why_not(id)
 		return nil
 	end
 	local words = words_for(id)
-	if trimmed(words) == "" then
-		return "Write the comment first"
+	if trimmed(words) == "" and attach.count(pictures_of(id)) == 0 then
+		return "Write the comment or attach a file first"
 	end
 	return "A comment is up to " .. MOST .. " characters"
 end
@@ -139,7 +146,8 @@ function comment.send(id)
 	end
 	local words = words_for(id)
 	C.sending[id], C.problems[id] = true, nil
-	kit.call("comment", { issue = id, body = words }, function(result, err)
+	local files = attach.params(pictures_of(id))
+	kit.call("comment", { issue = id, body = words, files = files }, function(result, err)
 		C.sending[id] = nil
 		if err then
 			C.problems[id] = err.message or err.code
@@ -151,6 +159,7 @@ function comment.send(id)
 		-- Posted: the words are Linear's now, the field is another one with nothing in it, and the
 		-- issue is asked for again, with the comment among its own.
 		local had = comment.typing() and C.drawn == id
+		attach.release(pictures_of(id), files)
 		C.drafts[id] = nil
 		C.serial[id] = (C.serial[id] or 0) + 1
 		if C.loading == id then
@@ -168,6 +177,7 @@ end
 function comment.focus(id)
 	return u:focus(u:field(editor_name(id)))
 end
+act.comment_focus = comment.focus
 
 -- A key while the editor has the keyboard: Esc takes it back (the words stay), Tab goes to Comment
 -- where it can be pressed; every other key is the editor's. The reply, or nil.
@@ -230,7 +240,12 @@ function comment.view(id)
 		:motion({ seconds = t.motion, color = true })
 		:child(editor)
 		:child(b.div():no_shrink():mt(8):child(u:kbd(commands.first("comment"))))
-	local box = b.div():col():gap(8):mt(14):no_shrink():child(field)
+	-- (The box has a name: a drop on it is the comment's.)
+	local box = b.div():id("comment-box"):col():gap(8):mt(14):no_shrink():child(field)
+	local tray = attach.tray(pictures_of(id), sending)
+	if tray ~= nil then
+		box:child(tray)
+	end
 	local ready = comment.sendable(id)
 	local button = kit.button("comment-send", "Comment", {
 		primary = true,
@@ -243,12 +258,16 @@ function comment.view(id)
 	-- row that has more lines grows downward): a refusal moves nothing.
 	local said = b.spacer()
 	local problem = C.problems[id]
-	if problem ~= nil then
+	if sending and attach.count(pictures_of(id)) > 0 then
+		said = b.text(attach.uploading(pictures_of(id))):text_size(SIZE.small):color("dim"):grow(1):mt(7)
+	elseif problem ~= nil then
 		said = b.div():row():items_start():gap(8):grow(1):min_w(0):child(
 			b.div():size(7, 7):rounded(4):bg("warning"):no_shrink():mt(11)
 		):child(b.text(problem):text_size(SIZE.small):color("warning"):wrap():min_w(0):grow(1):mt(7))
 	end
-	box:child(b.div():row():items_start():gap(12):no_shrink():child(said):child(button))
+	box:child(
+		b.div():row():items_start():gap(12):no_shrink():child(said):child(attach.button("comment", sending)):child(button)
+	)
 	return box
 end
 

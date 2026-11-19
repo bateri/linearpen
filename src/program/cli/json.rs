@@ -4,6 +4,7 @@
 
 use serde::Serialize;
 
+use super::pictures::{Place, Refused, Seen};
 use crate::linear::types::{Comment, Neighbor, Tie};
 use crate::linear::{Issue, Listing};
 
@@ -170,6 +171,46 @@ pub struct Shown {
     pub comments: Vec<Said>,
     /// There are more comments in Linear than the ones given.
     pub comments_truncated: bool,
+    /// The pictures and files in the description and the comments, in the order of the issue.
+    pub files: Vec<FileRow>,
+}
+
+/// A picture or a file of an issue: where it stands and what became of it (`--files`).
+#[derive(Debug, Serialize)]
+pub struct FileRow {
+    pub n: usize,
+    /// `image` where it is written as a picture, `file` where it is a link.
+    pub kind: &'static str,
+    pub name: String,
+    pub url: String,
+    /// `description` or `comment`.
+    #[serde(rename = "in")]
+    pub place: &'static str,
+    /// The place of the comment among the comments, from 0.
+    pub comment: Option<usize>,
+    pub path: Option<String>,
+    pub refused: Option<&'static str>,
+}
+
+impl FileRow {
+    pub fn of(one: &Seen) -> Self {
+        Self {
+            n: one.n,
+            kind: if one.image { "image" } else { "file" },
+            name: one.name.clone(),
+            url: one.src.clone(),
+            place: match one.place {
+                Place::Description => "description",
+                Place::Comment { .. } => "comment",
+            },
+            comment: match one.place {
+                Place::Description => None,
+                Place::Comment { index, .. } => Some(index),
+            },
+            path: one.path.as_ref().map(|path| path.display().to_string()),
+            refused: one.refused.map(Refused::words),
+        }
+    }
 }
 
 fn tie_name(tie: Tie) -> &'static str {
@@ -183,8 +224,9 @@ fn tie_name(tie: Tie) -> &'static str {
 }
 
 impl Shown {
-    pub fn of(issue: &Issue) -> Self {
+    pub fn of(issue: &Issue, seen: &[Seen]) -> Self {
         Self {
+            files: seen.iter().map(FileRow::of).collect(),
             issue: IssueRow::of(issue),
             description: issue.description.clone(),
             parent: issue.parent.as_ref().map(Neighbour::of),

@@ -26,6 +26,7 @@ use crate::linear::{
     self, Change, Created, Entry, Error, FilterOptions, Filters, Issue, Key, Listing, NewIssue,
     Options, Scope, Team, Transport, Viewer,
 };
+use crate::pictures::{Document, Given, Pictures, Refusal, Saved, SendFailed, Shown, Unread, Why};
 use crate::state::Paths;
 use crate::state::credentials::{self, Problem, Source};
 use crate::work::runner::{Runner, System};
@@ -352,6 +353,10 @@ pub struct Session {
     shared: Arc<Shared>,
     pub paths: Paths,
     pub work: Work,
+    /// The files of Linear the page draws or saves and the ones the person gives it.
+    pub pictures: Pictures,
+    /// The program's hand on the view: what holds the files the page draws (`serve` is given it).
+    control: pencere::ViewControl,
 }
 
 /// Now, seconds since the epoch.
@@ -553,11 +558,21 @@ impl Session {
             runner: Arc::new(System),
             poll: POLL,
         };
+        let control = pencere::ViewControl::new();
         Self {
             shared,
             paths,
             work,
+            pictures: Pictures::new(Arc::new(control.clone())),
+            control,
         }
+    }
+
+    /// The hand on the view that `serve` is given (`Options::control`): the pictures are attached
+    /// and the files the person gave are read through it.
+    #[must_use]
+    pub fn control(&self) -> pencere::ViewControl {
+        self.control.clone()
     }
 
     /// The session with what the machine says and what runs the commands (`bateri`, `git`).
@@ -900,6 +915,78 @@ impl Session {
                 Err(Error::Unsure)
             }
             Err(failure) => Err(failure),
+        }
+    }
+
+    /// The picture or PDF at `src` (an address of Linear's files) for `owner`: fetched with the key, given
+    /// to the terminal, and told how large it is; or why it is not drawn.
+    pub fn picture(&self, src: &str, owner: &str) -> Result<Shown, Refusal> {
+        let key = self.key().map_err(|_| Refusal::from(Why::Unreachable))?;
+        self.pictures.show(self.transport(), &key, src, owner)
+    }
+
+    /// What is held for `owner` (an issue) is let go.
+    pub fn release(&self, owner: &str) {
+        self.pictures.release(owner);
+    }
+
+    /// Reads the PDF at `src` (an address of Linear's files) for its pages and words, for `owner`.
+    pub fn open_pdf(&self, src: &str, owner: &str) -> Result<Arc<Document>, Unread> {
+        let key = self.key().map_err(|_| Unread::Unreachable)?;
+        self.pictures.open_pdf(self.transport(), &key, src, owner)
+    }
+
+    /// The PDF read for `owner`, if one is.
+    pub fn document(&self, owner: &str) -> Option<Arc<Document>> {
+        self.pictures.document(owner)
+    }
+
+    /// The PDF read for `owner` is let go.
+    pub fn close_pdf(&self, owner: &str) {
+        self.pictures.close_pdf(owner);
+    }
+
+    /// Saves the file at `src` (an address of Linear's files) where the person chose, by `handle`: fetched
+    /// with the key into a copy of the program's own and written to the place; how many bytes.
+    pub fn save(&self, src: &str, handle: &str) -> Result<u64, Saved> {
+        let key = self.key().map_err(|_| Saved::Unreachable)?;
+        self.pictures.save(self.transport(), &key, src, handle)
+    }
+
+    /// Puts the files the person gave in Linear's storage and gives their Markdown lines; the first
+    /// that cannot be sent ends it, and nothing is sent of what was to follow.
+    pub fn send_pictures(&self, given: &[Given], what: &str) -> Result<Vec<String>, SendFailed> {
+        let key = self.key().map_err(|_| SendFailed::Refused)?;
+        self.pictures.send(self.transport(), &key, given, what)
+    }
+
+    /// Adds the lines of files at the end of the description of the issue `issue` (Linear's id of it,
+    /// or its identifier): the program's one write of a description. The description is read whole from
+    /// Linear now, and what is sent is it and the lines. Where the reading failed, nothing was sent. The
+    /// write is sent once; where no answer came, or what came cannot be read, the issue is asked for, so
+    /// that what is shown is what Linear holds, and the failure is told (not known, for an answer that
+    /// cannot be read). An answer that is an error says it was not written, and nothing is asked.
+    pub fn describe(&self, issue: &str, lines: &[String]) -> Result<(), linear::Step> {
+        let key = self.key().map_err(linear::Step::Read)?;
+        match linear::add_files(self.transport(), &key, issue, lines) {
+            Ok(_) => {
+                // What Linear holds now, with the files in it, is what the issue kept tells.
+                let _ = self.detail_fresh(issue);
+                Ok(())
+            }
+            Err(before @ (linear::Step::Read(_) | linear::Step::TooLong)) => Err(before),
+            Err(linear::Step::Write(failure @ (Error::Refused | Error::Forbidden))) => {
+                Err(linear::Step::Write(failure))
+            }
+            Err(linear::Step::Write(failure @ Error::Unreachable(_))) => {
+                let _ = self.detail_fresh(issue);
+                Err(linear::Step::Write(failure))
+            }
+            Err(linear::Step::Write(Error::Failed(why))) if linear::left_open(&why) => {
+                let _ = self.detail_fresh(issue);
+                Err(linear::Step::Write(Error::Unsure))
+            }
+            Err(linear::Step::Write(failure)) => Err(linear::Step::Write(failure)),
         }
     }
 
