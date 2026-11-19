@@ -11,6 +11,11 @@
   `linearpen comment KEY-N --edit last --body -` edits your last comment; an agent started with Work on is
   told both.
 
+### Fixed
+
+- **One click runs a command in the palette.** A row under the mouse needed a double click; a single
+  click now does it. In a pane, this comes with the bateri that carries the fixed palette.
+
 ## [0.5.0] - 2026-11-19
 
 ### Added

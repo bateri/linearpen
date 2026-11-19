@@ -1917,6 +1917,27 @@ fn the_palette_finds_a_command_and_does_it_and_takes_words_as_a_filter() {
 
 #[test]
 #[ignore = "opens the kit's interpreter: make test-page"]
+fn one_click_on_the_palette_row_the_pointer_rests_on_does_its_command() {
+    let (_linear, _session, mut page) = open_lists(WIDE);
+    page.press("mod+k").expect("mod+k");
+    page.wait_for(WITHIN, |page| page.says("Do it"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    page.type_text("show all").expect("the query is typed");
+    // The command is the first row, chosen as it comes; the pointer comes to it, as a hand does,
+    // and one click does it, as Enter does: a second is not needed.
+    let row = "palette1/list/row/scope_all";
+    page.wait_for(WITHIN, |page| page.bounds(row).is_some())
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    page.hover(row)
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    page.click(row)
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    page.wait_for(WITHIN, |page| page.says("ACM-417") && !page.says("Do it"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
 fn the_card_of_keys_lists_what_the_page_can_do_and_closes() {
     let (_linear, _session, mut page) = open_lists(WIDE);
     page.press("?").expect("?");
