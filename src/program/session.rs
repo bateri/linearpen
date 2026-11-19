@@ -24,8 +24,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use crate::linear::edit::{self, Target};
 use crate::linear::types::Comment;
 use crate::linear::{
-    self, Change, Created, Entry, Error, FilterOptions, Filters, Issue, Key, Listing, NewIssue,
-    Options, Scope, Team, Transport, Viewer,
+    self, Change, Closed, Created, Entry, Error, FilterOptions, Filters, Issue, Key, Listing,
+    NewIssue, Options, Scope, Team, Transport, Viewer,
 };
 use crate::pictures::{Document, Given, Pictures, Refusal, Saved, SendFailed, Shown, Unread, Why};
 use crate::state::Paths;
@@ -433,11 +433,17 @@ fn fetch_lists(
     shown: &Scope,
     filters: &Filters,
 ) -> Result<Lists, Error> {
-    let mine = linear::fetch(transport, key, &Scope::Mine, &Filters::default())?;
+    let mine = linear::fetch(
+        transport,
+        key,
+        &Scope::Mine,
+        &Filters::default(),
+        Closed::Recent,
+    )?;
     let held = if is_apart(shown, filters) {
         Some((
             shown.clone(),
-            linear::fetch(transport, key, shown, filters)?.listing,
+            linear::fetch(transport, key, shown, filters, Closed::Recent)?.listing,
         ))
     } else {
         None

@@ -56,7 +56,7 @@ use pencere_tui::serve;
 
 use command_line::Asked;
 use linear::transport::{Curl, DEFAULT_URL};
-use linear::{Error, Filters, Scope, Transport};
+use linear::{Closed, Error, Filters, Scope, Transport};
 use session::{REFRESH_EVERY, Session};
 use state::Paths;
 use state::credentials;
@@ -125,9 +125,22 @@ fn summary(note: Option<&str>) -> Result<String, Failed> {
         },
         status: 1,
     };
-    let mine =
-        linear::fetch(&transport, &key, &Scope::Mine, &Filters::default()).map_err(failed)?;
-    let all = linear::fetch(&transport, &key, &Scope::All, &Filters::default()).map_err(failed)?;
+    let mine = linear::fetch(
+        &transport,
+        &key,
+        &Scope::Mine,
+        &Filters::default(),
+        Closed::Asked,
+    )
+    .map_err(failed)?;
+    let all = linear::fetch(
+        &transport,
+        &key,
+        &Scope::All,
+        &Filters::default(),
+        Closed::Asked,
+    )
+    .map_err(failed)?;
     Ok(Summary {
         viewer: &mine.viewer,
         mine: &mine.listing,

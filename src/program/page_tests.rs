@@ -1385,6 +1385,13 @@ fn a_list_holds_its_closed_issues_at_the_end_folded_and_a_press_opens_them() {
     assert!(!page.says("ACM-366"), "{}", said(&page));
     assert_eq!(linear.times("MyIssues"), 1);
     assert_eq!(linear.times("MyIssues closed"), 1);
+    // One page of them, the ones that changed last.
+    let closed = linear.variables_of("MyIssues closed");
+    assert_eq!(closed[0]["first"], 100, "{closed:?}");
+    // The button counts the open ones: the 14, not the one that is done.
+    let button = page.words_in("lists");
+    assert!(button.iter().any(|word| word == "14"), "{button:?}");
+    assert!(!button.iter().any(|word| word == "15"), "{button:?}");
     page.press("end").expect("end");
     cursor_on(&mut page, "Done");
     page.press("right").expect("right");
@@ -5508,9 +5515,7 @@ fn a_list_of_more_than_five_hundred_shows_the_most_recent_and_says_so_in_the_but
     );
     page.press("end").expect("end");
     page.wait_for(WITHIN, |page| {
-        page.says(
-            "The 500 issues changed last, the open ones first. Filter them, or go to a list, for the others.",
-        )
+        page.says("The 500 issues changed last. Filter them, or go to a list, for the others.")
     })
     .unwrap_or_else(|why| panic!("the list says it was cut: {why:?}: {}", said(&page)));
     // The cursor does not stop on it: the last line of the list is where it is, and up is one line up.

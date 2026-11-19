@@ -61,7 +61,7 @@ linearpen --text     # your issues as text, whatever the terminal is
 The same program does what you ask of it without the interface, to read an issue in a script or
 to change many at once. A name is written as Linear shows it (capital letters do not matter); where
 a name is none of the team's, or is more than one, nothing is sent and the names there are come
-back.
+back. `list` and `--text` print the open issues; `--status Done` lists the done ones.
 
 ```sh
 linearpen list --team ACM --status "In Progress" --assignee me
@@ -100,15 +100,15 @@ whatever the page is doing (in a pane too narrow for the list and an issue besid
 with the list). The list is **My issues** (what is assigned to you) or any other list
 you go to: **All issues** (the issues of the workspace, each saying whose it is), what you
 starred in Linear, the issues or the running cycle of a team you are in (in the order of your own
-list of teams), a saved view, a project. Each holds the issues of every state, grouped by state with
-the backlog, Done and Canceled folded, and is asked of Linear again every five minutes. The list
-button says which it is and how many it has, and opens the card of lists (`g`): My issues is `1`, All
+list of teams), a saved view, a project. Each holds its open issues and the 100 done and canceled
+ones that changed last, grouped by state with the backlog, Done and Canceled folded, and is asked of
+Linear again every five minutes; the Status filter finds older ones. The list
+button says which it is and how many open issues it has, and opens the card of lists (`g`): My issues is `1`, All
 issues `2`, your first seven favorites `3` to `9`; the card is the palette, so typing finds a list by
 its name, and each line says what it is (`View`, `Project`, `Team`, `Cycle 24, ends Nov 15`). Only
 the list you look at is asked for (with My issues), so the others cost nothing until you go to
-them. Linear is asked for no more than 500 issues of a list: every open one first, then the closed
-ones that changed last. Where there are more, the button says `500+` and a line at the end of the
-list says so.
+them. Linear is asked for no more than 500 issues of a list, the open ones first. Where there are
+more open ones, the button says `500+` and a line at the end of the list says so.
 
 <img src="docs/lists.png" width="720" alt="linearpen: the card of lists, over My issues">
 

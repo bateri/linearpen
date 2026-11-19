@@ -98,7 +98,14 @@ fn mine_of(nodes: &[String]) -> Reply {
 #[test]
 fn my_issues_are_one_page_when_that_is_all_there_is() {
     let transport = Scripted::new(vec![Ok(mine_page(3)), Ok(mine_page(0))]);
-    let fetched = fetch(&transport, &key(), &Scope::Mine, &Filters::default()).unwrap();
+    let fetched = fetch(
+        &transport,
+        &key(),
+        &Scope::Mine,
+        &Filters::default(),
+        Closed::Recent,
+    )
+    .unwrap();
     assert_eq!(fetched.listing.issues.len(), 3);
     assert!(!fetched.listing.truncated);
     assert_eq!(fetched.viewer.organization.url_key, "acme");
@@ -118,7 +125,14 @@ fn a_list_holds_the_open_issues_and_then_the_closed_ones() {
             issue_in(4, "Canceled", "canceled"),
         ])),
     ]);
-    let fetched = fetch(&transport, &key(), &Scope::Mine, &Filters::default()).unwrap();
+    let fetched = fetch(
+        &transport,
+        &key(),
+        &Scope::Mine,
+        &Filters::default(),
+        Closed::Recent,
+    )
+    .unwrap();
     let held: Vec<(&str, &str)> = fetched
         .listing
         .issues
@@ -143,7 +157,14 @@ fn an_issue_closed_between_the_two_questions_is_held_once_as_it_is_now() {
         Ok(mine_of(&[issue(1), issue(2)])),
         Ok(mine_of(&[issue_in(2, "Done", "completed")])),
     ]);
-    let fetched = fetch(&transport, &key(), &Scope::Mine, &Filters::default()).unwrap();
+    let fetched = fetch(
+        &transport,
+        &key(),
+        &Scope::Mine,
+        &Filters::default(),
+        Closed::Recent,
+    )
+    .unwrap();
     let held: Vec<(&str, &str)> = fetched
         .listing
         .issues
@@ -153,9 +174,20 @@ fn an_issue_closed_between_the_two_questions_is_held_once_as_it_is_now() {
     assert_eq!(held, [("ACM-1", "Todo"), ("ACM-2", "Done")]);
 }
 
-#[test]
-fn the_closed_issues_fill_what_the_open_ones_leave_of_five_hundred() {
-    // 340 open, then closed ones that never run out: they are asked for 100, 60, and the list is cut.
+/// The filters of a list that asks for the state `name`.
+fn status(name: &str) -> Filters {
+    Filters::new(
+        vec![name.to_owned()],
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+    )
+    .unwrap()
+}
+
+/// 340 open issues, then closed ones that never run out.
+fn open_340_then_closed() -> Scripted {
     let mut replies: Vec<Result<Reply, Error>> = vec![
         Ok(all_page(0, 100, true)),
         Ok(all_page(100, 100, true)),
@@ -163,8 +195,40 @@ fn the_closed_issues_fill_what_the_open_ones_leave_of_five_hundred() {
         Ok(all_page(300, 40, false)),
     ];
     replies.extend((0..3).map(|n| Ok(all_page(1000 + n * 100, 100, true))));
-    let transport = Scripted::new(replies);
-    let fetched = fetch(&transport, &key(), &Scope::All, &Filters::default()).unwrap();
+    Scripted::new(replies)
+}
+
+#[test]
+fn a_list_takes_the_hundred_closed_issues_that_changed_last_and_is_not_cut_by_the_others() {
+    let transport = open_340_then_closed();
+    let fetched = fetch(
+        &transport,
+        &key(),
+        &Scope::All,
+        &Filters::default(),
+        Closed::Recent,
+    )
+    .unwrap();
+    assert_eq!(fetched.listing.issues.len(), 340 + CLOSED_MOST);
+    // Linear has more closed ones: they are not asked for, and the open ones are whole.
+    assert!(!fetched.listing.truncated);
+    let sent = transport.sent();
+    assert_eq!(sent.len(), 5);
+    assert!(sent[4].contains(CLOSED_PART) && sent[4].contains(r#""first":100"#));
+}
+
+#[test]
+fn closed_issues_asked_for_by_state_fill_what_the_open_ones_leave_of_five_hundred() {
+    // They are asked for 100, 60, and the list is cut.
+    let transport = open_340_then_closed();
+    let fetched = fetch(
+        &transport,
+        &key(),
+        &Scope::All,
+        &status("Done"),
+        Closed::Recent,
+    )
+    .unwrap();
     assert_eq!(fetched.listing.issues.len(), LIMIT);
     assert!(fetched.listing.truncated);
     let sent = transport.sent();
@@ -172,14 +236,87 @@ fn the_closed_issues_fill_what_the_open_ones_leave_of_five_hundred() {
     assert!(sent[4].contains(CLOSED_PART) && sent[4].contains(r#""first":100"#));
     assert!(sent[5].contains(r#""first":60"#), "{}", sent[5]);
     assert!(sent[5].contains(r#""after":"c1100""#), "{}", sent[5]);
+    // The text and the command line take them so too.
+    let transport = open_340_then_closed();
+    let fetched = fetch(
+        &transport,
+        &key(),
+        &Scope::All,
+        &status("Done"),
+        Closed::Asked,
+    )
+    .unwrap();
+    assert_eq!(fetched.listing.issues.len(), LIMIT);
+    assert_eq!(transport.sent().len(), 6);
+}
+
+#[test]
+fn the_text_and_the_command_line_take_the_open_issues_alone_where_no_state_is_asked_for() {
+    let transport = Scripted::new(vec![Ok(mine_of(&[
+        issue(1),
+        issue_in(2, "In Progress", "started"),
+    ]))]);
+    let fetched = fetch(
+        &transport,
+        &key(),
+        &Scope::Mine,
+        &Filters::default(),
+        Closed::Asked,
+    )
+    .unwrap();
+    assert_eq!(fetched.listing.issues.len(), 2);
+    assert!(!fetched.listing.truncated);
+    let sent = transport.sent();
+    assert_eq!(sent.len(), 1);
+    assert!(sent[0].contains(OPEN_PART), "{}", sent[0]);
+}
+
+#[test]
+fn a_listing_counts_its_open_issues() {
+    let transport = Scripted::new(vec![
+        Ok(mine_of(&[issue(1), issue_in(2, "In Progress", "started")])),
+        Ok(mine_of(&[
+            issue_in(3, "Done", "completed"),
+            issue_in(4, "Canceled", "canceled"),
+        ])),
+    ]);
+    let fetched = fetch(
+        &transport,
+        &key(),
+        &Scope::Mine,
+        &Filters::default(),
+        Closed::Recent,
+    )
+    .unwrap();
+    assert_eq!(fetched.listing.issues.len(), 4);
+    assert_eq!(fetched.listing.open(), 2);
 }
 
 #[test]
 fn five_hundred_open_issues_leave_no_room_for_the_closed_ones() {
-    // The closed ones are not asked for, and may be there: the list is said to be cut.
+    // The closed ones are not asked for. The open ones are whole: the list is not cut.
     let transport = Scripted::new((0..5).map(|n| Ok(all_page(n * 100, 100, n < 4))).collect());
-    let fetched = fetch(&transport, &key(), &Scope::All, &Filters::default()).unwrap();
+    let fetched = fetch(
+        &transport,
+        &key(),
+        &Scope::All,
+        &Filters::default(),
+        Closed::Recent,
+    )
+    .unwrap();
     assert_eq!(fetched.listing.issues.len(), 500);
+    assert!(!fetched.listing.truncated);
+    assert_eq!(transport.sent().len(), 5);
+    // Where closed states are asked for by name, some may be there: the list is said to be cut.
+    let transport = Scripted::new((0..5).map(|n| Ok(all_page(n * 100, 100, n < 4))).collect());
+    let fetched = fetch(
+        &transport,
+        &key(),
+        &Scope::All,
+        &status("Done"),
+        Closed::Recent,
+    )
+    .unwrap();
     assert!(fetched.listing.truncated);
     assert_eq!(transport.sent().len(), 5);
 }
@@ -191,7 +328,14 @@ fn pages_follow_the_cursor_until_there_is_no_next() {
         Ok(all_page(100, 40, false)),
         Ok(all_page(1000, 0, false)),
     ]);
-    let fetched = fetch(&transport, &key(), &Scope::All, &Filters::default()).unwrap();
+    let fetched = fetch(
+        &transport,
+        &key(),
+        &Scope::All,
+        &Filters::default(),
+        Closed::Recent,
+    )
+    .unwrap();
     assert_eq!(fetched.listing.issues.len(), 140);
     assert!(!fetched.listing.truncated);
     let sent = transport.sent();
@@ -205,7 +349,14 @@ fn pages_follow_the_cursor_until_there_is_no_next() {
 fn a_list_stops_at_five_hundred_and_says_there_was_more() {
     // A workspace that never runs out: the sixth page is not asked for.
     let transport = Scripted::new((0..8).map(|n| Ok(all_page(n * 100, 100, true))).collect());
-    let fetched = fetch(&transport, &key(), &Scope::All, &Filters::default()).unwrap();
+    let fetched = fetch(
+        &transport,
+        &key(),
+        &Scope::All,
+        &Filters::default(),
+        Closed::Recent,
+    )
+    .unwrap();
     assert_eq!(fetched.listing.issues.len(), LIMIT);
     assert!(fetched.listing.truncated);
     assert_eq!(transport.sent().len(), 5);
@@ -219,7 +370,14 @@ fn exactly_five_hundred_found_is_not_a_truncation() {
             .collect(),
     );
     let scope = Scope::Search("checkout".to_owned());
-    let fetched = fetch(&transport, &key(), &scope, &Filters::default()).unwrap();
+    let fetched = fetch(
+        &transport,
+        &key(),
+        &scope,
+        &Filters::default(),
+        Closed::Recent,
+    )
+    .unwrap();
     assert_eq!(fetched.listing.issues.len(), 500);
     assert!(!fetched.listing.truncated);
     // A search asks once for every state: no part of the states is sent.
@@ -250,7 +408,14 @@ fn no_cursor_ends_the_pages_even_if_linear_says_there_is_more() {
         ),
     };
     let transport = Scripted::always(reply, 3);
-    let fetched = fetch(&transport, &key(), &Scope::All, &Filters::default()).unwrap();
+    let fetched = fetch(
+        &transport,
+        &key(),
+        &Scope::All,
+        &Filters::default(),
+        Closed::Recent,
+    )
+    .unwrap();
     assert!(fetched.listing.issues.is_empty());
     // One question for the open issues and one for the closed ones.
     assert_eq!(transport.sent().len(), 2);
@@ -259,7 +424,14 @@ fn no_cursor_ends_the_pages_even_if_linear_says_there_is_more() {
 #[test]
 fn the_request_is_a_plain_query_with_its_variables() {
     let transport = Scripted::new(vec![Ok(mine_page(0)), Ok(mine_page(0))]);
-    fetch(&transport, &key(), &Scope::Mine, &Filters::default()).unwrap();
+    fetch(
+        &transport,
+        &key(),
+        &Scope::Mine,
+        &Filters::default(),
+        Closed::Recent,
+    )
+    .unwrap();
     let sent = transport.sent();
     for body in &sent {
         assert!(body.contains(r#""operationName":"MyIssues""#), "{body}");
@@ -332,7 +504,13 @@ fn another_status_or_a_body_that_is_not_json_is_failed() {
 fn an_unreachable_transport_is_unreachable() {
     let transport = Scripted::new(vec![Err(Error::Unreachable("down".to_owned()))]);
     assert_eq!(
-        fetch(&transport, &key(), &Scope::Mine, &Filters::default()),
+        fetch(
+            &transport,
+            &key(),
+            &Scope::Mine,
+            &Filters::default(),
+            Closed::Recent
+        ),
         Err(Error::Unreachable("down".to_owned()))
     );
 }
@@ -1164,7 +1342,14 @@ fn each_source_asks_its_own_question_with_its_id_a_variable_and_the_open_filter(
             Ok(owned_page(root, 0, 3, false)),
             Ok(owned_page(root, 100, 0, false)),
         ]);
-        let fetched = fetch(&transport, &key(), &scope, &Filters::default()).unwrap();
+        let fetched = fetch(
+            &transport,
+            &key(),
+            &scope,
+            &Filters::default(),
+            Closed::Recent,
+        )
+        .unwrap();
         assert_eq!(fetched.listing.issues.len(), 3, "{name}");
         assert!(!fetched.listing.truncated, "{name}");
         assert_eq!(fetched.viewer.organization.url_key, "acme", "{name}");
@@ -1202,17 +1387,31 @@ fn a_source_follows_the_cursor_and_stops_at_five_hundred_like_the_other_lists() 
                 .map(|n| Ok(owned_page(root, n * 100, 100, true)))
                 .collect(),
         );
-        let fetched = fetch(&transport, &key(), &scope, &Filters::default()).unwrap();
+        let fetched = fetch(
+            &transport,
+            &key(),
+            &scope,
+            &Filters::default(),
+            Closed::Recent,
+        )
+        .unwrap();
         assert_eq!(fetched.listing.issues.len(), LIMIT, "{name}");
         assert!(fetched.listing.truncated, "{name}");
         assert_eq!(transport.sent().len(), 5, "{name}");
-        // Four hundred open ones and a hundred closed ones, and no more, is not a cut.
+        // Four hundred open ones and the hundred closed ones that changed last is not a cut.
         let transport = Scripted::new(
             (0..5)
                 .map(|n| Ok(owned_page(root, n * 100, 100, n < 3)))
                 .collect(),
         );
-        let fetched = fetch(&transport, &key(), &scope, &Filters::default()).unwrap();
+        let fetched = fetch(
+            &transport,
+            &key(),
+            &scope,
+            &Filters::default(),
+            Closed::Recent,
+        )
+        .unwrap();
         assert_eq!(fetched.listing.issues.len(), 500, "{name}");
         assert!(!fetched.listing.truncated, "{name}");
     }

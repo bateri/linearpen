@@ -73,8 +73,8 @@ may be repeated):
   --json            print JSON instead of text; its fields are in
                     https://github.com/bateri/linearpen/blob/main/docs/cli.md
 
-Every open issue is listed first, then the done and canceled ones that changed last, up to 500 in
-all; a search finds older ones.
+The open issues are listed, up to 500. --status lists the done and canceled ones too (--status
+Done), the ones that changed last first; a search finds any.
 ";
 
 pub const SHOW: &str = "\

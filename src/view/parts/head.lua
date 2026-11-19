@@ -131,14 +131,16 @@ function head.action(action)
 	return nil
 end
 
--- How many issues the list shown holds, as the button says it: "500+" where there are more than
--- the program takes. Nothing while the list has not come.
+-- How many open issues the list shown holds, as the button says it (the done and canceled ones at
+-- its end are not counted; a search counts all it found): "500+" where there are more than the
+-- program takes. Nothing while the list has not come.
 local function count_words(snapshot)
 	local counts = snapshot ~= nil and snapshot.loaded and snapshot.listing == "ready" and snapshot.counts or nil
 	if counts == nil then
 		return nil
 	end
-	return tostring(counts.shown) .. (counts.shownCut and "+" or "")
+	local count = S.scope == "search" and counts.shown or counts.shownOpen
+	return tostring(count) .. (counts.shownCut and "+" or "")
 end
 
 -- The most of a list's name the button shows; a longer one is cut with the kit's mark.

@@ -10,7 +10,7 @@ use std::time::Duration;
 use pencere::{Options, ViewError};
 use serde::Serialize;
 
-use crate::linear::{Entry, Filters, Issue, Scope, plain};
+use crate::linear::{Entry, Filters, Issue, Listing, Scope, plain};
 use crate::model::filter::Filter;
 use crate::model::groups::{Group, group};
 use crate::model::time::short_date;
@@ -113,6 +113,8 @@ pub struct Counts {
     /// whether there are more than the program takes of it.
     pub shown: usize,
     pub shown_cut: bool,
+    /// How many of those are open: what the list button says.
+    pub shown_open: usize,
 }
 
 /// A cycle of a list of the card.
@@ -322,12 +324,14 @@ pub fn snapshot(state: &State) -> Snapshot {
             mine_cut: false,
             shown: 0,
             shown_cut: false,
+            shown_open: 0,
         },
         |lists| Counts {
             mine: lists.mine.issues.len(),
             mine_cut: lists.mine.truncated,
             shown: held.map_or(0, |listing| listing.issues.len()),
             shown_cut: held.is_some_and(|listing| listing.truncated),
+            shown_open: held.map_or(0, Listing::open),
         },
     );
     // The list the page looks at: here, or on its way, or one Linear could not tell.

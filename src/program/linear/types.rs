@@ -30,6 +30,12 @@ impl StateKind {
         }
     }
 
+    /// Whether an issue in a state of the kind is closed: done or canceled.
+    #[must_use]
+    pub fn closed(self) -> bool {
+        matches!(self, Self::Completed | Self::Canceled)
+    }
+
     /// The name Linear gives the kind, and the page is told.
     #[must_use]
     pub fn name(self) -> &'static str {

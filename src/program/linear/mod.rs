@@ -120,6 +120,20 @@ impl Scope {
 pub const LIMIT: usize = 500;
 pub const PAGE: u32 = 100;
 
+/// The most closed issues a list takes after its open ones where no state is asked for by name: one
+/// page, the ones that changed last.
+pub const CLOSED_MOST: usize = 100;
+
+/// Which closed issues a list takes after its open ones, where the person asked for no state by name
+/// (where they did, every one that has room, up to [`LIMIT`]: they asked for them).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Closed {
+    /// The [`CLOSED_MOST`] that changed last: what the page holds, folded at the end of the list.
+    Recent,
+    /// None: the text and the command line list the open ones, and say how to ask for the others.
+    Asked,
+}
+
 /// The most issues one change is made to at once (Linear's own limit of a batch).
 pub const BATCH_MOST: usize = 50;
 
@@ -127,8 +141,21 @@ pub const BATCH_MOST: usize = 50;
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Listing {
     pub issues: Vec<Issue>,
-    /// There are more than [`LIMIT`]: the rest are not taken.
+    /// There are more than [`LIMIT`] of the issues asked for: the open ones, and the closed ones too
+    /// where a state was asked for by name. The closed ones a list takes of its own accord are only
+    /// the ones that changed last, and are not counted as cut.
     pub truncated: bool,
+}
+
+impl Listing {
+    /// How many of its issues are open.
+    #[must_use]
+    pub fn open(&self) -> usize {
+        self.issues
+            .iter()
+            .filter(|issue| !issue.state.kind.closed())
+            .count()
+    }
 }
 
 /// What a list is read with: the list and whose key it is.
@@ -299,14 +326,16 @@ struct SearchData {
 }
 
 /// The issues of `scope` that `filters` let through (all of them where there are none), a hundred
-/// a page, up to [`LIMIT`]: every open issue first, then, in what is left, the closed ones that
-/// changed last, so that the closed ones (of which a team has many more) never push an open one out
-/// of the list. A search asks once, for every state, as Linear ranks them.
+/// a page, up to [`LIMIT`]: every open issue first, then the closed ones that changed last, as many
+/// as `closed` says, so that the closed ones (of which a team has many more) never push an open one
+/// out of the list. Where `filters` name states, the closed ones fill what is left of the [`LIMIT`]:
+/// the person asked for them. A search asks once, for every state, as Linear ranks them.
 pub fn fetch(
     transport: &dyn Transport,
     key: &Key,
     scope: &Scope,
     filters: &Filters,
+    closed: Closed,
 ) -> Result<Fetched, Error> {
     let fetched = |viewer, issues, truncated| Fetched {
         viewer,
@@ -324,23 +353,33 @@ pub fn fetch(
         &filters.to_value(States::Open),
         LIMIT,
     )?;
-    let room = LIMIT - issues.len();
-    if more || room == 0 {
-        // No room is left for the closed ones, and there may be some: the list is cut.
+    if more {
+        // No room is left for the closed ones: the list is cut.
         return Ok(fetched(viewer, issues, true));
+    }
+    let room = LIMIT - issues.len();
+    let asked = !filters.status.is_empty();
+    let most = match (asked, closed) {
+        (true, _) => room,
+        (false, Closed::Recent) => room.min(CLOSED_MOST),
+        (false, Closed::Asked) => 0,
+    };
+    if most == 0 {
+        // The closed ones asked for by name may be there, with no room for them.
+        return Ok(fetched(viewer, issues, asked));
     }
     let (_, closed, more) = pages(
         transport,
         key,
         scope,
         &filters.to_value(States::Closed),
-        room,
+        most,
     )?;
     // An issue closed between the two questions is in both: it is held once, as it is now.
     let now: HashSet<&str> = closed.iter().map(|issue| issue.id.as_str()).collect();
     issues.retain(|issue| !now.contains(issue.id.as_str()));
     issues.extend(closed);
-    Ok(fetched(viewer, issues, more))
+    Ok(fetched(viewer, issues, asked && more))
 }
 
 /// The issues of `scope` that `filter` lets through, a hundred a page, up to `most`; and whether

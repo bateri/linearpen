@@ -122,18 +122,16 @@ fn the_key_goes_to_curl_on_its_stdin_and_nowhere_else() {
     });
     assert_eq!(ran.status, Some(0), "{}", ran.stderr);
     let calls = home.calls();
-    // Two questions for each list: its open issues, then its closed ones.
-    assert_eq!(calls.len(), 4, "{calls:?}");
-    for (call, name) in calls
-        .iter()
-        .zip(["MyIssues", "MyIssues", "AllIssues", "AllIssues"])
-    {
-        assert!(
-            call.stdin
-                .contains(&format!("operationName\\\":\\\"{name}")),
-            "{name}"
-        );
-    }
+    // One question for each list: its open issues.
+    assert_eq!(calls.len(), 2, "{calls:?}");
+    assert!(calls[0].stdin.contains("operationName\\\":\\\"MyIssues"));
+    assert!(calls[1].stdin.contains("operationName\\\":\\\"AllIssues"));
+    assert!(
+        ran.stdout
+            .contains("Done and canceled issues are not listed: `linearpen list --status Done`"),
+        "{}",
+        ran.stdout
+    );
     for call in &calls {
         // Not in what `ps` shows.
         assert_eq!(call.argv, ["-q", "--config", "-"]);

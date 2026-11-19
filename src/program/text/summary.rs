@@ -110,7 +110,8 @@ pub fn section(out: &mut String, title: &str, listing: &Listing, empty: &str) {
 }
 
 impl Summary<'_> {
-    /// The text: who and where, then My issues, then All issues, with `note` last if there is one.
+    /// The text: who and where, then the open issues of My issues and of All issues, and how to ask
+    /// for the closed ones, with `note` last if there is one.
     #[must_use]
     pub fn text(&self, note: Option<&str>) -> String {
         let mut out = format!(
@@ -125,7 +126,16 @@ impl Summary<'_> {
             "Nothing is assigned to you.",
         );
         out.push('\n');
-        section(&mut out, "All issues", self.all, "There are no issues.");
+        section(
+            &mut out,
+            "All issues",
+            self.all,
+            "There are no open issues.",
+        );
+        let _ = write!(
+            out,
+            "\nDone and canceled issues are not listed: `linearpen list --status Done` lists the done ones.\n"
+        );
         if let Some(note) = note {
             let _ = write!(out, "\n{note}\n");
         }
@@ -201,6 +211,8 @@ All issues (2)
   Backlog (1)
     ACM-7    -       Oct 1   Plan the trip  (Deniz)
 
+Done and canceled issues are not listed: `linearpen list --status Done` lists the done ones.
+
 a note
 ";
         assert_eq!(text, expected);
@@ -238,7 +250,7 @@ a note
         }
         .text(None);
         assert!(text.contains("Only the first 1 are listed"), "{text}");
-        assert!(text.contains("There are no issues."));
+        assert!(text.contains("There are no open issues."));
     }
 
     #[test]

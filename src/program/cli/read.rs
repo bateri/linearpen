@@ -8,7 +8,7 @@ use super::resolve::{Lookups, WORKSPACE, cycle, pick};
 use super::{Access, Stop, asked_wrong, json as print_json};
 use crate::command_line::{List, ListScope};
 use crate::linear::types::{Neighbor, StateKind};
-use crate::linear::{self, Filters, Issue, ME, NONE, Scope, lines, plain};
+use crate::linear::{self, Closed, Filters, Issue, ME, NONE, Scope, lines, plain};
 use crate::model::time::short_date;
 use crate::text::summary::section;
 
@@ -134,8 +134,14 @@ pub fn list(access: &Access, list: &List) -> Result<String, Stop> {
     let searching = matches!(list.scope, ListScope::Search(_));
     let filters = filters(&mut lookups, list)?;
     let (scope, title) = scope_of(&mut lookups, list)?;
-    let fetched = linear::fetch(access.transport, access.key, &scope, &filters)
-        .map_err(|error| asked_wrong(access, &error))?;
+    let fetched = linear::fetch(
+        access.transport,
+        access.key,
+        &scope,
+        &filters,
+        Closed::Asked,
+    )
+    .map_err(|error| asked_wrong(access, &error))?;
     if list.json {
         return print_json(&Issues::of(&title, &fetched.listing));
     }
@@ -146,10 +152,16 @@ pub fn list(access: &Access, list: &List) -> Result<String, Stop> {
     } else if searching {
         "Nothing was found."
     } else {
-        "There are no issues."
+        "There are no open issues."
     };
     let mut out = String::new();
     section(&mut out, &plain(&title), &fetched.listing, empty);
+    // A list holds the open issues unless states are asked for; a search holds every state.
+    if filters.status.is_empty() && !searching {
+        out.push_str(
+            "  Done and canceled issues are not listed: --status Done (or Canceled) lists them.\n",
+        );
+    }
     Ok(out)
 }
 

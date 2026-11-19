@@ -14,9 +14,9 @@
 ### Changed
 
 - **Every status is in the lists.** My issues, All issues and the lists of a team, a cycle, a view, a
-  project or a label hold done and canceled issues too, folded at the end, and the Status filter and
-  `linearpen list --status` take them. Open issues come first; the closed ones fill the rest of the
-  500, the ones that changed last first. A team's list is now called `Issues`.
+  project or a label hold the 100 done and canceled issues that changed last, folded at the end, and
+  the Status filter and `linearpen list --status` take every status. The list button still counts the
+  open issues. A team's list is now called `Issues`.
 
 ### Fixed
 

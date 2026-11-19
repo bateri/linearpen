@@ -97,9 +97,10 @@ optional (`{}` asks for the list as it is). Params:
   `"view"` (a saved view of issues), `"project"` (a project's issues) and `"label"` (the
   issues with a label), which take the `id` of what they are of (the ids the topic's `catalog` tells);
   or `"search"`, which takes the words in `id` (at most 200 characters, no control character, trimmed)
-  and is what Linear finds for them in the whole workspace, up to 500. A list holds the issues of
-  every state, up to 500: every open one first, then the done and canceled ones that changed last
-  (a search, as Linear ranks them); the groups of the closed ones begin folded. `mine` and `all` take
+  and is what Linear finds for them in the whole workspace, up to 500. A list holds up to 500
+  issues: every open one first, then the 100 done and canceled ones that changed last (where
+  `filters` name states, as many of those as there is room for; a search, every state as Linear ranks
+  them); the groups of the closed ones begin folded. `mine` and `all` take
   no `id`. Only the list shown and My issues are asked for: going to another
   list lets go of the one left and asks Linear for the new one, and the topic tells it as `listing`
   `"loading"` until it comes. An `id` Linear does not know is not an error of the call: `listing` is `failed`
@@ -766,8 +767,11 @@ the lists came, asking failed). The same value `view` answers with.
   empty, and `counts.shown` is 0); or `failed` (Linear could not tell it: `error` says why, and
   `loaded` is still true because My issues came).
 - `counts`: how many issues My issues holds (`mine`, whole) and the list shown holds (`shown`, as
-  `filters` narrow it; not by the words of `filter`), closed ones too; `mineCut` and `shownCut` say there are more than the 500 the program takes of a list:
-  every open one first, then the closed ones that changed last, and for a search the first 500 Linear finds (it has no order of its own).
+  `filters` narrow it; not by the words of `filter`), closed ones too, and how many of the list shown
+  are open (`shownOpen`, what the list button says); `mineCut` and `shownCut` say there are more than
+  the 500 the program takes of a list: of its open issues (and of its closed ones where `filters` name
+  states; the 100 closed ones that changed last are not a cut), and for a search the first 500 Linear
+  finds (it has no order of its own).
 - A row tells at most 10 labels of its issue (the first Linear gives); the 11th is not marked.
 - `catalog`: the lists the page can go to besides My issues and All issues, as Linear last said them.
   `loaded` is false until the first answer, and `error` says why one could not come (the lists of

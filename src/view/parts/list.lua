@@ -28,8 +28,7 @@ local NOTE = 44
 -- The room under the last line of the list (what `virtual` is told: `trail`).
 local TRAIL = 6
 
--- Whether the list shown has that line (it is whole: the lines have come and are the 500 that changed last,
--- the open ones first).
+-- Whether the list shown has that line (it is whole: the lines have come and are the 500 that changed last).
 local function cut()
 	return S.issues ~= nil and S.issues.listing == "ready" and S.issues.counts.shownCut == true
 end
@@ -404,7 +403,7 @@ end
 
 -- The line at the end of a list of `shown` issues that Linear has more of.
 function list.note(shown)
-	local words = string.format("The %d issues changed last, the open ones first. Filter them, or go to a list, for the others.", shown)
+	local words = string.format("The %d issues changed last. Filter them, or go to a list, for the others.", shown)
 	return b.div():id("list-cut"):h(NOTE):no_shrink():row():items_center():px(19):child(
 		b.text(words):text_size(SIZE.small):color("dim"):wrap():min_w(0):grow(1)
 	)
