@@ -51,6 +51,7 @@ local N = {
 	hint = nil,
 	team = nil,
 	asked = nil,
+	at = nil,
 	options = nil,
 	state = nil,
 	priority = "none",
@@ -74,9 +75,9 @@ function new.is_open()
 	return N.open
 end
 
--- What the program said can be chosen, once it has.
+-- What the program said can be chosen, once it has (those of before, while they are asked for again).
 local function chosen()
-	return N.options ~= nil and N.options.status == "ready" and N.options.data or nil
+	return N.options ~= nil and N.options.data or nil
 end
 
 local function trimmed(words)
@@ -128,26 +129,34 @@ local function reconcile(data)
 	end
 end
 
--- Asks the program what can be chosen for the team (`team`: its id or its key, or nil for the first).
+-- Asks the program what can be chosen for the team (`team`: its id or its key, or nil for the first),
+-- where it was not asked as of the lists now: the program lets the choices go each time it asks Linear
+-- again, so that a team, a label or a person made in Linear since is offered. The choices held for the
+-- same team stay in use until the new ones come (and where they do not).
 local function ask(team)
 	local want = team or ""
-	if N.asked == want and N.options ~= nil and N.options.status ~= "failed" then
+	local now = S.issues ~= nil and S.issues.updated or nil
+	if N.asked == want and N.options ~= nil and N.options.status ~= "failed" and N.at == now then
 		return
 	end
-	N.asked = want
-	N.options = { status = "loading" }
+	local kept = N.asked == want and N.options ~= nil and N.options.data or nil
+	N.asked, N.at = want, now
+	N.options = { status = "loading", data = kept }
 	local params = {}
 	if team ~= nil then
 		params.team = team
 	end
 	kit.call("new_options", params, function(result, err)
-		if N.asked ~= want then
+		-- (A later asking went past this one.)
+		if N.asked ~= want or N.at ~= now then
 			return true
 		end
 		if err then
-			N.options = { status = "failed", error = err.message or err.code }
+			N.options = { status = "failed", error = err.message or err.code, data = kept }
 			return true
 		end
+		-- The choices are the team's, by its id, whatever it was asked by.
+		N.asked = result.team
 		N.options = { status = "ready", data = result }
 		reconcile(result)
 		return true
@@ -173,7 +182,7 @@ local function begin()
 	N.about, N.restoring = "", false
 	N.draft = nil
 	N.hint = N.carry.team or cursor_team()
-	N.team, N.asked, N.options = nil, nil, nil
+	N.team, N.asked, N.at, N.options = nil, nil, nil, nil
 	N.state, N.priority, N.assignee, N.labels = nil, "none", "me", {}
 	N.project = N.carry.project
 	N.error = nil
@@ -190,9 +199,7 @@ function new.show()
 	end
 	N.open = true
 	N.restoring = N.about ~= ""
-	if N.options == nil or N.options.status ~= "ready" then
-		ask(N.team or N.hint)
-	end
+	ask(N.team or N.hint)
 	N.redraw = true
 	-- The title is not drawn yet: the keyboard is asked to go to a field the host will have, which it
 	-- does when the field is there (the kit would otherwise look for it a few frames and give up).
@@ -324,9 +331,15 @@ function new.create()
 	return true
 end
 
--- The lists came: the issue that was made is shown where it is in them, the cursor on it and the issue
--- open beside the list.
+-- The lists came: the choices of the form that is open are asked for again where Linear was asked again
+-- (not while its issue is on its way), and the issue that was made is shown where it is in them, the
+-- cursor on it and the issue open beside the list.
 function act.listed()
+	-- (Only where the lists are new: a push of the topic for anything else asks nothing, and choices that
+	-- could not come are asked for again when the form opens or Try again is pressed.)
+	if N.open and not N.creating and N.at ~= S.issues.updated then
+		ask(N.team or N.hint)
+	end
 	local pending = N.pending
 	if pending == nil then
 		return
@@ -545,7 +558,7 @@ function new.view(width)
 	if tray ~= nil then
 		content:child(tray)
 	end
-	if N.options == nil or N.options.status == "loading" then
+	if data == nil and (N.options == nil or N.options.status == "loading") then
 		content:child(b.div():row():items_center():gap(8):no_shrink():child(kit.spinner(14, "quiet")):child(
 			b.text("Loading the choices"):color("dim"):text_size(SIZE.small)
 		))

@@ -419,6 +419,11 @@ impl Canned {
         *self.one_team.lock().unwrap() = true;
     }
 
+    /// From now on Linear has both its teams again: one was made while the page was open.
+    pub(crate) fn make_team(&self) {
+        *self.one_team.lock().unwrap() = false;
+    }
+
     fn teams_text(&self) -> String {
         if !*self.bare.lock().unwrap() && !*self.one_team.lock().unwrap() {
             return TEAMS.to_owned();
@@ -3670,6 +3675,56 @@ fn a_value_with_nothing_to_choose_is_not_drawn() {
     ] {
         assert!(page.bounds(name).is_some(), "{name}: {}", said(&page));
     }
+}
+
+/// Waits until the lists that came are of another second than lists asked for now: the page knows
+/// lists that came again by when they came (`updated`, in seconds).
+fn the_lists_are_a_second_old() {
+    std::thread::sleep(Duration::from_millis(1100));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_team_made_in_linear_is_offered_to_the_draft_once_refresh_has_asked_again() {
+    let linear = Canned::new(Mode::Fine);
+    linear.set_one_team();
+    let session = session_over(&linear, Some("lin_api_test"), None);
+    let mut page = open(&session, WIDE, None, "ACM-412").expect("the page opens");
+    open_new(&mut page);
+    page.type_text("Rate limits").expect("the title");
+    assert!(page.bounds("new-value:team").is_none(), "{}", said(&page));
+    // The form is put away: the draft stays, and so did the choices it was given.
+    page.click("new-close").expect("Close is pressed");
+    page.advance(0.3).expect("a moment");
+    linear.make_team();
+    the_lists_are_a_second_old();
+    let before = linear.times("MyIssues");
+    page.click("refresh").expect("refresh is pressed");
+    page.wait_for(WITHIN, |_| linear.times("MyIssues") > before)
+        .expect("Linear is asked again");
+    open_new(&mut page);
+    page.wait_for(WITHIN, |page| page.bounds("new-value:team").is_some())
+        .unwrap_or_else(|why| panic!("the new team is offered: {why:?}: {}", said(&page)));
+    // The draft is the one that was put away.
+    assert_eq!(page.field("new-title/field"), Some("Rate limits"));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_team_made_in_linear_is_offered_to_the_open_form_when_the_lists_come_again() {
+    let linear = Canned::new(Mode::Fine);
+    linear.set_one_team();
+    let session = session_over(&linear, Some("lin_api_test"), None);
+    let mut page = open(&session, WIDE, None, "ACM-412").expect("the page opens");
+    open_new(&mut page);
+    assert!(page.bounds("new-value:team").is_none(), "{}", said(&page));
+    linear.make_team();
+    the_lists_are_a_second_old();
+    page.click("refresh").expect("refresh is pressed");
+    page.wait_for(WITHIN, |page| page.bounds("new-value:team").is_some())
+        .unwrap_or_else(|why| panic!("the new team is offered: {why:?}: {}", said(&page)));
+    // What was chosen before stays chosen, and the choices did not go while the new ones came.
+    assert!(page.bounds("new-value:state").is_some(), "{}", said(&page));
 }
 
 #[test]

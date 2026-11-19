@@ -22,6 +22,8 @@
 - **Filters open on the first click.** Clicking a filter right after linearpen started did nothing.
 - **A click is no longer lost while the filter row is open.** Clicking an issue's labels or status then
   only closed the row.
+- **Refresh reaches the New issue form.** A team, label, project or person made in Linear is offered in
+  the form after Refresh, even with a draft already begun; restarting linearpen is no longer needed.
 
 ## [0.6.0] - 2026-11-19
 
