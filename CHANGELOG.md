@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Share an issue.** Press `Share` next to an issue's identifier (or `Cmd Shift S`) to copy its ID,
+  title and link as one line, ready to paste into a chat. It is in the right-click menu too.
+
 ### Changed
 
 - **Claude is named for its issue.** Work on starts Claude with the session named `ACM-412 - Add rate

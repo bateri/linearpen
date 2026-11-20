@@ -547,6 +547,8 @@ local function command(id)
 		return context.copy("branch", context.single())
 	elseif id == "copy_link" then
 		return context.copy("link", context.single())
+	elseif id == "share" then
+		return context.copy("share", context.single())
 	elseif id == "link" then
 		return context.link(context.single())
 	elseif id == "comment" then
@@ -654,6 +656,8 @@ local function press(id)
 		return detail ~= nil and comment.send(detail.id) or true
 	elseif id == "open-linear" then
 		return panel.link()
+	elseif id == "panel-share" then
+		return context.copy("share", context.single())
 	elseif id == "panel-close" then
 		panel.close()
 	elseif id == "panel-title-edit" then

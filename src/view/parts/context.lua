@@ -1,7 +1,7 @@
 -- What a right press on a line opens, and what is copied: the host's menu with the values to change
 -- and the rest of what is done to an issue (the keys of the card, said once more where the pointer is),
--- and the id, the branch name and the link of an issue put on the pasteboard, which the kit's reply
--- `copy` does for a press, a pick of a menu or a command. The menu is of the issues selected where the
+-- and the id, the branch name, the link of an issue, or the line to share it by, put on the pasteboard,
+-- which the kit's reply `copy` does for a press, a pick of a menu or a command. The menu is of the issues selected where the
 -- line pressed is one of them, else of that line alone (what is selected stays).
 
 local kit = require("../lib/kit")
@@ -9,6 +9,7 @@ local change = require("./change")
 local commands = require("./commands")
 local list = require("./list")
 local panel = require("./panel")
+local row_ = require("./row")
 
 local b, u, S = kit.b, kit.u, kit.S
 
@@ -21,6 +22,13 @@ local MENU = "context-menu"
 local X = { serial = 0, ids = {}, at = nil }
 
 -- --- Copies ------------------------------------------------------------------------------------------
+
+-- The controls of the direction of text (U+202A to U+202E, U+2066 to U+2069): a title Linear sends may
+-- hold them, and they would turn the words around wherever the line is pasted.
+local function undirected(text)
+	text = string.gsub(text, "\xE2\x80[\xAA-\xAE]", "")
+	return (string.gsub(text, "\xE2\x81[\xA6-\xA9]", ""))
+end
 
 -- What of an issue is copied, and what is said of it.
 local COPIES = {
@@ -41,6 +49,17 @@ local COPIES = {
 		end,
 		missing = "Linear has not told where this issue is",
 	},
+	-- The line to paste where the issue is shared: its identifier, its title and its link, as a line
+	-- dragged out of the list carries it. Without the link there is nothing to share.
+	share = {
+		of = function(row)
+			if row.url == nil or row.url == "" then
+				return nil
+			end
+			return undirected(row_.words(row)) .. " " .. row.url, "Copied " .. row.identifier .. " with its title and link"
+		end,
+		missing = "Linear has not told where this issue is",
+	},
 }
 
 -- A control character in what Linear sends is never put on the pasteboard (a terminal would take it
@@ -49,7 +68,8 @@ local function plain(text)
 	return (string.gsub(text, "%c", ""))
 end
 
--- Copies the id, the branch name or the link (`kind`) of the issue `id`, and says so. The reply.
+-- Copies the id, the branch name, the link or the line to share (`kind`) of the issue `id`, and says so.
+-- The reply.
 function context.copy(kind, id)
 	local row = id ~= nil and change.row(id) or nil
 	local copy = COPIES[kind]
@@ -115,6 +135,7 @@ local function entries(ids)
 	list_[#list_ + 1] = entry("copy_id", "Copy ID", "copy_id")
 	list_[#list_ + 1] = entry("copy_branch", "Copy branch name", "copy_branch", row ~= nil and row.branchName ~= nil)
 	list_[#list_ + 1] = entry("copy_link", "Copy link", "copy_link")
+	list_[#list_ + 1] = entry("share", "Share", "share")
 	list_[#list_ + 1] = "-"
 	list_[#list_ + 1] = entry("link", "Open in Linear", "link")
 	return list_
@@ -172,6 +193,8 @@ function context.action(action)
 		return context.copy("branch", id)
 	elseif key == "copy_link" and #ids == 1 then
 		return context.copy("link", id)
+	elseif key == "share" and #ids == 1 then
+		return context.copy("share", id)
 	elseif key == "link" and #ids == 1 then
 		return context.link(id) or true
 	end

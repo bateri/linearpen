@@ -795,8 +795,8 @@ the lists came, asking failed). The same value `view` answers with.
   in several teams are one group. A group is named by `key`, `kind:name`. A folded group has `count`
   and `closed: true` and no `rows`. In a group the issue updated last is first.
 - `url`: where the issue is in Linear, and `branchName`: the name of the branch Linear suggests for it
-  (null where it has none): what the page copies (`Copy link`, `Copy branch name`). Neither holds a
-  control character.
+  (null where it has none): what the page copies (`Copy link`, `Copy branch name`, and with the
+  identifier and the title `Share`). Neither holds a control character.
 - `priority`: `none`, `urgent`, `high`, `medium` or `low`. `updated`: the day of the last change as
   the list writes it. `assignee` is set in every list but My issues: `"you"`, a name, or null.
 - A label's `color` is Linear's own (`#rrggbb`): data, not a role of the theme.

@@ -113,6 +113,12 @@ local function one_line(title)
 	return (string.gsub(title, " +", " "))
 end
 
+-- The issue as words on one line: its identifier and its title. What a line dragged out of the page
+-- carries, and what Share copies, before the address.
+function row.words(issue)
+	return issue.identifier .. " " .. one_line(issue.title)
+end
+
 -- What the line brings when it is dragged out of the page to a terminal pane or another application:
 -- the issue as one line of words (its identifier, its title and its address) and the address for the
 -- applications that take one. The title is Linear's, written by anyone: one with a control of the
@@ -123,7 +129,7 @@ local function carries(el, issue)
 	if el.carry == nil then
 		return
 	end
-	local words = issue.identifier .. " " .. one_line(issue.title)
+	local words = row.words(issue)
 	local url = issue.url
 	if url ~= nil and url ~= "" then
 		local ok, why = pcall(el.carry, el, { text = words .. " " .. url, url = url })

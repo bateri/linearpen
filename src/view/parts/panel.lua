@@ -742,7 +742,7 @@ local function body(entry)
 	return box
 end
 
--- The panel, `width` points wide: its head (the identifier and the two buttons), the title and the
+-- The panel, `width` points wide: its head (the buttons, the identifier and Share), the title and the
 -- facts, then what scrolls.
 function panel.view(width)
 	local info = P.open
@@ -773,7 +773,22 @@ function panel.view(width)
 		tip = detail == nil and "Linear has not told where it is" or "Open the issue in your browser",
 	})):child(kit.button("panel-close", "Close", { suffix = P.close_keyed and "Esc" or nil }):min_w(P.close_width or 0))
 	top:child(buttons)
-	top:child(b.text(info.identifier):text_size(SIZE.small):color("dim"):mt(14):no_shrink())
+	-- What the issue is, and at the end of its line Share: the identifier, the title and the link on the
+	-- pasteboard, one line to paste where the issue is shared. Dim where Linear has not told the link.
+	local shared = change.row(info.id)
+	local linked = shared ~= nil and shared.url ~= nil and shared.url ~= ""
+	top:child(
+		b.div():row():items_center():gap(8):mt(9):no_shrink()
+			:child(b.text(info.identifier):text_size(SIZE.small):color("dim"):truncate():min_w(0))
+			:child(b.spacer())
+			:child(kit.button("panel-share", "Share", {
+				small = true,
+				suffix = commands.label("share"),
+				disabled = not linked,
+				tip = linked and "Copy its identifier, title and link, to paste where you share it"
+					or "Linear has not told where it is",
+			}))
+	)
 	local now = panel.info()
 	-- The title is the words, which a press turns into a field; a press while it is a field is its own.
 	local title = b.text(now.title):text_size(16):weight(700):wrap():no_shrink()

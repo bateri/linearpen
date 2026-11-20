@@ -31,6 +31,8 @@ local TABLE = {
 	{ id = "copy_id", title = "Copy ID", group = "Copy", keys = { "mod+shift+i" }, when = "single" },
 	{ id = "copy_branch", title = "Copy branch name", group = "Copy", keys = { "mod+shift+b" }, when = "single" },
 	{ id = "copy_link", title = "Copy link", group = "Copy", keys = { "mod+shift+l" }, when = "single" },
+	-- The identifier, the title and the link on one line, to paste where the issue is shared.
+	{ id = "share", title = "Share", group = "Copy", keys = { "mod+shift+s" }, when = "single" },
 	{ id = "open", title = "Open beside the list", group = "Issue", keys = { "enter", "o" }, native = true },
 	{ id = "link", title = "Open in Linear", group = "Issue", keys = { "shift+o" }, when = "single_idle" },
 	{ id = "parent", title = "Open the parent issue", group = "Issue", keys = { "mod+shift+up" }, when = "parented" },

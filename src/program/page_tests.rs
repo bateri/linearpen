@@ -6914,6 +6914,7 @@ fn a_right_press_on_a_line_opens_the_menu_of_that_issue_and_one_in_the_selection
         "Copy ID",
         "Copy branch name",
         "Copy link",
+        "Share",
         "Open in Linear",
     ] {
         assert!(
@@ -6954,6 +6955,7 @@ fn a_right_press_on_a_line_opens_the_menu_of_that_issue_and_one_in_the_selection
         "Copy ID",
         "Copy branch name",
         "Copy link",
+        "Share",
         "Open in Linear",
     ] {
         assert!(
@@ -6999,6 +7001,143 @@ fn the_copy_keys_put_the_id_the_branch_and_the_link_on_the_pasteboard_and_say_so
     .unwrap_or_else(|why| panic!("the link: {why:?}: {:?}", page.pasteboard()));
     page.wait_for(WITHIN, |page| page.says("Copied the link"))
         .unwrap_or_else(|why| panic!("it says so: {why:?}: {}", said(&page)));
+}
+
+/// What Share puts on the pasteboard for ACM-412 and ACM-398: the identifier, the title and the link, on
+/// one line.
+const SHARE_412: &str = "ACM-412 Add rate limiting to the public API https://linear.app/acme/issue/ACM-412/add-rate-limiting-to-the-public-api";
+const SHARE_398: &str = "ACM-398 Checkout test fails one run in ten https://linear.app/acme/issue/ACM-398/checkout-test-fails-one-run-in-ten";
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn share_puts_the_identifier_the_title_and_the_link_on_one_line_from_its_key_its_menu_its_button_and_the_palette()
+ {
+    let (_linear, _session, mut page) = open_lists(WIDE);
+    let copied_id = |page: &mut Page, id: &str| {
+        page.press("mod+shift+i").expect("the key");
+        page.wait_for(WITHIN, |page| page.pasteboard() == Some(id))
+            .unwrap_or_else(|why| panic!("the id: {why:?}: {:?}", page.pasteboard()));
+    };
+    // The key: the issue under the cursor.
+    page.press("mod+shift+s").expect("the key");
+    page.wait_for(WITHIN, |page| page.pasteboard() == Some(SHARE_412))
+        .unwrap_or_else(|why| panic!("the key: {why:?}: {:?}", page.pasteboard()));
+    page.wait_for(WITHIN, |page| {
+        page.says("Copied ACM-412 with its title and link")
+    })
+    .unwrap_or_else(|why| panic!("it says so: {why:?}: {}", said(&page)));
+    // The menu of a line, beside the other copies: that line's issue.
+    page.right_click("row:i:issue-398").expect("a right press");
+    page.wait_for(WITHIN, |page| page.menu().is_some())
+        .unwrap_or_else(|why| panic!("the menu: {why:?}: {}", said(&page)));
+    let titles = open_menu_titles(&page);
+    let at = |words: &str| titles.iter().position(|title| title == words);
+    assert_eq!(
+        at("Share"),
+        at("Copy link").map(|n| n + 1),
+        "Share is after Copy link: {titles:?}"
+    );
+    page.pick_titled("Share").expect("Share");
+    page.wait_for(WITHIN, |page| page.pasteboard() == Some(SHARE_398))
+        .unwrap_or_else(|why| panic!("the menu: {why:?}: {:?}", page.pasteboard()));
+    // The button at the end of the identifier's line, of the issue open.
+    copied_id(&mut page, "ACM-398");
+    cursor_on(&mut page, "ACM-398");
+    open_the_issue_under_the_cursor(&mut page);
+    page.wait_for(WITHIN, |page| pressable(page, "panel-share"))
+        .unwrap_or_else(|why| panic!("the button: {why:?}: {}", said(&page)));
+    page.click("panel-share").expect("the button");
+    page.wait_for(WITHIN, |page| page.pasteboard() == Some(SHARE_398))
+        .unwrap_or_else(|why| panic!("the button: {why:?}: {:?}", page.pasteboard()));
+    // The palette.
+    copied_id(&mut page, "ACM-398");
+    page.press("mod+k").expect("mod+k");
+    page.wait_for(WITHIN, |page| page.says("Do it"))
+        .unwrap_or_else(|why| panic!("the palette opens: {why:?}: {}", said(&page)));
+    page.type_text("share").expect("the query");
+    page.press("enter").expect("enter");
+    page.wait_for(WITHIN, |page| page.pasteboard() == Some(SHARE_398))
+        .unwrap_or_else(|why| panic!("the palette: {why:?}: {:?}", page.pasteboard()));
+}
+
+/// A title is anyone's: what Share copies of it is one line, without the controls that turn words
+/// around where it is pasted. Where Linear has not told the link there is nothing to share: the key
+/// says so and copies nothing, and the button is dim.
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn share_makes_anyones_title_one_line_and_without_a_link_copies_nothing() {
+    let linear = Canned::new(Mode::Fine);
+    linear.retitle("issue-398", "Checkout \u{202e}gnp.exe\u{2066} fails");
+    linear.retitle("issue-405", "Two\nlines,\tand\u{feff}\u{2028} more");
+    linear.set_url("issue-377", "");
+    let session = session_over(&linear, Some("lin_api_test"), None);
+    let mut page = open(&session, WIDE, None, "ACM-412").expect("the page opens");
+    page.press("down").expect("down");
+    cursor_on(&mut page, "ACM-398");
+    page.press("mod+shift+s").expect("the key");
+    page.wait_for(WITHIN, |page| {
+        page.pasteboard()
+            == Some("ACM-398 Checkout gnp.exe fails https://linear.app/acme/issue/ACM-398/checkout-test-fails-one-run-in-ten")
+    })
+    .unwrap_or_else(|why| panic!("no control of direction: {why:?}: {:?}", page.pasteboard()));
+    page.press("down").expect("down");
+    cursor_on(&mut page, "ACM-405");
+    page.press("mod+shift+s").expect("the key");
+    page.wait_for(WITHIN, |page| {
+        page.pasteboard()
+            == Some("ACM-405 Two lines, and more https://linear.app/acme/issue/ACM-405/webhook-retries-ignore-the-backoff-setting")
+    })
+    .unwrap_or_else(|why| panic!("one line: {why:?}: {:?}", page.pasteboard()));
+    page.press("down").expect("down");
+    cursor_on(&mut page, "ACM-377");
+    page.press("mod+shift+i").expect("the key");
+    page.wait_for(WITHIN, |page| page.pasteboard() == Some("ACM-377"))
+        .unwrap_or_else(|why| panic!("the id: {why:?}: {:?}", page.pasteboard()));
+    page.press("mod+shift+s").expect("the key");
+    page.wait_for(WITHIN, |page| {
+        page.says("Linear has not told where this issue is")
+    })
+    .unwrap_or_else(|why| panic!("it says why: {why:?}: {}", said(&page)));
+    assert_eq!(page.pasteboard(), Some("ACM-377"), "nothing is copied");
+    open_the_issue_under_the_cursor(&mut page);
+    page.wait_for(WITHIN, |page| pressable(page, "panel-value:state"))
+        .unwrap_or_else(|why| panic!("its controls: {why:?}: {}", said(&page)));
+    // The button is there, where it always is, and cannot be pressed.
+    let share = page
+        .outline()
+        .accessible
+        .iter()
+        .find(|node| node.words == "Share")
+        .cloned()
+        .unwrap_or_else(|| panic!("Share is there: {}", said(&page)));
+    assert!(
+        share.id.is_none() || share.state.disabled,
+        "Share is dim: {share:?}"
+    );
+    assert!(!pressable(&page, "panel-share"), "Share is dim");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn share_is_whole_on_the_line_of_the_identifier_where_the_issue_is_narrowest() {
+    // An 80×24 pane, where the issue has the pane, and a pane of 760 points, where it is beside the list
+    // at its narrowest (420 points).
+    for size in [PANE, (760.0, 520.0)] {
+        let (_linear, _session, mut page) = open_lists(size);
+        open_the_issue_under_the_cursor(&mut page);
+        page.wait_for(WITHIN, |page| pressable(page, "panel-share"))
+            .unwrap_or_else(|why| panic!("{size:?}: the button: {why:?}: {}", said(&page)));
+        let share = page.bounds("panel-share").expect("Share");
+        let close = page.bounds("panel-close").expect("Close");
+        let open = page.bounds("open-linear").expect("Open in Linear");
+        // Under the buttons of the head, its right edge with Close's, and whole in the pane.
+        assert!(share.y >= open.y + open.h, "{size:?}: {open:?} {share:?}");
+        assert!(
+            (share.x + share.w - (close.x + close.w)).abs() < 0.6,
+            "{size:?}: {close:?} {share:?}"
+        );
+        assert!(share.x + share.w <= size.0 + 0.5, "{size:?}: {share:?}");
+    }
 }
 
 #[test]
@@ -7546,6 +7685,8 @@ fn command_shift_m_edits_the_persons_last_comment_and_only_their_comments_have_e
             .count()
     };
     assert_eq!(edits(&page), 1, "{}", said(&page));
+    // (Ada's comment is the last: the issue is read down to it.)
+    crate::page_pictures::read_to(&mut page, "edit-comment:c-ada");
     assert!(pressable(&page, "edit-comment:c-ada"));
     assert!(palette_offers(&mut page, "Edit your last comment"));
     page.press("mod+shift+m").expect("command, shift and m");

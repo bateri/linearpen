@@ -199,9 +199,12 @@ A right press on a line opens the menu of that issue (or, on a line that is sele
 selected): the values above, `Assign to me`, and for one issue `Rename`, the copies and `Open in
 Linear`. A value picked there opens the menu of that value for those issues. The copies are keys too:
 `⌘⇧I` puts the identifier of the issue on the pasteboard (`ACM-412`), `⌘⇧B` its branch name (where
-Linear has one) and `⌘⇧L` its link, and the page says so for a moment. Where an issue is open, `r`, the
-copies and `⇧O` are that issue's, whatever is selected, as the buttons of its panel are; the keys that
-change a value stay with the selection.
+Linear has one) and `⌘⇧L` its link, and the page says so for a moment. `Share` (`⌘⇧S`, and the button
+beside the identifier of the issue open) puts its identifier, title and link on one line, to paste in a
+chat or a message:
+`ACM-412 Add rate limiting to the public API https://linear.app/acme/issue/ACM-412/add-rate-limiting-to-the-public-api`.
+Where an issue is open, `r`, the copies and `⇧O` are that issue's, whatever is selected, as the buttons
+of its panel are; the keys that change a value stay with the selection.
 
 <img src="docs/edit-many.png" width="720" alt="linearpen: three issues selected, which the status key changes together">
 
@@ -422,6 +425,7 @@ or `Space` then presses.
 | `i`                   | assign it to you                                                     |
 | `r`                   | change the title                                                     |
 | `⌘⇧I` `⌘⇧B` `⌘⇧L`     | copy the identifier, the branch name, the link                       |
+| `⌘⇧S`                 | share: copy the identifier, the title and the link on one line       |
 | `w`                   | work on the issue that is open                                       |
 | `c`                   | write a new issue                                                    |
 | `⇧M`                  | write a comment on the issue open (`⌘Enter` posts it, `Esc` leaves)  |
