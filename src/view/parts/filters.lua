@@ -114,9 +114,12 @@ local function ask()
 end
 
 -- The choices are asked for once the lists have come, before a chip is pressed: a chip opens on what is
--- here. A failed asking is made again when a chip is pressed, not by itself. As the lists come.
+-- here. A failed asking is made again when a chip is pressed, not by itself. As the lists come: not
+-- while the page asks for a key or says that Linear did not answer (`loaded` is false), where there is
+-- no chip and the asking would fail for the same reason the page already says.
 function filters.sync()
-	if S.issues ~= nil and F.options == nil and not F.asking and not F.failed then
+	local loaded = S.issues ~= nil and S.issues.loaded == true
+	if loaded and F.options == nil and not F.asking and not F.failed then
 		ask()
 	end
 end

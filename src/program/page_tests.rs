@@ -1664,6 +1664,8 @@ fn without_a_key_the_page_asks_for_one_and_keeps_what_linear_takes() {
     let linear = Canned::new(Mode::Fine);
     let session = session_over(&linear, None, Some(dir.clone()));
     let mut page = open(&session, WIDE, None, "Connect Linear").expect("the page opens");
+    page.advance(0.5).expect("a moment");
+    no_choices_asked(&linear, &page);
     assert!(
         page.says("A key with Read access shows your issues."),
         "{}",
@@ -1685,6 +1687,9 @@ fn without_a_key_the_page_asks_for_one_and_keeps_what_linear_takes() {
     page.wait_for(WITHIN, |page| page.says("ACM-412"))
         .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
     assert_eq!(linear.last_key().as_deref(), Some("lin_api_typed"));
+    // The lists have come: the choices of the filters are asked for now.
+    page.wait_for(WITHIN, |_| linear.times("FilterOptions") == 1)
+        .expect("the choices are asked for");
     assert!(dir.join("key").is_file(), "the key is kept");
     std::fs::remove_dir_all(&dir).expect("the folder of this test is removed");
 }
@@ -1712,10 +1717,25 @@ fn a_linear_that_is_not_there_is_an_error_with_the_way_to_try_again() {
     let session = session_over(&linear, Some("lin_api_test"), None);
     let mut page = open(&session, WIDE, None, "Linear did not answer").expect("the page opens");
     assert!(page.says("could not be reached"), "{}", said(&page));
+    page.advance(0.5).expect("a moment");
+    no_choices_asked(&linear, &page);
     linear.set(Mode::Fine);
     page.click("retry").expect("the button is pressed");
     page.wait_for(WITHIN, |page| page.says("ACM-412"))
         .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    page.wait_for(WITHIN, |_| linear.times("FilterOptions") == 1)
+        .expect("the choices are asked for once the lists have come");
+}
+
+/// The page that asks for a key or says Linear did not answer has no chip: the choices of the filters
+/// are not asked for, and nothing says they could not be.
+fn no_choices_asked(linear: &Canned, page: &Page) {
+    assert_eq!(linear.times("FilterOptions"), 0);
+    assert!(
+        !page.says("The choices of the filters could not be"),
+        "{}",
+        said(page)
+    );
 }
 
 #[test]
@@ -3589,7 +3609,7 @@ fn picker_offers(page: &mut Page, title: &str) {
 }
 
 /// Turns the value `title` of the card on or off, with a click on its row: the card stays.
-fn turn(page: &mut Page, title: &str) {
+pub(crate) fn turn(page: &mut Page, title: &str) {
     picker_offers(page, title);
     let at = row_middle(page, title);
     page.click_at(at)
@@ -3609,7 +3629,7 @@ fn picker_after(page: &mut Page, key: &str) {
 }
 
 /// Puts the card of the values away with Esc.
-fn close_picker(page: &mut Page) {
+pub(crate) fn close_picker(page: &mut Page) {
     page.press("escape").expect("escape");
     page.wait_for(WITHIN, |page| !picker_open(page))
         .unwrap_or_else(|why| panic!("the card closes: {why:?}: {}", said(page)));

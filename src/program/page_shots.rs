@@ -20,8 +20,8 @@ use crate::page_pictures::{
     read_to_the_end,
 };
 use crate::page_tests::{
-    Canned, Mode, PANE, Page, cursor, ls_of_p41, open, pressable, rig, rig_polling, session_over,
-    with_my_comment,
+    Canned, Mode, PANE, Page, close_picker, cursor, ls_of_p41, open, pressable, rig, rig_polling,
+    session_over, turn, with_my_comment,
 };
 
 /// A page as large as a terminal pane on a laptop.
@@ -238,10 +238,11 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     )?;
     page.click("new-value:priority")?;
     page.pick_titled("High")?;
+    // (The labels are checked in a card of the page's, which stays open until Esc.)
     page.click("new-value:labels")?;
-    page.pick_titled("bug")?;
-    page.click("new-value:labels")?;
-    page.pick_titled("api")?;
+    turn(&mut page, "bug");
+    turn(&mut page, "api");
+    close_picker(&mut page);
     page.advance(0.6)?;
     save(&page, &fonts, Palette::Dark, "new-typed.png");
     page.press("mod+enter")?;
@@ -260,10 +261,11 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     )?;
     page.click("new-value:priority")?;
     page.pick_titled("High")?;
+    // (The labels are checked in a card of the page's, which stays open until Esc.)
     page.click("new-value:labels")?;
-    page.pick_titled("bug")?;
-    page.click("new-value:labels")?;
-    page.pick_titled("api")?;
+    turn(&mut page, "bug");
+    turn(&mut page, "api");
+    close_picker(&mut page);
     page.advance(0.6)?;
     save(&page, &fonts, Palette::Dark, "narrow-new.png");
 
@@ -326,8 +328,8 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     save(&page, &fonts, Palette::Dark, "narrow-cycle.png");
 
     // The filters: the row `f` opens, the keyboard on its first chip; and what is left of it with the
-    // keyboard back on the list, All issues narrowed to what Deniz has with the bug label. The menu of a
-    // chip is the host's, which a picture made without one does not draw.
+    // keyboard back on the list, All issues narrowed to what Deniz has with the bug label. The values of
+    // a chip are checked in a card of the page's, put away before each picture.
     let linear = Canned::new(Mode::Fine);
     let session = session_over(&linear, Some("lin_api_test"), None);
     let mut page = open(&session, BIG, Some(&fonts), "ACM-412")?;
@@ -344,10 +346,12 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     page.advance(0.6)?;
     save(&page, &fonts, Palette::Dark, "filter-bar.png");
     page.click("filters:assignee")?;
-    page.pick_titled("Deniz")?;
+    turn(&mut page, "Deniz");
+    close_picker(&mut page);
     page.wait_for(Duration::from_secs(20), |page| page.says("ACM-431"))?;
     page.click("filters:labels")?;
-    page.pick_titled("bug")?;
+    turn(&mut page, "bug");
+    close_picker(&mut page);
     page.wait_for(Duration::from_secs(20), |_| {
         linear.variables_of("AllIssues").len() >= 3
     })?;
@@ -370,10 +374,12 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     })?;
     page.advance(0.4)?;
     page.click("filters:assignee")?;
-    page.pick_titled("Deniz")?;
+    turn(&mut page, "Deniz");
+    close_picker(&mut page);
     page.wait_for(Duration::from_secs(20), |page| page.says("ACM-431"))?;
     page.click("filters:labels")?;
-    page.pick_titled("bug")?;
+    turn(&mut page, "bug");
+    close_picker(&mut page);
     page.wait_for(Duration::from_secs(20), |_| {
         linear.variables_of("AllIssues").len() >= 3
     })?;
