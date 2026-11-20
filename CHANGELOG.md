@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-20
+
 ### Added
 
 - **Share an issue.** Press `Share` next to an issue's identifier (or `Cmd Shift S`) to copy its ID,
