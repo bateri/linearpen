@@ -23,6 +23,9 @@ local function apply(snapshot)
 	if act.sync ~= nil then
 		act.sync()
 	end
+	if act.sync_filters ~= nil then
+		act.sync_filters()
+	end
 end
 
 -- Tells the program what the page looks at (`list`: `{ kind, id }`, `filters`, `filter`, `closed`). `after`, where there is one, is

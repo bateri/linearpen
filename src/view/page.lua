@@ -1062,7 +1062,7 @@ local function handle(event)
 	elseif kind == "carried" then
 		-- The system's drag of a line out of the page is over, and the page did not hear the pointer
 		-- while it went: what it was told of the pointer (the shape, the button down) is no longer so.
-		S.cursor, S.armed = nil, nil
+		S.cursor, S.armed, S.away = nil, nil, nil
 		reply = b.merge(reply, true)
 	elseif kind == "focus" and event.field ~= nil and not picker.holds(event.field) then
 		-- The person clicked into a field (the filter's): the row of the filters is put away.
@@ -1070,7 +1070,10 @@ local function handle(event)
 	elseif kind == "press" then
 		if (event.button or "left") == "left" then
 			S.armed = b.layout.hit({ x = event.x, y = event.y })
-			filters.outside(S.armed)
+			-- (A press elsewhere puts the row of the filters away, when its button comes up: gone while
+			-- the button is down, the row would move what is under it, and the button would come up on
+			-- something else.)
+			S.away = filters.outside(S.armed)
 			pictures.unpoint()
 		end
 		if not taken and pictures.is_open() then
@@ -1090,7 +1093,10 @@ local function handle(event)
 	elseif kind == "release" then
 		reply = b.merge(reply, pictures.released())
 		local armed, over = S.armed, b.layout.hit({ x = event.x, y = event.y })
-		S.armed = nil
+		if S.away then
+			filters.close()
+		end
+		S.armed, S.away = nil, nil
 		if
 			armed ~= nil
 			and armed == over

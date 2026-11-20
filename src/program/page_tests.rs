@@ -140,6 +140,9 @@ pub(crate) struct Canned {
     storage_holds: Mutex<bool>,
     /// Whether each `IssueBatchUpdate` is held (after it is written down) until a test lets it go.
     changes_hold: Mutex<bool>,
+    /// Linear answers no `FilterOptions` (until it is let go), and then refuses it.
+    filter_options_hold: Mutex<bool>,
+    filter_options_refused: Mutex<bool>,
 }
 
 /// What the storage was sent: the address, the headers and the bytes.
@@ -209,6 +212,8 @@ impl Canned {
             storage_refuses: Mutex::new(false),
             storage_holds: Mutex::new(false),
             changes_hold: Mutex::new(false),
+            filter_options_hold: Mutex::new(false),
+            filter_options_refused: Mutex::new(false),
         })
     }
 
@@ -296,6 +301,17 @@ impl Canned {
     /// down, and the call waits, so that a test can do something while a change is on its way.
     pub(crate) fn hold_changes(&self, hold: bool) {
         *self.changes_hold.lock().unwrap() = hold;
+    }
+
+    /// From now on (until `hold_filter_options(false)`) Linear answers no `FilterOptions`: the call
+    /// waits, so that a test can press a chip while its choices are on their way.
+    pub(crate) fn hold_filter_options(&self, hold: bool) {
+        *self.filter_options_hold.lock().unwrap() = hold;
+    }
+
+    /// From now on (until `refuse_filter_options(false)`) Linear refuses `FilterOptions`.
+    pub(crate) fn refuse_filter_options(&self, refuse: bool) {
+        *self.filter_options_refused.lock().unwrap() = refuse;
     }
 
     /// The ids `Issue` was asked for, in order.
@@ -1005,7 +1021,20 @@ impl Transport for Canned {
                     reply(200, &big_all_page(page))
                 }
                 "SearchIssues" => reply(200, SEARCH_ISSUES),
-                "FilterOptions" => reply(200, FILTER_OPTIONS),
+                "FilterOptions" => {
+                    // (Held for the most of half a minute: a test that forgets to let go is not left
+                    // waiting.)
+                    for _ in 0..3000 {
+                        if !*self.filter_options_hold.lock().unwrap() {
+                            break;
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(10));
+                    }
+                    if *self.filter_options_refused.lock().unwrap() {
+                        return reply(400, CHANGE_REFUSED);
+                    }
+                    reply(200, FILTER_OPTIONS)
+                }
                 "MyIssues" => reply(200, &self.listing(MY_ISSUES, true)),
                 "AllIssues" => reply(200, &self.listing(ALL_ISSUES, false)),
                 "TeamIssues" if *self.big_team.lock().unwrap() => {
@@ -8007,6 +8036,217 @@ fn the_row_of_filters_opens_from_the_line_of_keys_and_a_press_elsewhere_puts_it_
     page.click("filters-clear").expect("Clear filters");
     page.wait_for(WITHIN, |page| !pressable(page, "filters:priority"))
         .unwrap_or_else(|why| panic!("they are let go of: {why:?}: {}", said(&page)));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_choices_of_the_filters_are_asked_for_as_the_lists_come_and_a_chip_opens_on_them() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    // Nothing is pressed: they are asked for once the lists are here.
+    page.wait_for(WITHIN, |_| linear.times("FilterOptions") == 1)
+        .expect("the choices are asked for");
+    page.advance(0.3).expect("a moment");
+    page.press("f").expect("f");
+    page.wait_for(WITHIN, |page| pressable(page, "filters:status"))
+        .unwrap_or_else(|why| panic!("the row opens: {why:?}: {}", said(&page)));
+    page.click("filters:status").expect("status");
+    assert!(
+        picker_titles(&page).contains(&"In Progress".to_owned()),
+        "the card opens on them: {:?}",
+        picker_titles(&page)
+    );
+    assert_eq!(linear.times("FilterOptions"), 1, "asked once");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_chip_pressed_before_its_choices_have_come_opens_its_card_at_once_which_fills_when_they_come() {
+    // The asking made as the lists come fails: it is not made again by itself.
+    let linear = Canned::new(Mode::Fine);
+    linear.refuse_filter_options(true);
+    let session = session_over(&linear, Some("lin_api_test"), None);
+    // (The program owes the answer while the choices are held: a step that tells the page is then slow.)
+    let mut page = open_patiently(
+        &session,
+        WIDE,
+        None,
+        "ACM-412",
+        Some(Duration::from_millis(1500)),
+    )
+    .expect("the page opens");
+    page.wait_for(WITHIN, |page| {
+        page.says("The choices of the filters could not be")
+    })
+    .unwrap_or_else(|why| panic!("it says so: {why:?}: {}", said(&page)));
+    page.advance(1.0).expect("a moment");
+    assert_eq!(linear.times("FilterOptions"), 1);
+    // The row asks again as it opens; a chip pressed while they are coming opens its card at once, and
+    // it says they are coming.
+    linear.hold_filter_options(true);
+    in_flight(page.press("f"));
+    page.wait_for(WITHIN, |page| pressable(page, "filters:labels"))
+        .unwrap_or_else(|why| panic!("the row opens: {why:?}: {}", said(&page)));
+    in_flight(page.click("filters:labels"));
+    page.wait_for(WITHIN, picker_open)
+        .unwrap_or_else(|why| panic!("the card opens at once: {why:?}: {}", said(&page)));
+    assert_eq!(linear.times("FilterOptions"), 2);
+    assert!(picker_rows(&page).is_empty(), "{:?}", picker_titles(&page));
+    assert!(
+        page.words_in(PICKER).contains(&"Loading".to_owned()),
+        "{:?}",
+        page.words_in(PICKER)
+    );
+    // Where they could not come either, the card goes.
+    linear.hold_filter_options(false);
+    page.wait_for(WITHIN, |page| !picker_open(page))
+        .unwrap_or_else(|why| panic!("the card goes: {why:?}: {}", said(&page)));
+    // Where they come, it fills with them and stays.
+    linear.refuse_filter_options(false);
+    linear.hold_filter_options(true);
+    in_flight(page.click("filters:labels"));
+    page.wait_for(WITHIN, picker_open)
+        .unwrap_or_else(|why| panic!("the card opens at once: {why:?}: {}", said(&page)));
+    assert!(
+        page.words_in(PICKER).contains(&"Loading".to_owned()),
+        "{:?}",
+        page.words_in(PICKER)
+    );
+    linear.hold_filter_options(false);
+    picker_offers(&mut page, "bug");
+    assert!(
+        !page.words_in(PICKER).contains(&"Loading".to_owned()),
+        "{:?}",
+        page.words_in(PICKER)
+    );
+    turn(&mut page, "bug");
+    page.advance(0.3).expect("a moment");
+    assert!(picker_open(&page), "the card stays");
+    assert_eq!(linear.times("FilterOptions"), 3);
+}
+
+/// A person's click in the middle of the element named `name`: the button goes down, a moment passes
+/// (frames are drawn) and it comes up where it went down.
+fn click_slowly(page: &mut Page, name: &str) {
+    use pencere_view::{Button, Input, Mods};
+    let bounds = page
+        .bounds(name)
+        .unwrap_or_else(|| panic!("{name} is laid out"));
+    let at = pencere_view::Point::new(bounds.x + bounds.w / 2.0, bounds.y + bounds.h / 2.0);
+    page.move_to(at).expect("the pointer comes");
+    page.pointer(Input::Press {
+        at,
+        button: Button::Left,
+        mods: Mods::default(),
+        count: 1,
+    })
+    .expect("the button goes down");
+    page.advance(0.1).expect("a moment");
+    page.pointer(Input::Release {
+        at,
+        button: Button::Left,
+        mods: Mods::default(),
+    })
+    .expect("the button comes up");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_control_of_the_issue_pressed_while_the_row_of_filters_is_open_is_pressed_and_the_row_goes() {
+    let (_linear, _session, mut page) = open_lists(WIDE);
+    open_the_controls(&mut page);
+    page.press("f").expect("f");
+    page.wait_for(WITHIN, |page| pressable(page, "filters:status"))
+        .unwrap_or_else(|why| panic!("the row opens: {why:?}: {}", said(&page)));
+    let before = page.bounds("panel-value:labels").expect("the labels");
+    // The row goes when the button comes up, not when it goes down: the issue under the row does not
+    // move from under the pointer while the button is down.
+    click_slowly(&mut page, "panel-value:labels");
+    page.wait_for(WITHIN, picker_open)
+        .unwrap_or_else(|why| panic!("the card opens: {why:?}: {}", said(&page)));
+    page.advance(0.3).expect("a moment");
+    assert!(
+        !pressable(&page, "filters:status"),
+        "the row goes: {}",
+        said(&page)
+    );
+    let after = page.bounds("panel-value:labels").expect("the labels");
+    assert!(
+        after.y < before.y,
+        "the issue takes the row's place: {before:?} {after:?}"
+    );
+    let card = page.bounds(PICKER).expect("the card");
+    assert!(
+        card.y >= after.y + after.h,
+        "the card stands by the labels where they went: {card:?} {after:?}"
+    );
+}
+
+/// Whether `frame` is the colour `ring`, or a mix of it with something else by no part that shows (a
+/// motion of the colour that begins and ends at the same colour).
+fn is_ring(frame: Option<pencere_view::Color>, ring: pencere_view::Color) -> bool {
+    frame.is_some_and(|frame| {
+        frame.source == ring.source
+            && frame.alpha == ring.alpha
+            && frame.mix.is_none_or(|mix| mix.amount < 0.001)
+    })
+}
+
+/// The colour of the frame of the element named `name`, as the last frame drew it.
+fn frame_of(page: &Page, name: &str) -> Option<pencere_view::Color> {
+    let bounds = page.bounds(name)?;
+    page.list().items.iter().find_map(|item| match item {
+        pencere_view::Paint::Quad(quad)
+            if (quad.rect.x - bounds.x).abs() < 0.6
+                && (quad.rect.y - bounds.y).abs() < 0.6
+                && (quad.rect.w - bounds.w).abs() < 0.6
+                && (quad.rect.h - bounds.h).abs() < 0.6 =>
+        {
+            quad.border.map(|border| border.color)
+        }
+        _ => None,
+    })
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_ring_of_a_chip_stays_on_it_while_its_card_is_open_and_when_the_card_goes() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    open_filters(&linear, &mut page);
+    // The keyboard is on the first chip: the ring is on it.
+    let ring = frame_of(&page, "filters:status").expect("the chip's frame");
+    let mut frames = Vec::new();
+    page.press("enter").expect("enter");
+    page.wait_for(WITHIN, picker_open).expect("the card opens");
+    for _ in 0..12 {
+        page.advance(1.0 / 60.0).expect("a frame");
+        frames.push(frame_of(&page, "filters:status"));
+    }
+    page.press("escape").expect("escape");
+    for _ in 0..24 {
+        page.advance(1.0 / 60.0).expect("a frame");
+        frames.push(frame_of(&page, "filters:status"));
+    }
+    assert!(!picker_open(&page), "the card goes");
+    assert!(
+        frames.iter().all(|frame| is_ring(*frame, ring)),
+        "the ring does not go and come back: {ring:?} {frames:?}"
+    );
+    // A chip the pointer opens takes the ring with its card, and keeps it when the card goes.
+    page.click("filters:assignee").expect("assignee");
+    page.wait_for(WITHIN, picker_open).expect("the card opens");
+    page.advance(0.3).expect("a moment");
+    assert!(is_ring(frame_of(&page, "filters:assignee"), ring));
+    page.click("filters:assignee").expect("assignee again");
+    let mut frames = Vec::new();
+    for _ in 0..24 {
+        page.advance(1.0 / 60.0).expect("a frame");
+        frames.push(frame_of(&page, "filters:assignee"));
+    }
+    assert!(!picker_open(&page), "the card goes");
+    assert!(
+        frames.iter().all(|frame| is_ring(*frame, ring)),
+        "the ring does not go and come back: {ring:?} {frames:?}"
+    );
 }
 
 #[test]

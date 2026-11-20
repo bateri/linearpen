@@ -37,8 +37,8 @@ local CLEAR = "filters-clear"
 -- `picking`: the kind whose picker is open (its chip stays while it is, though it has no value left).
 -- `open`: the row is open with all five chips (`f`). `now`: the filters as the page set them (the
 -- program holds the same). `options`: what the menus offer, as the program said, and for which asking of
--- Linear (`at`).
-local F = { open = false, now = nil, options = nil, at = nil, asking = false, picking = nil }
+-- Linear (`at`); `failed`: the last asking for them failed.
+local F = { open = false, now = nil, options = nil, at = nil, asking = false, failed = false, picking = nil }
 filters.state = F
 
 local function empty()
@@ -104,14 +104,23 @@ local function ask()
 	kit.call("filter_options", {}, function(result, err)
 		F.asking = false
 		if err then
-			F.options = nil
+			F.options, F.failed = nil, true
 			kit.lib.toast(S.toasts, "The choices of the filters could not be asked for", "warn")
 			return true
 		end
-		F.options, F.at = result, at
+		F.options, F.at, F.failed = result, at, false
 		return true
 	end)
 end
+
+-- The choices are asked for once the lists have come, before a chip is pressed: a chip opens on what is
+-- here. A failed asking is made again when a chip is pressed, not by itself. As the lists come.
+function filters.sync()
+	if S.issues ~= nil and F.options == nil and not F.asking and not F.failed then
+		ask()
+	end
+end
+act.sync_filters = filters.sync
 
 -- The projects of the lists a person can go to, as `{ id, name }`.
 local function projects()
@@ -369,16 +378,14 @@ function filters.close()
 	F.open = false
 end
 
--- A press that is not on the row puts it away (a menu is not drawn by the page: its entries are not
+-- Whether a press that went down on `hit` puts the row away: one that is not on the row (nor in the
+-- card of a chip) does, when its button comes up (a menu is not drawn by the page: its entries are not
 -- pressed with the page's pointer).
 function filters.outside(hit)
 	if not F.open or picker.holds(hit) then
-		return
+		return false
 	end
-	if hit ~= nil and (string.sub(hit, 1, #PREFIX) == PREFIX or hit == CLEAR) then
-		return
-	end
-	F.open = false
+	return hit == nil or (string.sub(hit, 1, #PREFIX) ~= PREFIX and hit ~= CLEAR)
 end
 
 -- What stands before a value in the picker of `kind`: the picture of a status, a priority or a label.
@@ -405,7 +412,9 @@ end
 local function picker_items(kind)
 	local offered = choices(kind)
 	if offered == nil then
-		return nil
+		-- (Choices on their way: the card says so, and fills when they come. Where the asking failed, it
+		-- goes.)
+		return F.asking and {} or nil
 	end
 	local out = {}
 	for _, choice in offered do
@@ -428,16 +437,16 @@ end
 local function open_menu(kind)
 	ask()
 	local offered = choices(kind)
-	if offered == nil or #offered == 0 then
-		-- (The choices are asked for before a key is pressed; one pressed too soon does nothing but ask.)
-		return true
-	end
-	if picker.available() then
+	-- (A chip pressed before its choices have come opens its card at once: it says they are coming.)
+	if picker.available() and ((offered == nil and F.asking) or (offered ~= nil and #offered > 0)) then
 		local title = title_of(kind)
 		local opened = picker.open({
 			anchor = chip_name(kind),
 			label = title,
 			hint = "Filter by " .. string.lower(title),
+			empty = function()
+				return choices(kind) == nil and "Loading" or nil
+			end,
 			items = function()
 				return picker_items(kind)
 			end,
@@ -452,6 +461,10 @@ local function open_menu(kind)
 			F.picking = picker.is_open() and kind or nil
 			return true
 		end
+	end
+	if offered == nil or #offered == 0 then
+		-- (The host's menu opens on what is here: pressed before the choices have come, it only asks.)
+		return true
 	end
 	local entries = {}
 	for _, choice in offered do

@@ -17,8 +17,9 @@ local ID = "values-picker"
 
 -- The card open, or nil: `anchor` (the name of the control it stands by), `label` and `hint` (its words),
 -- `items()` (what it offers now, each `{ key, title, icon, on }`, nil where there is nothing to choose
--- any more: the issues or the choices are gone), `toggle(item, on)`, `closed()` (told when it goes),
--- `state` (what is typed and the cursor, the kit's) and `drawn` (it has been on the page).
+-- any more: the issues or the choices are gone), `empty()` (what it says where it offers nothing, nil
+-- for the kit's words; where it is not given, the kit's), `toggle(item, on)`, `closed()` (told when it
+-- goes), `state` (what is typed and the cursor, the kit's) and `drawn` (it has been on the page).
 local P = nil
 
 -- Whether the terminal's kit has a picker.
@@ -58,9 +59,9 @@ function picker.close()
 	end
 end
 
--- Opens the card `spec` (`anchor`, `label`, `hint`, `items`, `toggle`, `closed`) by its control: a second
--- press of the control that opened the card closes it. False where the control is not on the page (the
--- part opens the host's menu then).
+-- Opens the card `spec` (`anchor`, `label`, `hint`, `items`, `empty`, `toggle`, `closed`) by its
+-- control: a second press of the control that opened the card closes it. False where the control is not
+-- on the page (the part opens the host's menu then).
 function picker.open(spec)
 	if picker.by(spec.anchor) then
 		picker.close()
@@ -75,6 +76,7 @@ function picker.open(spec)
 		label = spec.label,
 		hint = spec.hint,
 		items = spec.items,
+		empty = spec.empty,
 		toggle = spec.toggle,
 		closed = spec.closed,
 		state = { query = "" },
@@ -102,6 +104,7 @@ function picker.view(root)
 		state = P.state,
 		label = P.label,
 		hint = P.hint,
+		empty = P.empty ~= nil and P.empty() or nil,
 	}))
 end
 
