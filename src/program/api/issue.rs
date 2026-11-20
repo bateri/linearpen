@@ -1,5 +1,6 @@
 //! The call `issue`: one issue with what a row does not carry, its description and its comments.
-//! They are asked of Linear when the issue is opened, and kept for the run.
+//! They are asked of Linear when the issue is opened, and kept until the lists are asked for again
+//! (`refresh`, the five minutes, an issue made).
 
 use std::sync::Arc;
 

@@ -421,6 +421,39 @@ local function problem()
 	})
 end
 
+-- How long the light of the line that says Linear is asked takes to cross it, seconds; and how much of
+-- the line it is.
+local SWEEP = 1.2
+local LIGHT = 0.3
+
+-- The line along the top of what is under the head (the list and the issue beside it, or the issue or
+-- the form that has the pane) while Linear is asked for the lists again (Refresh, the five minutes, an
+-- issue made), and then for the issue open: the same in every width, where the button of Refresh is or
+-- is not. It is out of the flow, over the top of them, so nothing moves when it comes or goes. A list
+-- that is coming says so in its own place and has none. Under Reduce Motion it is lit and still.
+local function refreshing()
+	if not (S.refreshing or panel.again()) or S.issues.listing ~= "ready" then
+		return nil
+	end
+	local line = b.div():id("refreshing"):absolute():inset(0, 0, nil, 0):h(2):clip():bg(b.alpha("accent", 0.2))
+	if u.reduce_motion then
+		return line:bg(b.alpha("accent", 0.6))
+	end
+	u:animate()
+	local light = S.width * LIGHT
+	local at = (S.now % SWEEP) / SWEEP * (S.width + light) - light
+	return line:child(b.div():id("refreshing-light"):absolute():inset(0, nil, nil, at):size(light, 2):bg("accent"))
+end
+
+-- `row` (what is under the head) with the line over its top while Linear is asked.
+local function lined(row)
+	local line = refreshing()
+	if line ~= nil then
+		row:child(line)
+	end
+	return row
+end
+
 -- What stands beside the list: the form for a new issue, the form that hands issues to an agent, or
 -- the issue.
 local function side(width)
@@ -443,7 +476,7 @@ local function listing()
 		return page:child(pictures.view())
 	end
 	if S.covered then
-		return page:child(b.div():row():grow(1):min_h(0):child(side(S.width)))
+		return page:child(lined(b.div():row():grow(1):min_h(0):child(side(S.width))))
 	end
 	page:child(head.view())
 	local left = b.div():col():grow(1):min_w(0):min_h(0)
@@ -460,7 +493,7 @@ local function listing()
 	if S.panel_open then
 		row:child(side(panel.width(S.width)))
 	end
-	return page:child(row)
+	return page:child(lined(row))
 end
 
 local function render(size, now, reduce_motion)

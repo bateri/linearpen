@@ -152,7 +152,7 @@ At most 250 of each are asked for.
 
 One issue with what a row of the list does not carry: its description, its comments, and the issues
 round it (its parent, its parts and what it is tied to). Asked of Linear when the issue is opened,
-and kept for the run. Params: `{ "id": "issue-412" }`, Linear's id
+and kept until `refresh` (or the five minutes, or an issue made) asks for the lists again. Params: `{ "id": "issue-412" }`, Linear's id
 of the issue (a row's `id`) or its identifier: up to 64 letters, digits, dashes and underscores.
 
 ```json
@@ -718,7 +718,7 @@ look-before-again words where no answer came after it was sent.
 ### `refresh`
 
 Asks Linear for My issues and the list shown again, for the names of the lists the page can go to, and
-for the teams and choices of a new issue the next time they are needed. It answers at once with `{}`; the topic tells the lists when they come. Params: none. Errors:
+for the teams and choices of a new issue and each issue opened (`issue`) the next time they are needed. It answers at once with `{}`; the topic tells the lists when they come. Params: none. Errors:
 `no-key`.
 
 ## Topic

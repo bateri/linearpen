@@ -22,6 +22,10 @@
 - **Filters open on the first click.** Clicking a filter right after linearpen started did nothing.
 - **A click is no longer lost while the filter row is open.** Clicking an issue's labels or status then
   only closed the row.
+- **Refresh shows in every pane.** While Linear is asked again, a thin line runs along the top of the
+  page, also where the pane is too narrow for the Refresh button.
+- **Refresh reads the open issue again.** Its description and comments come again from Linear, and so do
+  those of an issue you opened earlier, the next time you open it.
 - **Refresh reaches the New issue form.** A team, label, project or person made in Linear is offered in
   the form after Refresh, even with a draft already begun; restarting linearpen is no longer needed.
 

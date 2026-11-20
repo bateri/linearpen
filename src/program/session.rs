@@ -149,7 +149,8 @@ pub struct State {
     /// issue: an issue given to another agent while the first is on has two panes.
     held: Vec<Held>,
     /// Issues opened, as Linear told them (with their description and comments), by id: they are
-    /// kept for the run, so that an issue seen again is not asked for again.
+    /// kept until the lists are asked for again with everything (`r`, the five minutes, an issue
+    /// made), so that an issue seen again is not asked for again in between.
     details: HashMap<String, Issue>,
     /// The texts the edits the person began are of, by the issue (as the page named it) and what is
     /// edited: what Linear held when each was read for the edit, which it must hold still for the
@@ -266,11 +267,13 @@ impl State {
         self.refresh_wanted
     }
 
-    /// Lets go of the teams and what each offers, so that the next question asks Linear again.
-    pub fn forget_choices(&mut self) {
+    /// Lets go of the teams and what each offers, and of the issues opened, so that the next
+    /// question of each asks Linear again.
+    pub fn forget_kept(&mut self) {
         self.teams = None;
         self.choices.clear();
         self.filter_options = None;
+        self.details.clear();
     }
 
     /// Writes an issue as Linear says it is now into what is held: the person's list has it where it
@@ -481,15 +484,16 @@ fn work(shared: &Shared) {
                     .unwrap_or_else(PoisonError::into_inner)
                     .0;
             }
-            // The names of the lists and the choices of a new issue are asked for with everything (the
-            // first time, `r`, the five minutes); going to another list asks for that list only.
+            // The names of the lists, the choices of a new issue and the issues opened are asked for
+            // with everything (the first time, `r`, the five minutes); going to another list asks for
+            // that list only.
             let everything = state.asks_for_everything(Instant::now() >= next);
             state.refresh_wanted = false;
             state.everything = false;
             state.refreshing = true;
             state.stale = false;
             if everything {
-                state.forget_choices();
+                state.forget_kept();
             }
             shared.changed(&mut state);
             (
@@ -1438,16 +1442,25 @@ mod tests {
         "labels":{"nodes":[]},"projects":{"nodes":[]},"members":{"nodes":[]}},"issueLabels":{"nodes":[]}}}"#;
 
     #[test]
-    fn the_choices_are_kept_until_the_lists_are_asked_for_again() {
-        let (session, sent) = answered(vec![said(TEAMS), said(OPTIONS), said(OPTIONS)]);
+    fn the_choices_and_the_issues_opened_are_kept_until_the_lists_are_asked_for_again() {
+        let (session, sent) = answered(vec![
+            said(TEAMS),
+            said(OPTIONS),
+            found("issue-900"),
+            said(OPTIONS),
+            found("issue-900"),
+        ]);
         assert_eq!(session.teams().unwrap().len(), 1);
         assert_eq!(session.teams().unwrap().len(), 1);
         session.options("team-acm").unwrap();
         session.options("team-acm").unwrap();
-        assert_eq!(sent.lock().unwrap().len(), 2, "each asked for once");
-        session.state().forget_choices();
+        session.detail("issue-900").unwrap();
+        session.detail("issue-900").unwrap();
+        assert_eq!(sent.lock().unwrap().len(), 3, "each asked for once");
+        session.state().forget_kept();
         session.options("team-acm").unwrap();
-        assert_eq!(sent.lock().unwrap().len(), 3);
+        session.detail("issue-900").unwrap();
+        assert_eq!(sent.lock().unwrap().len(), 5);
     }
 
     /// An issue as Linear says it, in a state of `kind`, given to the person (`me`) or to Deniz.

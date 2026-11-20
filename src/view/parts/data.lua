@@ -9,6 +9,8 @@ local data = {}
 
 -- Takes a list of the program's (the answer of `view` or a push of the topic).
 local function apply(snapshot)
+	-- Whether the line over the page says Linear is asked for the lists (`page.lua`) as these come.
+	local lit = S.refreshing and S.issues ~= nil and S.issues.listing == "ready"
 	S.issues = snapshot
 	S.scope = snapshot.scope
 	S.list_id = snapshot.listId
@@ -18,6 +20,10 @@ local function apply(snapshot)
 	-- A new issue that is waited for is shown when it comes.
 	if act.listed ~= nil then
 		act.listed()
+	end
+	-- The issue open is asked for again where the lists are new (the program let go of what it kept).
+	if act.panel_listed ~= nil then
+		act.panel_listed(lit)
 	end
 	-- What the commands that change issues need is asked for as the lists come, not at the first key.
 	if act.sync ~= nil then

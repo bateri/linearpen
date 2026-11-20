@@ -143,6 +143,8 @@ pub(crate) struct Canned {
     /// Linear answers no `FilterOptions` (until it is let go), and then refuses it.
     filter_options_hold: Mutex<bool>,
     filter_options_refused: Mutex<bool>,
+    /// Whether `Issue` is held (after it is written down) until a test lets it go.
+    issue_holds: Mutex<bool>,
 }
 
 /// What the storage was sent: the address, the headers and the bytes.
@@ -214,6 +216,7 @@ impl Canned {
             changes_hold: Mutex::new(false),
             filter_options_hold: Mutex::new(false),
             filter_options_refused: Mutex::new(false),
+            issue_holds: Mutex::new(false),
         })
     }
 
@@ -312,6 +315,12 @@ impl Canned {
     /// From now on (until `refuse_filter_options(false)`) Linear refuses `FilterOptions`.
     pub(crate) fn refuse_filter_options(&self, refuse: bool) {
         *self.filter_options_refused.lock().unwrap() = refuse;
+    }
+
+    /// From now on (until `hold_issues(false)`) `Issue` is not answered: it is written down, and the
+    /// call waits, so that a test can look at the page while an issue is asked for.
+    pub(crate) fn hold_issues(&self, hold: bool) {
+        *self.issue_holds.lock().unwrap() = hold;
     }
 
     /// The ids `Issue` was asked for, in order.
@@ -1066,6 +1075,14 @@ impl Transport for Canned {
                     let asked: serde_json::Value = serde_json::from_str(body).unwrap();
                     let id = asked["variables"]["id"].as_str().unwrap_or_default();
                     self.issues_asked.lock().unwrap().push(id.to_owned());
+                    // (Held for the most of half a minute: a test that forgets to let go is not left
+                    // waiting.)
+                    for _ in 0..3000 {
+                        if !*self.issue_holds.lock().unwrap() {
+                            break;
+                        }
+                        std::thread::sleep(Duration::from_millis(10));
+                    }
                     match self.made_detail() {
                         Some(value) if value["data"]["issue"]["id"] == id => {
                             reply(200, &value.to_string())
@@ -3702,6 +3719,10 @@ fn a_team_made_in_linear_is_offered_to_the_draft_once_refresh_has_asked_again() 
     page.click("refresh").expect("refresh is pressed");
     page.wait_for(WITHIN, |_| linear.times("MyIssues") > before)
         .expect("Linear is asked again");
+    // The lists have come while the form was put away: it asks again as it opens.
+    page.wait_for(WITHIN, |page| pressable(page, "refresh"))
+        .unwrap_or_else(|why| panic!("the lists come: {why:?}: {}", said(&page)));
+    page.advance(0.3).expect("a moment");
     open_new(&mut page);
     page.wait_for(WITHIN, |page| page.bounds("new-value:team").is_some())
         .unwrap_or_else(|why| panic!("the new team is offered: {why:?}: {}", said(&page)));
@@ -5947,6 +5968,272 @@ fn the_keys_three_to_nine_go_to_the_favorites_and_one_comes_back_to_my_issues() 
         .unwrap_or_else(|why| panic!("my issues are back: {why:?}: {}", said(&page)));
     // The lists the person left are not asked for again to be left.
     assert_eq!(linear.times("ViewIssues"), asked);
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn while_linear_is_asked_again_a_line_over_the_top_of_the_list_says_so_in_every_width() {
+    for size in [WIDE, PANE] {
+        let (linear, _session, mut page) = open_lists(size);
+        let placed = |page: &Page| {
+            // (A button that cannot be pressed has no name on the page: Refresh, between the filter and
+            // New issue, is as wide as it was where they did not move.)
+            ["row:i:issue-412", "status", "lists", "filter-box", "new"]
+                .map(|name| page.bounds(name))
+        };
+        let before = placed(&page);
+        assert!(page.bounds("refreshing").is_none(), "{}", said(&page));
+        linear.set(Mode::Held);
+        page.press("mod+r").expect("the key");
+        page.wait_for(WITHIN, |page| page.bounds("refreshing").is_some())
+            .unwrap_or_else(|why| panic!("{size:?}: the line is drawn: {why:?}: {}", said(&page)));
+        // It is over the top of the list, as wide as the list: nothing under it moved.
+        let line = page.bounds("refreshing").unwrap();
+        let row = page.bounds("row:i:issue-412").unwrap();
+        assert!(
+            line.h <= 2.0 && line.y < row.y,
+            "{size:?}: {line:?} {row:?}"
+        );
+        assert!(line.w >= row.w, "{size:?}: {line:?} {row:?}");
+        assert_eq!(placed(&page), before, "{size:?}");
+        // Its light goes along it.
+        let at = page.bounds("refreshing-light").map(|light| light.x);
+        page.advance(0.3).expect("a moment");
+        assert_ne!(
+            page.bounds("refreshing-light").map(|light| light.x),
+            at,
+            "{size:?}"
+        );
+        linear.set(Mode::Fine);
+        page.wait_for(WITHIN, |page| page.bounds("refreshing").is_none())
+            .unwrap_or_else(|why| panic!("{size:?}: the line goes: {why:?}: {}", said(&page)));
+        assert_eq!(placed(&page), before, "{size:?}");
+    }
+}
+
+/// What ACM-412 says in Linear from now on: written there while the page was open.
+fn rewrite_412(linear: &Canned) {
+    linear.set_detail(
+        "issue-412",
+        serde_json::json!({ "description": "Limits are per plan from now on." }),
+    );
+}
+
+/// How many times Linear was asked for ACM-412 alone.
+fn asked_for_412(linear: &Canned) -> usize {
+    linear
+        .issues_asked()
+        .iter()
+        .filter(|id| *id == "issue-412")
+        .count()
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn refresh_reads_the_open_issue_again_in_its_place_where_it_is_beside_the_list_and_where_it_has_the_pane()
+ {
+    for size in [WIDE, PANE] {
+        let (linear, _session, mut page) = open_lists(size);
+        open_the_issue_under_the_cursor(&mut page);
+        page.wait_for(WITHIN, |page| page.says("no limit per key"))
+            .unwrap_or_else(|why| panic!("{size:?}: the issue is read: {why:?}: {}", said(&page)));
+        let asked = asked_for_412(&linear);
+        rewrite_412(&linear);
+        the_lists_are_a_second_old();
+        linear.set(Mode::Held);
+        page.press("mod+r").expect("the key");
+        // The line is over the issue too, where it has the pane; what was read stays until the new
+        // words come.
+        page.wait_for(WITHIN, |page| page.bounds("refreshing").is_some())
+            .unwrap_or_else(|why| panic!("{size:?}: the line is drawn: {why:?}: {}", said(&page)));
+        let line = page.bounds("refreshing").unwrap();
+        assert!(line.w >= size.0 - 1.0, "{size:?}: {line:?}");
+        assert!(page.says("no limit per key"), "{size:?}: {}", said(&page));
+        linear.set(Mode::Fine);
+        page.wait_for(WITHIN, |page| page.says("Limits are per plan from now on."))
+            .unwrap_or_else(|why| {
+                panic!(
+                    "{size:?}: the issue is read again: {why:?}: {}",
+                    said(&page)
+                )
+            });
+        page.wait_for(WITHIN, |page| page.bounds("refreshing").is_none())
+            .unwrap_or_else(|why| panic!("{size:?}: the line goes: {why:?}: {}", said(&page)));
+        assert!(!page.says("no limit per key"), "{size:?}: {}", said(&page));
+        assert!(
+            page.bounds("panel-close").is_some(),
+            "{size:?}: it stays open"
+        );
+        assert_eq!(
+            asked_for_412(&linear),
+            asked + 1,
+            "{size:?}: asked for once"
+        );
+    }
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_line_stays_after_the_lists_come_until_the_open_issue_has_been_read_again() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    open_the_issue_under_the_cursor(&mut page);
+    page.wait_for(WITHIN, |page| page.says("no limit per key"))
+        .unwrap_or_else(|why| panic!("the issue is read: {why:?}: {}", said(&page)));
+    let asked = asked_for_412(&linear);
+    rewrite_412(&linear);
+    the_lists_are_a_second_old();
+    linear.hold_issues(true);
+    page.press("mod+r").expect("the key");
+    // The issue is asked for once the lists have come: the line is still there, over the words read
+    // before.
+    page.wait_for(WITHIN, |_| asked_for_412(&linear) > asked)
+        .unwrap_or_else(|why| panic!("the issue is asked for: {why:?}: {}", said(&page)));
+    page.advance(0.3).expect("a moment");
+    assert!(page.bounds("refreshing").is_some(), "{}", said(&page));
+    assert!(page.says("no limit per key"), "{}", said(&page));
+    linear.hold_issues(false);
+    page.wait_for(WITHIN, |page| page.says("Limits are per plan from now on."))
+        .unwrap_or_else(|why| panic!("the issue is read again: {why:?}: {}", said(&page)));
+    page.wait_for(WITHIN, |page| page.bounds("refreshing").is_none())
+        .unwrap_or_else(|why| panic!("the line goes: {why:?}: {}", said(&page)));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_five_minutes_read_the_open_issue_again_and_leave_what_is_being_written_as_it_is() {
+    // A comment begun.
+    let (linear, session, mut page) = open_lists(WIDE);
+    open_the_issue_under_the_cursor(&mut page);
+    page.press("shift+m").expect("shift and m");
+    page.wait_for(WITHIN, |page| typing_in(page, &comment_editor("issue-412")))
+        .unwrap_or_else(|why| panic!("the keyboard is in the field: {why:?}: {}", said(&page)));
+    page.type_text("Half a thought").expect("the words");
+    rewrite_412(&linear);
+    the_lists_are_a_second_old();
+    session.refresh();
+    page.wait_for(WITHIN, |page| page.says("Limits are per plan from now on."))
+        .unwrap_or_else(|why| panic!("the issue is read again: {why:?}: {}", said(&page)));
+    page.advance(0.3).expect("a moment");
+    assert!(
+        typing_in(&page, &comment_editor("issue-412")),
+        "{}",
+        said(&page)
+    );
+    page.type_text(" more").expect("more words");
+    assert_eq!(
+        page.editor_text(&comment_editor("issue-412")).as_deref(),
+        Some("Half a thought more")
+    );
+
+    // The description being edited: Linear's new words are not put into it.
+    let (linear, session, mut page) = open_lists(WIDE);
+    open_the_controls(&mut page);
+    page.press("e").expect("e");
+    page.wait_for(WITHIN, |page| typing_in(page, &edit_editor("issue-412")))
+        .unwrap_or_else(|why| panic!("the keyboard is in the field: {why:?}: {}", said(&page)));
+    let words = page
+        .editor_text(&edit_editor("issue-412"))
+        .expect("the words");
+    page.type_text(" Mine").expect("the words");
+    let asked = asked_for_412(&linear);
+    rewrite_412(&linear);
+    the_lists_are_a_second_old();
+    session.refresh();
+    page.wait_for(WITHIN, |_| asked_for_412(&linear) > asked)
+        .unwrap_or_else(|why| panic!("the issue is asked for: {why:?}: {}", said(&page)));
+    page.advance(0.4).expect("a moment");
+    assert!(
+        typing_in(&page, &edit_editor("issue-412")),
+        "{}",
+        said(&page)
+    );
+    assert_eq!(
+        page.editor_text(&edit_editor("issue-412")),
+        Some(format!("{words} Mine"))
+    );
+
+    // The title being renamed.
+    let (linear, session, mut page) = open_lists(WIDE);
+    open_the_controls(&mut page);
+    page.press("r").expect("r");
+    page.wait_for(WITHIN, |page| {
+        page.field("panel-title/field") == Some("Add rate limiting to the public API")
+    })
+    .unwrap_or_else(|why| panic!("r renames the open issue: {why:?}: {}", said(&page)));
+    // (The title is selected as the field comes: what is typed is in its place.)
+    page.type_text("Limits per key").expect("the words");
+    page.advance(0.2).expect("a moment");
+    assert_eq!(page.field("panel-title/field"), Some("Limits per key"));
+    let asked = asked_for_412(&linear);
+    the_lists_are_a_second_old();
+    session.refresh();
+    page.wait_for(WITHIN, |_| asked_for_412(&linear) > asked)
+        .unwrap_or_else(|why| panic!("the issue is asked for: {why:?}: {}", said(&page)));
+    page.advance(0.4).expect("a moment");
+    assert_eq!(page.field("panel-title/field"), Some("Limits per key"));
+
+    // What was scrolled to stays where Linear says the same.
+    let (linear, session, mut page) = open_lists(PANE);
+    open_the_issue_under_the_cursor(&mut page);
+    page.press("space").expect("space");
+    page.advance(0.6).expect("a moment");
+    let field = page.bounds(&comment_editor("issue-412"));
+    let asked = asked_for_412(&linear);
+    the_lists_are_a_second_old();
+    session.refresh();
+    page.wait_for(WITHIN, |_| asked_for_412(&linear) > asked)
+        .unwrap_or_else(|why| panic!("the issue is asked for: {why:?}: {}", said(&page)));
+    page.advance(0.4).expect("a moment");
+    assert_eq!(
+        page.bounds(&comment_editor("issue-412")),
+        field,
+        "{}",
+        said(&page)
+    );
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn an_issue_read_before_refresh_is_read_again_when_it_is_opened_after_it() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    open_the_issue_under_the_cursor(&mut page);
+    page.wait_for(WITHIN, |page| page.says("no limit per key"))
+        .unwrap_or_else(|why| panic!("the issue is read: {why:?}: {}", said(&page)));
+    page.press("escape").expect("escape closes the issue");
+    page.wait_for(WITHIN, |page| page.bounds("panel-close").is_none())
+        .expect("the issue is closed");
+    rewrite_412(&linear);
+    the_lists_are_a_second_old();
+    linear.set(Mode::Held);
+    page.press("mod+r").expect("the key");
+    page.wait_for(WITHIN, |page| page.bounds("refreshing").is_some())
+        .unwrap_or_else(|why| panic!("the line is drawn: {why:?}: {}", said(&page)));
+    linear.set(Mode::Fine);
+    page.wait_for(WITHIN, |page| page.bounds("refreshing").is_none())
+        .unwrap_or_else(|why| panic!("the lists came: {why:?}: {}", said(&page)));
+    open_the_issue_under_the_cursor(&mut page);
+    page.wait_for(WITHIN, |page| page.says("Limits are per plan from now on."))
+        .unwrap_or_else(|why| panic!("the issue is read again: {why:?}: {}", said(&page)));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn going_to_another_list_with_an_issue_open_does_not_ask_linear_for_the_issue_again() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    open_the_issue_under_the_cursor(&mut page);
+    page.wait_for(WITHIN, |page| page.says("no limit per key"))
+        .unwrap_or_else(|why| panic!("the issue is read: {why:?}: {}", said(&page)));
+    let asked = asked_for_412(&linear);
+    the_lists_are_a_second_old();
+    open_card_of_lists(&mut page);
+    page.type_text("billing").expect("the words");
+    page.press("enter").expect("enter");
+    page.wait_for(WITHIN, |page| page.says("ACM-418"))
+        .unwrap_or_else(|why| panic!("the list comes: {why:?}: {}", said(&page)));
+    page.advance(0.4).expect("a moment");
+    assert_eq!(asked_for_412(&linear), asked, "{}", said(&page));
+    assert!(page.says("no limit per key"), "{}", said(&page));
+    assert!(page.bounds("refreshing").is_none(), "{}", said(&page));
 }
 
 #[test]

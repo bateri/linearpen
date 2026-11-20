@@ -1,5 +1,6 @@
 -- The issue beside the list: what a row does not carry (its description and its comments, asked of the
--- program when the issue is opened and kept), under the identifier, the title and what the row knew.
+-- program when the issue is opened and kept until the lists come again), under the identifier, the
+-- title and what the row knew.
 -- The text of an issue is written by others: it is shown as text (markdown, drawn by the kit's
 -- library), and a link in it opens only where the person presses it.
 
@@ -22,14 +23,21 @@ local panel = {}
 
 -- The issue open: what the row knew of it when it was opened (`{ id, identifier, title, priority, labels,
 -- state }`: all it says where the list has the issue no more and the program has not told yet), and
--- what the program told of it, by id: `{ status = "loading" | "ready" | "failed", issue, error }`.
+-- what the program told of it, by id: `{ status = "loading" | "ready" | "failed", issue, error, at }`,
+-- `at` being the lists it was asked under (their `updated`). The program lets go of the issues it kept
+-- when Linear is asked for the lists again (Refresh, the five minutes, an issue made): an issue told
+-- under older lists is asked for again when it is opened, and the issue open as the lists come; what is
+-- shown stays until the new words come. `asked` numbers the questions of each issue and `told` is the
+-- number of the one whose answer is shown: an answer older than it is not shown. `again` is the id of
+-- the issue open while it is asked for again as the lists came from Linear (the line over the page,
+-- lit while they were asked for, stays until it has come).
 -- `pin` is set while a change of the issue is on its way or has just been made: the issue stays open
 -- (it may have left the list) until the cursor is moved by the person (`{ id, moves }`). `near` is
 -- the id of an issue the person came to from the one that was open, which the list does not hold.
 -- `serial` numbers the menu of the neighbours (a pick of an older one is not one).
 -- `room` is the points the text of an issue has across, as it was drawn last (the pictures of the text
 -- are no wider).
-local P = { open = nil, kept = {}, pin = nil, near = nil, serial = 0, room = 400 }
+local P = { open = nil, kept = {}, asked = {}, told = {}, again = nil, pin = nil, near = nil, serial = 0, room = 400 }
 panel.state = P
 
 -- The box that scrolls: the description and the comments.
@@ -60,39 +68,110 @@ function panel.detail()
 	return entry ~= nil and entry.status == "ready" and entry.issue or nil
 end
 
+-- The lists the program told last (when they came): what is asked now is asked under them.
+local function lists_at()
+	return S.issues ~= nil and S.issues.updated or nil
+end
+
+-- A new question of the issue `id`: its number.
+local function question(id)
+	local n = (P.asked[id] or 0) + 1
+	P.asked[id] = n
+	return n
+end
+
+-- Whether the answer to the question `n` of the issue `id` is newer than what is shown of it: it is
+-- then what is shown.
+local function newer(id, n)
+	if n <= (P.told[id] or 0) then
+		return false
+	end
+	P.told[id] = n
+	return true
+end
+
+-- Shows what the program told of the issue `id`.
+local function keep(id, issue, at)
+	P.kept[id] = { status = "ready", issue = issue, at = at }
+	if P.open ~= nil and P.open.id == id then
+		pictures.track(id, issue)
+	end
+end
+
 local function ask(id)
-	P.kept[id] = { status = "loading" }
+	local n, at = question(id), lists_at()
+	P.kept[id] = { status = "loading", at = at }
 	kit.call("issue", { id = id }, function(result, err)
-		local entry = P.kept[id]
+		if not newer(id, n) then
+			return true
+		end
 		if err then
-			entry.status, entry.error = "failed", err.message or err.code
+			P.kept[id] = { status = "failed", error = err.message or err.code, at = at }
 		else
-			entry.status, entry.issue = "ready", result
-			if P.open ~= nil and P.open.id == id then
-				pictures.track(id, result)
-			end
+			keep(id, result, at)
 		end
 		return true
 	end)
 end
 
--- Asks again for the issue open, without a loading: what is shown stays until it comes. `done` is
--- called when it has. Whether it asked (it does not where the issue is not the one open).
+-- Asks again for the issue open, without a loading: what is shown stays until it comes (and where it
+-- does not come). `done` is called when it has. Whether it asked (it does not where the issue is not
+-- the one open).
 function panel.reask(id, done)
 	if P.open == nil or P.open.id ~= id then
 		return false
 	end
+	local n, at = question(id), lists_at()
 	kit.call("issue", { id = id }, function(result, err)
-		if not err then
-			P.kept[id] = { status = "ready", issue = result }
-			if P.open ~= nil and P.open.id == id then
-				pictures.track(id, result)
-			end
+		if not err and newer(id, n) then
+			keep(id, result, at)
 		end
 		done()
 		return true
 	end)
 	return true
+end
+
+-- The lists came (`lit`: while the line over the page said Linear was asked for them). The issue open,
+-- told under older lists, is asked for again, and the line stays until it has come where it was lit.
+-- Where it does not come, what is shown stays, and the next lists ask again.
+function panel.listed(lit)
+	local id = P.open and P.open.id or nil
+	local entry = id ~= nil and P.kept[id] or nil
+	if entry == nil or entry.status == "loading" or entry.at == lists_at() then
+		return
+	end
+	if entry.status == "failed" then
+		ask(id)
+		return
+	end
+	entry.at = lists_at()
+	if lit then
+		P.again = id
+	end
+	panel.reask(id, function()
+		if P.again == id then
+			P.again = nil
+		end
+	end)
+end
+
+-- Whether the issue open is asked for again as the lists came from Linear (the line over the page
+-- stays).
+function panel.again()
+	return P.again ~= nil and P.open ~= nil and P.open.id == P.again
+end
+
+-- Asks the program for the issue `id`, just opened, unless what it told is of the lists that came last:
+-- told under older lists, it is shown as it was told until it comes again.
+local function bring(id)
+	local entry = P.kept[id]
+	if entry == nil or entry.status == "failed" then
+		ask(id)
+	elseif entry.status == "ready" and entry.at ~= lists_at() then
+		entry.at = lists_at()
+		panel.reask(id, function() end)
+	end
 end
 
 -- Opens the issue of the list's line `item` beside the list (and asks the program for it, unless it
@@ -117,10 +196,7 @@ function panel.show(item)
 		state = { name = item.group.name, kind = item.group.kind },
 		late = false,
 	}
-	local entry = P.kept[row.id]
-	if entry == nil or entry.status == "failed" then
-		ask(row.id)
-	end
+	bring(row.id)
 	return true
 end
 
@@ -169,10 +245,12 @@ function panel.held()
 	return true
 end
 
--- Forgets what the program told of the issue: it has been changed, and is asked again when it is opened.
+-- Forgets what the program told of the issue: it has been changed, and is asked again when it is opened
+-- (an answer on its way is of before).
 function panel.forget(id)
 	if P.open == nil or P.open.id ~= id then
 		P.kept[id] = nil
+		P.told[id] = question(id)
 	end
 end
 
@@ -270,11 +348,10 @@ act.panel_forget = panel.forget
 -- What the program told of the issue `id` after it was changed, kept as it is told: no frame shows the
 -- words of before.
 act.panel_put = function(id, issue)
-	P.kept[id] = { status = "ready", issue = issue }
-	if P.open ~= nil and P.open.id == id then
-		pictures.track(id, issue)
-	end
+	P.told[id] = question(id)
+	keep(id, issue, lists_at())
 end
+act.panel_listed = panel.listed
 act.panel_team = function()
 	return P.open ~= nil and panel.info().teamId or nil
 end
@@ -604,10 +681,7 @@ function panel.open_near(id)
 		state = { name = found.state.name, kind = found.state.kind },
 		late = false,
 	}
-	local entry = P.kept[id]
-	if entry == nil or entry.status == "failed" then
-		ask(id)
-	end
+	bring(id)
 	P.pin = { id = id, moves = list.moves() }
 	P.near = id
 	return true

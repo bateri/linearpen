@@ -202,12 +202,12 @@ local function filter_box(width)
 	return box:grow(1):min_w(0)
 end
 
--- The button that asks Linear again: busy while it does.
+-- The button that asks Linear again: as dim as one that cannot be pressed while it does (the line along
+-- the top of the page says it is asked, in every width: `page.lua`).
 local function refresh_button()
 	local busy = S.refreshing
 	return kit.button("refresh", "Refresh", {
-		suffix = not busy and commands.label("refresh") or nil,
-		busy = busy,
+		suffix = commands.label("refresh"),
 		disabled = busy,
 		tip = busy and "Linear is being asked" or "Ask Linear for the issues again",
 	})
