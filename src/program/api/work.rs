@@ -1,5 +1,6 @@
-//! The calls `work_options` and `start`: handing an issue to an agent in a pane of bateri. What
-//! happens is `work/`'s; this reads what the page asks, finds the issue, and tells what came.
+//! The calls `work_options`, `start` and `go_to_agent`: handing an issue to an agent in a pane of
+//! bateri, and going to that pane. What happens is `work/`'s; this reads what the page asks, finds
+//! the issue, and tells what came.
 
 use std::sync::Arc;
 
@@ -13,7 +14,7 @@ use crate::linear::{Change, Error, Issue};
 use crate::session::{Session, now_seconds};
 use crate::state::prefs;
 use crate::work::agents::{self, Agent};
-use crate::work::bateri::Place;
+use crate::work::bateri::{self, Place};
 use crate::work::{self, Env, Folder, Refused, Request, handoff, progress};
 
 #[derive(Debug, Deserialize)]
@@ -66,6 +67,18 @@ struct StartedMessage {
     moved: usize,
     /// Why some that were to move were not.
     not_moved: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GoTo {
+    /// The issue whose agent is gone to, by the id the topic's `working` names it with.
+    id: String,
+}
+
+#[derive(Debug, Serialize)]
+struct WentMessage {
+    pane: String,
 }
 
 fn env(session: &Session) -> Env<'_> {
@@ -156,6 +169,20 @@ fn start(session: &Session, params: Hand) -> Result<StartedMessage, Failure> {
         moved: moved.count,
         not_moved: moved.not,
     })
+}
+
+/// Takes the keyboard to the pane of the agent that works on the issue: the pane the issue's mark is
+/// of, which this program was told when it made it (the page names the issue, never a pane).
+fn go_to_agent(session: &Session, params: GoTo) -> Result<WentMessage, Failure> {
+    check_id(&params.id)?;
+    let pane = session
+        .state()
+        .working
+        .get(&params.id)
+        .map(|working| working.pane.clone())
+        .ok_or_else(|| Failure::GoFailed("No agent works on this issue now".to_owned()))?;
+    bateri::focus(session.work.runner.as_ref(), &pane).map_err(Failure::GoFailed)?;
+    Ok(WentMessage { pane })
 }
 
 /// What the form is opened with: the choices of the last start, each only where it is one the form
@@ -284,6 +311,7 @@ fn move_forward(session: &Session, issues: &[Issue]) -> Moved {
 
 pub fn calls(options_: Options, session: &Arc<Session>) -> Options {
     let options_ = call(options_, session, "work_options", options);
+    let options_ = call(options_, session, "go_to_agent", go_to_agent);
     call(options_, session, "start", start)
 }
 
@@ -409,6 +437,89 @@ mod tests {
             .unwrap_or_else(|| panic!("the issue was moved: {seen:?}"));
         assert!(pane < change, "{seen:?}");
         rig.hands.end();
+    }
+
+    // --- `go_to_agent`: the keyboard to the agent's pane -------------------------------------------
+
+    fn go(id: &str) -> GoTo {
+        GoTo { id: id.to_owned() }
+    }
+
+    /// The `bateri focus` lines run.
+    fn focused(rig: &crate::page_tests::Rig) -> Vec<String> {
+        rig.hands
+            .asked()
+            .into_iter()
+            .filter(|line| line.starts_with("bateri focus"))
+            .collect()
+    }
+
+    #[test]
+    fn going_to_the_agent_focuses_the_pane_it_was_started_in_and_asks_linear_nothing() {
+        let (linear, rig) = machine();
+        start(&rig.session, hand("issue-412", false)).unwrap();
+        let before = linear.total();
+        let went = go_to_agent(&rig.session, go("issue-412")).unwrap();
+        assert_eq!(went.pane, "p41");
+        assert_eq!(focused(&rig), ["bateri focus pane p41"]);
+        assert_eq!(linear.total(), before, "Linear is not asked");
+        rig.hands.end();
+    }
+
+    #[test]
+    fn an_issue_no_agent_works_on_runs_nothing_and_says_so() {
+        let (_linear, rig) = machine();
+        let none = go_to_agent(&rig.session, go("issue-412"));
+        assert!(
+            matches!(&none, Err(Failure::GoFailed(words)) if words == "No agent works on this issue now"),
+            "{none:?}"
+        );
+        // Once the pane has ended, the same.
+        start(&rig.session, hand("issue-412", false)).unwrap();
+        rig.hands.end();
+        let end = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while rig.session.state().working.contains_key("issue-412") {
+            assert!(
+                std::time::Instant::now() < end,
+                "the mark goes with the pane"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        let ended = go_to_agent(&rig.session, go("issue-412"));
+        assert!(matches!(ended, Err(Failure::GoFailed(_))), "{ended:?}");
+        assert!(focused(&rig).is_empty(), "{:?}", rig.hands.asked());
+    }
+
+    #[test]
+    fn bateri_that_does_not_go_there_is_said_in_its_own_words() {
+        let (_linear, rig) = machine();
+        start(&rig.session, hand("issue-412", false)).unwrap();
+        rig.hands
+            .refuse_focus("bateri: refused: the keyboard is in another pane\n");
+        let refused = go_to_agent(&rig.session, go("issue-412"));
+        assert!(
+            matches!(&refused, Err(Failure::GoFailed(words)) if words == "bateri: refused: the keyboard is in another pane"),
+            "{refused:?}"
+        );
+        rig.hands.end();
+    }
+
+    #[test]
+    fn the_page_names_an_issue_and_never_a_pane() {
+        use crate::api::params::parse;
+        assert!(parse::<GoTo>(json!({ "id": "issue-412" })).is_ok());
+        for more in [
+            json!({ "id": "issue-412", "pane": "p9" }),
+            json!({ "pane": "p9" }),
+            json!({ "id": 7 }),
+        ] {
+            assert!(parse::<GoTo>(more.clone()).is_err(), "{more}");
+        }
+        let (_linear, rig) = machine();
+        for bad in ["", "a b", "../x"] {
+            let refused = go_to_agent(&rig.session, go(bad));
+            assert!(matches!(refused, Err(Failure::BadParams(_))), "{bad:?}");
+        }
     }
 
     #[test]

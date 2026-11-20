@@ -9,7 +9,9 @@ use crate::linear::{BATCH_MOST, Change, Priority};
 use crate::state::draft;
 
 /// The commands, by name.
-pub const NAMES: [&str; 6] = ["list", "show", "create", "update", "comment", "teams"];
+pub const NAMES: [&str; 7] = [
+    "list", "show", "create", "update", "comment", "teams", "agent",
+];
 
 /// Words the person gave as an option's value, or asked to be read from stdin (`-`).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -139,6 +141,10 @@ pub enum Command {
     Teams {
         team: Option<String>,
         json: bool,
+    },
+    /// The keyboard to the pane of the agent at work on the issue.
+    Agent {
+        issue: String,
     },
 }
 
@@ -393,6 +399,16 @@ fn show(args: &[String]) -> Result<Read, String> {
     }))
 }
 
+fn agent(args: &[String]) -> Result<Read, String> {
+    let found = scan("agent", args, &[])?;
+    if found.help {
+        return Ok(Read::Say(super::help::AGENT.to_owned()));
+    }
+    Ok(Read::Do(Command::Agent {
+        issue: the_issue("agent", &found)?,
+    }))
+}
+
 fn create(args: &[String]) -> Result<Read, String> {
     let spec = [
         one("team"),
@@ -614,6 +630,7 @@ pub fn read(name: &str, args: &[String]) -> Read {
         "update" => update(args),
         "comment" => comment(args),
         "teams" => teams(args),
+        "agent" => agent(args),
         _ => Err(format!("{name:?} is not a command")),
     };
     match done {

@@ -6,6 +6,12 @@
 
 - **Share an issue.** Press `Share` next to an issue's identifier (or `Cmd Shift S`) to copy its ID,
   title and link as one line, ready to paste into a chat. It is in the right-click menu too.
+- **Go to the agent.** Press `Go to Claude` on an issue (or `Shift W`, or Go to the agent in its menu)
+  and bateri takes you to the pane of the agent that works on it.
+- **Agents are found again.** Begin linearpen again and the issues agents still work on have their
+  marks back, including agents another linearpen started.
+- **Agents on the command line.** `linearpen list` and `show` say which agent is at work on an issue,
+  and in which pane; `linearpen agent ACM-412` takes you there.
 
 ### Changed
 
@@ -16,6 +22,8 @@
   and the five filters open a card that stays open while you check and uncheck values, with a search
   field to find one. In a bateri pane this needs the next bateri; until then they open the old menu,
   one pick at a time.
+- **The agent's mark says where it goes.** It reads `Go to Claude`; an agent that has stopped writing
+  has an amber dot in place of the ring, where the row said `Claude idle`.
 
 ### Fixed
 

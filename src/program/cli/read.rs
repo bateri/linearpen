@@ -2,6 +2,7 @@
 
 use std::fmt::Write as _;
 
+use super::agents::{self, Working};
 use super::json::{self, Issues, Shown};
 use super::pictures::{self, Marked, Place};
 use super::resolve::{Lookups, WORKSPACE, cycle, pick};
@@ -142,8 +143,9 @@ pub fn list(access: &Access, list: &List) -> Result<String, Stop> {
         Closed::Asked,
     )
     .map_err(|error| asked_wrong(access, &error))?;
+    let agents = agents::by_issue(access.panes.as_ref());
     if list.json {
-        return print_json(&Issues::of(&title, &fetched.listing));
+        return print_json(&Issues::of(&title, &fetched.listing, &agents));
     }
     let empty = if !filters.is_empty() {
         "No issue matches."
@@ -155,7 +157,13 @@ pub fn list(access: &Access, list: &List) -> Result<String, Stop> {
         "There are no open issues."
     };
     let mut out = String::new();
-    section(&mut out, &plain(&title), &fetched.listing, empty);
+    section(
+        &mut out,
+        &plain(&title),
+        &fetched.listing,
+        empty,
+        &|issue| agents.get(&issue.identifier).map(Working::words),
+    );
     // A list holds the open issues unless states are asked for; a search holds every state.
     if filters.status.is_empty() && !searching {
         out.push_str(
@@ -200,10 +208,10 @@ fn file_list(out: &mut String, marked: &Marked) {
     }
 }
 
-/// An issue as text: its fields, its description, the issues around it and its comments, and the
-/// pictures and files they hold (`marked`: put where they stand as `[image N: name]` or `[file N: name]`,
-/// and listed at the end).
-fn shown(issue: &Issue, marked: &Marked, saved: bool) -> String {
+/// An issue as text: its fields (with the agent at work on it, where there is one), its description,
+/// the issues around it and its comments, and the pictures and files they hold (`marked`: put where
+/// they stand as `[image N: name]` or `[file N: name]`, and listed at the end).
+fn shown(issue: &Issue, marked: &Marked, saved: bool, agent: Option<&Working>) -> String {
     let mut out = String::new();
     let _ = writeln!(
         out,
@@ -254,6 +262,16 @@ fn shown(issue: &Issue, marked: &Marked, saved: bool) -> String {
     field("Due", or_dash(issue.due_date.as_deref().map(plain)));
     field("Branch", or_dash(issue.branch_name.as_deref().map(plain)));
     field("Updated", short_date(&issue.updated_at));
+    if let Some(agent) = agent {
+        field(
+            "Agent",
+            format!(
+                "{}: linearpen agent {} goes there",
+                agent.words(),
+                plain(&issue.identifier)
+            ),
+        );
+    }
     if let Some(description) = marked
         .description
         .as_deref()
@@ -331,21 +349,32 @@ pub fn show(
     files: Option<&str>,
     json: bool,
 ) -> Result<String, Stop> {
-    let issue = linear::fetch_issue(access.transport, access.key, identifier).map_err(|error| {
+    let issue = fetched(access, identifier)?;
+    let mut marked = pictures::mark(&issue);
+    if let Some(dir) = files {
+        pictures::save(access, std::path::Path::new(dir), &mut marked.seen)?;
+    }
+    let agents = agents::by_issue(access.panes.as_ref());
+    if json {
+        return print_json(&Shown::of(&issue, &marked.seen, &agents));
+    }
+    Ok(shown(
+        &issue,
+        &marked,
+        files.is_some(),
+        agents.get(&issue.identifier),
+    ))
+}
+
+/// The issue `identifier` (or Linear's id of it), as Linear has it.
+pub fn fetched(access: &Access, identifier: &str) -> Result<Issue, Stop> {
+    linear::fetch_issue(access.transport, access.key, identifier).map_err(|error| {
         if linear::no_such_issue(&error) {
             Stop::no(format!("Linear has no issue {identifier}"))
         } else {
             asked_wrong(access, &error)
         }
-    })?;
-    let mut marked = pictures::mark(&issue);
-    if let Some(dir) = files {
-        pictures::save(access, std::path::Path::new(dir), &mut marked.seen)?;
-    }
-    if json {
-        return print_json(&Shown::of(&issue, &marked.seen));
-    }
-    Ok(shown(&issue, &marked, files.is_some()))
+    })
 }
 
 pub fn teams(access: &Access, team: Option<&str>, json: bool) -> Result<String, Stop> {

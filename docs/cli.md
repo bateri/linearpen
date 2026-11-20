@@ -5,7 +5,8 @@ options of each command; this file is what `--json` prints. Text that Linear sen
 descriptions, comments) is in the JSON as it came: JSON escapes every control character.
 
 A command ends with 0 when it is done, 1 where Linear could not do it, said no, or has nothing by a
-name, 2 where the command line is not understood, a file given with `--attach` cannot be sent, or there
+name (or, for `agent`, where no agent is at work on the issue, linearpen is not in a bateri pane, or
+bateri does not go there), 2 where the command line is not understood, a file given with `--attach` cannot be sent, or there
 is no usable key, and 3 where a write was sent and it is not known whether Linear made it. On an error
 the words are on stderr and stdout is empty.
 
@@ -158,6 +159,26 @@ Linear did not tell again is left out, and stderr names it.
 `state.kind` is `triage`, `backlog`, `unstarted`, `started`, `completed`, `canceled` or `other`;
 `priority` is `none`, `urgent`, `high`, `medium` or `low`. `assignee`, `team`, `project`, `cycle`,
 `estimate`, `due_date` and `branch_name` are `null` where the issue has none.
+
+In `list --json` and `show --json`, an issue also has the agent at work on it:
+
+```json
+{ "agent": { "name": "claude", "pane": "p41", "idle": false } }
+```
+
+`name` is `claude`, `codex` or `cursor`, `pane` is bateri's id of its pane, and `idle` is true where
+the pane has written nothing for ten seconds (the agent is done, or waits for the person: the two
+cannot be told apart). An agent is at work on an issue where a pane of bateri on this machine runs
+it and has the issue's identifier for a name, its own or its tab's, which is what Work on gives it;
+of two, the one started last. `agent` is `null` where none is, and always where linearpen is not in
+a bateri pane or bateri's list cannot be had (`bateri ls --json` is then asked nothing, or said
+nothing, and the command does as it would without it). `update --json` says no agent. The text of
+`list` ends an issue's line with `Claude at work in p41` or `Claude idle in p41`, and the text of
+`show` has a line `Agent`.
+
+`linearpen agent KEY-N` takes the keyboard to that pane (`bateri focus pane`), as a press on the
+issue's mark does in the pane, and prints `ACM-412: went to Claude, in pane p41`. It asks Linear
+nothing, but the identifier of an issue given by its id, and has no `--json`.
 
 ## `show --json`
 

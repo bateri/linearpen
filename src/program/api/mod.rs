@@ -60,6 +60,8 @@ enum Failure {
     SaveFailed(String),
     /// A PDF could not be read for its pages and words: the words say why.
     PdfFailed(String),
+    /// The keyboard was to go to an agent's pane, and did not: the words say why.
+    GoFailed(String),
 }
 
 impl From<Failure> for ViewError {
@@ -77,6 +79,7 @@ impl From<Failure> for ViewError {
             Failure::EditFailed(words) => Self::with_message("edit-failed", words),
             Failure::SaveFailed(words) => Self::with_message("save-failed", words),
             Failure::PdfFailed(words) => Self::with_message("pdf-failed", words),
+            Failure::GoFailed(words) => Self::with_message("go-failed", words),
             Failure::Linear(error) => Self::with_message(error.kind(), error.to_string()),
         }
     }

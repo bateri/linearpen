@@ -1,13 +1,15 @@
 //! The commands of the command line: what `linearpen list`, `show`, `create`, `update`, `comment` and
-//! `teams` ask of Linear and what they print. A command takes the parsed words (`command_line`),
-//! the way to Linear and what stdin holds, and gives what to print and how to end; it reads nothing
-//! of the environment, so that it is tested with a transport of memory. It knows nothing of the
-//! page.
+//! `teams` ask of Linear and what they print, and `agent`, which goes to a pane of bateri. A command
+//! takes the parsed words (`command_line`), the way to Linear, the way to bateri where the program is
+//! in a pane of it and what stdin holds, and gives what to print and how to end; it reads nothing of
+//! the environment, so that it is tested with a transport of memory and a bateri that is told what to
+//! answer. It knows nothing of the page.
 //!
 //! Names are found out before anything is written: a name that is none of what Linear has, or more
 //! than one, stops the command with the names there are. A write is sent once and never again; where
 //! its answer did not come, the command says that it is not known whether Linear made it.
 
+mod agents;
 mod json;
 mod pictures;
 mod read;
@@ -22,11 +24,16 @@ use crate::command_line::Command;
 use crate::linear::transport::never_sent;
 use crate::linear::{Error, Key, Transport, left_open, plain, tidy};
 
-/// The way to Linear a command is given, and where the key came from (said where Linear refuses it).
+pub use agents::Panes;
+
+/// The way to Linear a command is given, and where the key came from (said where Linear refuses it);
+/// and the way to bateri, where the program runs in a pane of it (`list` and `show` say which issues
+/// an agent works on, and `agent` goes to it).
 pub struct Access<'a> {
     pub transport: &'a dyn Transport,
     pub key: &'a Key,
     pub key_source: &'a str,
+    pub panes: Option<Panes<'a>>,
 }
 
 /// What a command comes to: what to print on stdout and on stderr, and the status to end with.
@@ -123,6 +130,7 @@ pub fn run(access: &Access, command: &Command, stdin: &mut dyn Read) -> Done {
         Command::Create(create) => write::create(access, create, stdin).map(alone),
         Command::Update(update) => write::update(access, update, stdin),
         Command::Comment(comment) => write::comment(access, comment, stdin).map(alone),
+        Command::Agent { issue } => agents::go(access, issue).map(alone),
     };
     match done {
         Ok((out, err)) => Done {

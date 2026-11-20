@@ -216,5 +216,35 @@ pub fn start(env: &Env<'_>, request: &Request<'_>) -> Result<Started, Refused> {
     })
 }
 
+/// An agent at work, as bateri's list says it: a pane of this machine whose program has not ended,
+/// is one of the agents and is named (its own name, or its tab's), as `start` names it, for an issue.
+#[derive(Debug, Clone, Copy)]
+pub struct AtWork<'a> {
+    pub agent: Agent,
+    /// The name of the pane: an issue's identifier, where it is the pane of an agent started on one.
+    pub label: &'a str,
+    pub terminal: &'a bateri::Terminal,
+}
+
+/// The agents at work in `terminals`, in the order they were started (the ones bateri does not say
+/// it of first): of two on one issue, the mark is of the one started last. The page and the command
+/// line find them by this one rule.
+#[must_use]
+pub fn at_work(terminals: &[bateri::Terminal]) -> Vec<AtWork<'_>> {
+    let mut found: Vec<AtWork<'_>> = terminals
+        .iter()
+        .filter(|terminal| terminal.running && bateri::is_pane(&terminal.id))
+        .filter_map(|terminal| {
+            Some(AtWork {
+                agent: terminal.program.as_deref().and_then(Agent::by_program)?,
+                label: terminal.label.as_deref()?,
+                terminal,
+            })
+        })
+        .collect();
+    found.sort_by_key(|one| one.terminal.started);
+    found
+}
+
 #[cfg(test)]
 mod tests;

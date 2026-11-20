@@ -617,4 +617,34 @@ function work.key(event)
 	return nil
 end
 
+-- --- The agent at work ---------------------------------------------------------------------------
+
+-- The agent that works on the issue `id` (`{ agent, idle }`, as the topic's `working` says), or nil.
+function work.agent_of(id)
+	local working = S.issues ~= nil and S.issues.working or nil
+	if id == nil or working == nil then
+		return nil
+	end
+	return working[id]
+end
+
+-- Takes the keyboard to the pane of the agent that works on the issue `id`: the program knows the pane
+-- and asks bateri. Nothing is said where it went (the keyboard is there); where it did not, why. The
+-- reply.
+function work.go_to(id)
+	if work.agent_of(id) == nil then
+		return true
+	end
+	kit.call("go_to_agent", { id = id }, function(_, err)
+		if err then
+			kit.toast(err.message or err.code or "bateri did not go to the agent's pane", "warn")
+		end
+		return true
+	end)
+	return true
+end
+
+act.agent_of = work.agent_of
+act.go_to_agent = work.go_to
+
 return work

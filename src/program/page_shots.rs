@@ -477,7 +477,9 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
         &["claude", "codex", "cursor-agent"],
         Duration::from_millis(20),
     );
-    machine.hands.set_ls(&ls_of_p41(0.0));
+    // (The pane is named for the issue it is started on, as bateri's list says it.)
+    let named = |ago: f64| ls_of_p41(ago).replace("ACM-412", "ACM-415");
+    machine.hands.set_ls(&named(0.0));
     let mut page = open(&machine.session, BIG, Some(&fonts), "ACM-412")?;
     work_on(&mut page, "ACM-415")?;
     page.wait_for(Duration::from_secs(20), |page| page.says("Unchanged"))?;
@@ -486,8 +488,10 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     page.wait_for(Duration::from_secs(20), |page| {
         !page.says("Open in") && page.says("Claude")
     })?;
-    machine.hands.set_ls(&ls_of_p41(60.0));
-    page.wait_for(Duration::from_secs(20), |page| page.says("Claude idle"))?;
+    machine.hands.set_ls(&named(60.0));
+    page.wait_for(Duration::from_secs(20), |page| {
+        page.bounds("agent-idle:issue-415").is_some()
+    })?;
     for _ in 0..30 {
         if cursor(&page).contains("ACM-398") {
             break;

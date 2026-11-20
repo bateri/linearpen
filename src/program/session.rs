@@ -14,6 +14,11 @@
 //! no answer came, asks for the issue by the id of the draft before it says it failed. `change` sends
 //! once, writes what Linear answers into the lists and the issues kept (the lists are not asked for
 //! again), and where no answer came asks for the issues it named, one by one.
+//!
+//! The agents the program started are watched (`watch`): their issues carry a mark until the pane's
+//! program ends. Where the pen runs in bateri, the panes are also looked at whenever the lists come
+//! (`find_agents`), so that the agents of a pen that has since ended (or of another pen) are watched
+//! as well: a pane whose name is an issue's identifier and whose program is an agent's.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -31,7 +36,7 @@ use crate::pictures::{Document, Given, Pictures, Refusal, Saved, SendFailed, Sho
 use crate::state::Paths;
 use crate::state::credentials::{self, Problem, Source};
 use crate::work::runner::{Runner, System};
-use crate::work::{Setup, bateri, handoff};
+use crate::work::{self, Setup, bateri, handoff};
 
 /// How long the lists are left before they are asked for again, while the page is open.
 pub const REFRESH_EVERY: Duration = Duration::from_secs(300);
@@ -112,13 +117,14 @@ impl Lists {
     }
 }
 
-/// A pane that is watched: the agent in it, the issues it was given, and the file of them it reads.
+/// A pane that is watched: the agent in it, the issues it was given, and the file of them it reads
+/// (not known of an agent that was found rather than started: `State::adopt`).
 #[derive(Debug)]
 struct Held {
     pane: String,
     agent: &'static str,
     ids: Vec<String>,
-    context: PathBuf,
+    context: Option<PathBuf>,
 }
 
 #[derive(Debug)]
@@ -207,6 +213,53 @@ impl State {
         }
     }
 
+    /// Watches the agents of `terminals` that work on an issue the lists or the opened issues hold,
+    /// and says the panes it took: a pane that runs, whose program is an agent's and whose name is
+    /// the issue's identifier (the name a start gives it, `bateri::arguments`). A pane already
+    /// watched is left as it is, and an issue that carries a mark keeps it; one that has none takes
+    /// the mark of the pane. Where two panes found have the name of one issue, the one started last
+    /// has the mark and the other takes it when that one ends, as with two agents given the issue.
+    fn adopt(&mut self, terminals: &[bateri::Terminal]) -> Vec<String> {
+        let mut ids: HashMap<&str, &str> = HashMap::new();
+        let listed = self.lists.iter().flat_map(|lists| {
+            std::iter::once(&lists.mine)
+                .chain(lists.shown.as_ref().map(|(_, listing)| listing))
+                .flat_map(|listing| &listing.issues)
+        });
+        for issue in listed.chain(self.details.values()) {
+            ids.insert(&issue.identifier, &issue.id);
+        }
+        // Held in the order they were started (`at_work`'s): the last one held of an issue is the one
+        // whose mark it takes when another ends (`pane_ended`).
+        let mut found: Vec<(String, &'static str, String)> = Vec::new();
+        for one in work::at_work(terminals) {
+            let Some(id) = ids.get(one.label) else {
+                continue;
+            };
+            if !self.held.iter().any(|held| held.pane == one.terminal.id) {
+                found.push((one.terminal.id.clone(), one.agent.name(), (*id).to_owned()));
+            }
+        }
+        let marked: Vec<String> = self.working.keys().cloned().collect();
+        for (pane, agent, id) in &found {
+            if !marked.contains(id) {
+                let working = Working {
+                    agent,
+                    pane: pane.clone(),
+                    idle: false,
+                };
+                self.working.insert(id.clone(), working);
+            }
+            self.held.push(Held {
+                pane: pane.clone(),
+                agent,
+                ids: vec![id.clone()],
+                context: None,
+            });
+        }
+        found.into_iter().map(|(pane, _, _)| pane).collect()
+    }
+
     /// Tells that an issue of the lists was changed: where the lists are on their way, they were
     /// asked for before it, so what comes is let go and they are asked for once more.
     fn note_change(&mut self) {
@@ -217,13 +270,14 @@ impl State {
     }
 
     /// What the worker does with the lists it asked for, or with why it could not. A list that the
-    /// page does not look at any more is let go of, and the one it looks at now is asked for.
-    fn landed(&mut self, got: Result<Lists, Error>) {
+    /// page does not look at any more is let go of, and the one it looks at now is asked for. Says
+    /// whether the lists were taken.
+    fn landed(&mut self, got: Result<Lists, Error>) -> bool {
         self.refreshing = false;
         match got {
             // Asked for before a change was made: it would put the old values back. The change
             // asked for the lists once more (`note_change`).
-            Ok(_) if self.stale => {}
+            Ok(_) if self.stale => false,
             Ok(mut lists) => {
                 let wanted = self.view.scope.clone();
                 // (A list asked for with other filters than the page has now is not the one it wants.)
@@ -236,8 +290,12 @@ impl State {
                 self.lists = Some(lists);
                 self.error = None;
                 self.updated = Some(now_seconds());
+                true
             }
-            Err(error) => self.error = Some(error),
+            Err(error) => {
+                self.error = Some(error);
+                false
+            }
         }
     }
 
@@ -390,6 +448,83 @@ impl Shared {
     }
 }
 
+/// Looks, on a thread of its own (bateri does not hold the lists back), at bateri's terminals for
+/// agents that work on issues the lists hold and are not watched (`State::adopt`), and watches them
+/// as `Session::watch` does the ones it starts. A list that cannot be had finds nothing.
+fn find_agents(shared: &Arc<Shared>, panes: &Panes) {
+    let shared = Arc::clone(shared);
+    let panes = panes.clone();
+    let _ = thread::Builder::new()
+        .name("linearpen-find".to_owned())
+        .spawn(move || {
+            let Some(terminals) = bateri::terminals(panes.runner.as_ref()) else {
+                return;
+            };
+            let found = {
+                let mut state = shared.lock();
+                if state.closed {
+                    return;
+                }
+                let found = state.adopt(&terminals);
+                if !found.is_empty() {
+                    shared.changed(&mut state);
+                }
+                found
+            };
+            if found.is_empty() {
+                return;
+            }
+            look_from_now(&shared, &panes);
+            for pane in &found {
+                follow(&shared, &panes.runner, pane);
+            }
+        });
+}
+
+/// Waits, on a thread of its own, for the program of `pane` to end, and then takes its mark away
+/// (`State::pane_ended`).
+fn follow(shared: &Arc<Shared>, runner: &Arc<dyn Runner>, pane: &str) {
+    let waiting = Arc::clone(shared);
+    let runner = Arc::clone(runner);
+    let waited = pane.to_owned();
+    let started = thread::Builder::new()
+        .name("linearpen-wait".to_owned())
+        .spawn(move || {
+            bateri::wait(runner.as_ref(), &waited);
+            let mut state = waiting.lock();
+            state.pane_ended(&waited);
+            waiting.changed(&mut state);
+        });
+    if started.is_err() {
+        // Nothing will say when it ends: no mark is better than one that stays.
+        let mut state = shared.lock();
+        state.pane_ended(pane);
+        shared.changed(&mut state);
+    }
+}
+
+/// Looks at the panes of the agents from now on, every `Panes::every`, until there is none: one
+/// thread for all of them, and none where nothing is watched.
+fn look_from_now(shared: &Arc<Shared>, panes: &Panes) {
+    {
+        let mut state = shared.lock();
+        if state.poller {
+            return;
+        }
+        state.poller = true;
+    }
+    let looking = Arc::clone(shared);
+    let runner = Arc::clone(&panes.runner);
+    let every = panes.every;
+    let started = thread::Builder::new()
+        .name("linearpen-poll".to_owned())
+        .spawn(move || look_at_panes(&looking, runner.as_ref(), every));
+    if started.is_err() {
+        // The marks go on saying the agent is at work, which is all they said before.
+        shared.lock().poller = false;
+    }
+}
+
 /// Looks at the panes that are watched, as often as `every`, and marks the issues of those that have
 /// written nothing for a while; ends where there is no pane to look at. Only marks: what the list
 /// cannot say (bateri does not answer, the pane is not in its list, no time is given of it) is that
@@ -459,8 +594,17 @@ fn fetch_lists(
     })
 }
 
+/// What looks at bateri's panes: the worker is given it where the pen runs in bateri, and looks for
+/// agents whenever the lists come (`find_agents`).
+#[derive(Clone)]
+struct Panes {
+    runner: Arc<dyn Runner>,
+    /// How often the panes of the agents are looked at, while there are any (`Work::poll`).
+    every: Duration,
+}
+
 /// The worker: asks when it is asked to, and again when `every` has passed.
-fn work(shared: &Shared) {
+fn work(shared: &Arc<Shared>, panes: Option<&Panes>) {
     let mut next = Instant::now() + shared.every;
     loop {
         let (key, scope, filters, everything) = {
@@ -505,10 +649,14 @@ fn work(shared: &Shared) {
         };
         let Some(key) = key else { continue };
         let got = fetch_lists(shared.transport.as_ref(), &key, &scope, &filters);
-        {
+        let taken = {
             let mut state = shared.lock();
-            state.landed(got);
+            let taken = state.landed(got);
             shared.changed(&mut state);
+            taken
+        };
+        if let (true, Some(panes)) = (taken, panes) {
+            find_agents(shared, panes);
         }
         if everything {
             // The names of the lists come after the lists: a list is shown without them.
@@ -629,33 +777,18 @@ impl Session {
                     },
                 );
             }
+            // A look at the panes may have found it as it was made: it is held once, with its file.
+            state.held.retain(|held| held.pane != pane);
             state.held.push(Held {
                 pane: pane.to_owned(),
                 agent,
                 ids: ids.to_vec(),
-                context: context.to_path_buf(),
+                context: Some(context.to_path_buf()),
             });
             self.shared.changed(&mut state);
         }
-        self.poll();
-        let shared = Arc::clone(&self.shared);
-        let runner = Arc::clone(&self.work.runner);
-        let pane = pane.to_owned();
-        let waited = pane.clone();
-        let started = thread::Builder::new()
-            .name("linearpen-wait".to_owned())
-            .spawn(move || {
-                bateri::wait(runner.as_ref(), &waited);
-                let mut state = shared.lock();
-                state.pane_ended(&waited);
-                shared.changed(&mut state);
-            });
-        if started.is_err() {
-            // Nothing will say when it ends: no mark is better than one that stays.
-            let mut state = self.shared.lock();
-            state.pane_ended(&pane);
-            self.shared.changed(&mut state);
-        }
+        look_from_now(&self.shared, &self.panes());
+        follow(&self.shared, &self.work.runner, pane);
     }
 
     /// Puts away the folders of old runs in the state folder (`handoff::prune`), except those of the
@@ -669,30 +802,16 @@ impl Session {
             .lock()
             .held
             .iter()
-            .map(|held| held.context.clone())
+            .filter_map(|held| held.context.clone())
             .collect();
         handoff::prune(state, now_seconds(), &in_use)
     }
 
-    /// Looks at the panes of the agents from now on, every `Work::poll`, until there is none: one
-    /// thread for all of them, and none where nothing is watched.
-    fn poll(&self) {
-        {
-            let mut state = self.shared.lock();
-            if state.poller {
-                return;
-            }
-            state.poller = true;
-        }
-        let shared = Arc::clone(&self.shared);
-        let runner = Arc::clone(&self.work.runner);
-        let every = self.work.poll;
-        let started = thread::Builder::new()
-            .name("linearpen-poll".to_owned())
-            .spawn(move || look_at_panes(&shared, runner.as_ref(), every));
-        if started.is_err() {
-            // The marks go on saying the agent is at work, which is all they said before.
-            self.shared.lock().poller = false;
+    /// What looks at the panes: the runner of the commands and how often (`Work`).
+    fn panes(&self) -> Panes {
+        Panes {
+            runner: Arc::clone(&self.work.runner),
+            every: self.work.poll,
         }
     }
 
@@ -709,9 +828,11 @@ impl Session {
             if !state.worker {
                 state.worker = true;
                 let shared = Arc::clone(&self.shared);
+                // Only a pen in bateri has panes to look at: elsewhere, no `bateri` is run.
+                let panes = self.work.setup.in_bateri.then(|| self.panes());
                 let started = thread::Builder::new()
                     .name("linearpen-worker".to_owned())
-                    .spawn(move || work(&shared));
+                    .spawn(move || work(&shared, panes.as_ref()));
                 if started.is_err() {
                     state.worker = false;
                     state.error = Some(Error::Failed("the program cannot ask Linear".to_owned()));
@@ -1237,7 +1358,7 @@ mod tests {
                 pane: pane.to_owned(),
                 agent,
                 ids: vec!["issue-412".to_owned()],
-                context: PathBuf::from(format!("/runs/{pane}/issues.md")),
+                context: Some(PathBuf::from(format!("/runs/{pane}/issues.md"))),
             });
         }
     }
@@ -1517,6 +1638,147 @@ mod tests {
             filters: Filters::default(),
         });
         (session, sent)
+    }
+
+    fn terminal(id: &str, running: bool, program: &str, label: Option<&str>) -> bateri::Terminal {
+        bateri::Terminal {
+            id: id.to_owned(),
+            running,
+            program: Some(program.to_owned()),
+            label: label.map(str::to_owned),
+            output_at: None,
+            started: None,
+        }
+    }
+
+    fn started_at(mut terminal: bateri::Terminal, at: u64) -> bateri::Terminal {
+        terminal.started = Some(at);
+        terminal
+    }
+
+    #[test]
+    fn an_agent_whose_pane_is_named_for_an_issue_held_is_watched_and_nothing_else_is() {
+        let (session, _) = holding(vec![]);
+        let mut state = session.state();
+        // This pen started an agent on b, in p5. Issue c is not in the lists, but was opened.
+        state.working.insert(
+            "b".to_owned(),
+            Working {
+                agent: "Codex",
+                pane: "p5".to_owned(),
+                idle: false,
+            },
+        );
+        state.held.push(Held {
+            pane: "p5".to_owned(),
+            agent: "Codex",
+            ids: vec!["b".to_owned()],
+            context: Some(PathBuf::from("/runs/p5/issues.md")),
+        });
+        state.details.insert(
+            "c".to_owned(),
+            issue_of(&wire("c", "Opened", "started", true)),
+        );
+        let terminals = [
+            // Two agents on a: the one started last, p41, has the mark.
+            started_at(terminal("p41", true, "claude", Some("ACM-a")), 200),
+            started_at(terminal("p42", true, "codex", Some("ACM-a")), 100),
+            // Watched already: left as it is.
+            terminal("p5", true, "codex", Some("ACM-b")),
+            // b carries p5's mark, which it keeps.
+            terminal("p6", true, "claude", Some("ACM-b")),
+            terminal("p7", true, "cursor-agent", Some("ACM-c")),
+            // Not an agent, ended, no issue held, no name, another machine's.
+            terminal("p8", true, "zsh", Some("ACM-a")),
+            terminal("p9", false, "claude", Some("ACM-a")),
+            terminal("p10", true, "claude", Some("ACM-404")),
+            terminal("p11", true, "claude", None),
+            terminal("p12@prod", true, "claude", Some("ACM-a")),
+        ];
+        // Taken in the order they were started (those that do not say, first).
+        assert_eq!(state.adopt(&terminals), ["p6", "p7", "p42", "p41"]);
+        let mark = |state: &State, id: &str| {
+            let working = &state.working[id];
+            (working.pane.clone(), working.agent)
+        };
+        assert_eq!(mark(&state, "a"), ("p41".to_owned(), "Claude"));
+        assert_eq!(mark(&state, "b"), ("p5".to_owned(), "Codex"));
+        assert_eq!(mark(&state, "c"), ("p7".to_owned(), "Cursor"));
+        assert_eq!(state.working.len(), 3);
+        // What was found has no file to keep.
+        let files: Vec<_> = state
+            .held
+            .iter()
+            .filter_map(|h| h.context.clone())
+            .collect();
+        assert_eq!(files, [PathBuf::from("/runs/p5/issues.md")]);
+        // A second look finds nothing more.
+        assert!(state.adopt(&terminals).is_empty());
+        // The last agent started on a ends: the other has the mark; then it ends too.
+        state.pane_ended("p41");
+        assert_eq!(mark(&state, "a"), ("p42".to_owned(), "Codex"));
+        state.pane_ended("p42");
+        assert!(!state.working.contains_key("a"));
+    }
+
+    /// Stands in for bateri: a pane runs until `ended`, and the list of panes cannot be had.
+    #[derive(Default)]
+    struct Running {
+        ended: std::sync::atomic::AtomicBool,
+    }
+
+    impl Runner for Running {
+        fn run_with(
+            &self,
+            _: &str,
+            args: &[String],
+            _: Option<&Path>,
+            _: &[(&str, &str)],
+        ) -> std::io::Result<crate::work::runner::Ran> {
+            if args.first().map(String::as_str) == Some("wait") {
+                while !self.ended.load(std::sync::atomic::Ordering::SeqCst) {
+                    thread::sleep(Duration::from_millis(10));
+                }
+            }
+            Ok(crate::work::runner::Ran {
+                ok: false,
+                out: String::new(),
+                err: String::new(),
+            })
+        }
+    }
+
+    #[test]
+    fn a_pane_found_as_it_was_made_is_held_once_with_its_file() {
+        let (session, _) = holding(vec![]);
+        let bateri = Arc::new(Running::default());
+        let session = session.with_work(Setup::default(), Arc::clone(&bateri) as Arc<dyn Runner>);
+        session
+            .state()
+            .adopt(&[terminal("p41", true, "claude", Some("ACM-a"))]);
+        session.watch(
+            &["a".to_owned()],
+            "Claude",
+            "p41",
+            Path::new("/runs/p41/issues.md"),
+        );
+        {
+            let state = session.state();
+            let held: Vec<_> = state
+                .held
+                .iter()
+                .map(|h| (h.pane.as_str(), h.context.clone()))
+                .collect();
+            assert_eq!(held, [("p41", Some(PathBuf::from("/runs/p41/issues.md")))]);
+        }
+        bateri
+            .ended
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        let gone = Instant::now() + Duration::from_secs(5);
+        while !session.state().held.is_empty() {
+            assert!(Instant::now() < gone, "the pane's end takes it away");
+            thread::sleep(Duration::from_millis(10));
+        }
     }
 
     fn ids_of(listing: &Listing) -> Vec<&str> {

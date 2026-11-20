@@ -22,8 +22,9 @@ be added to a description and it was not written, or it is not known whether it 
 which of three it is: the description could not be read, the files would make it too long (nothing was
 written in either), or the write was sent and failed), `save-failed` (a file of Linear was to be saved and was not: the words say why),
 `edit-failed` (the words of a description or of a comment were to be written, or an edit of them
-begun, and were not, or it is not known whether they were: the words say why) and
-`pdf-failed` (a PDF could not be read for its pages and words: the words say why). The
+begun, and were not, or it is not known whether they were: the words say why),
+`pdf-failed` (a PDF could not be read for its pages and words: the words say why) and `go-failed`
+(the keyboard was to go to an agent's pane and did not: the words say why). The
 words of an error are for the person and never hold the key, nor the address a file is sent to
 (Linear signs it).
 
@@ -311,8 +312,9 @@ key); that it cannot be kept is not an error of the call. And it puts away old r
 `work/` older than 14 days (by the time in their names), only those that are named as above, are
 real folders (not links), hold nothing but `issues.md` (a real file) and, where the agent had the
 files saved, a real folder `files` of real files (at most 200), and are not the folder of a
-pane this run of the program watches (a pane left from an earlier run is not known to it, and its
-file goes at that age too: the agent read it long before). The file and then the folder are
+pane this run of the program started and watches (the file of a pane an earlier run started is
+not known, even where the pane is found again, and goes at that age too: the agent read it long
+before). The file and then the folder are
 removed, never a tree, and nothing outside `work/` is touched. The program does the same once as
 it begins.
 
@@ -320,6 +322,31 @@ From here the issue of the call carries a mark in the topic (`working`) until th
 and the program looks at the panes (see `working`) for as long as there is one.
 Errors: `bad-params`, `no-key`, `refused`, `unreachable`, `failed` (the issue is asked of Linear
 for its text), `unavailable`, `start-failed`.
+
+### `go_to_agent`
+
+Takes the keyboard to the pane of the agent that works on an issue (the page calls it from the
+agent's mark on the issue's line, and from the issue's keys). Params (a member that is not named
+here is refused):
+
+```json
+{ "id": "issue-412" }
+```
+
+- `id`: the Linear id of the issue, as the topic's `working` names it.
+
+The pane is the one the issue's mark is of (`working`): the program's own, as `bateri split` or
+`bateri tab` told it when `start` made it or bateri's list told it (see `working`), never one the
+page names. It runs `bateri focus pane
+<pane>` and nothing else; Linear is not asked. bateri does it only from the pane the person is
+typing in (its rule for what moves the keyboard), which is the pen's when the person pressed there.
+
+```json
+{ "pane": "p41" }
+```
+
+Errors: `bad-params`, `go-failed` (the issue has no agent at work in this run of the program, or
+bateri did not take the keyboard there: its words say why, as where the pane ended a moment before).
 
 ### `new_options`
 
@@ -807,12 +834,19 @@ the lists came, asking failed). The same value `view` answers with.
   (`2026-11-15`, or null). Whether several issues are of one team is told by their `teamId`s.
 - `updated`: when the lists came, seconds since the epoch; `organization` and `person` are the
   workspace's name and the person's. Both are null before the first answer.
-- `working`: the issues an agent was started on and whose pane has not ended, by Linear's id, with
-  the agent's name. It is not kept between runs. `idle` is true where the agent has stopped: it is
-  done, or it waits for the person (the two cannot be told apart). The program asks bateri
-  (`bateri ls --json`) every three seconds for as long as a pane is watched (and not at all when
-  none is), and an agent has stopped when its pane's `output_at` is more than ten seconds old. Only
-  the `id` and `output_at` of each terminal are read. Where the list cannot be read, has no such
-  terminal, or the terminal has no time that is a number, `idle` is false: the look only adds the
-  word and never takes the mark away, which goes when the pane ends. `idle` goes back to false when
-  the pane writes again.
+- `working`: the issues an agent works on and whose pane has not ended, by Linear's id, with the
+  agent's name: the ones `start` started, and, where the pen runs in bateri, the ones it finds in
+  bateri's list (`bateri ls --json`) each time the lists come. A pane found is one that runs, whose
+  program is an agent's (`claude`, `codex`, `cursor-agent`) and whose name is the identifier of an
+  issue the lists or the opened issues hold: its own name (`split --label`, which `start` gives it)
+  or its tab's (`tab --label` names the tab). Nothing is kept between runs: a pen begun again finds
+  the agents an earlier one started (or another pen did), and an issue that has a mark keeps it.
+  `idle` is true where the agent has stopped: it is done, or it waits for the person (the two cannot
+  be told apart). The program asks bateri every three seconds for as long as a pane is watched (and
+  not at all when none is), and an agent has stopped when its pane's `output_at` is more than ten
+  seconds old. Of each terminal only `id`, `state`, `program`, `label`, `tab`, `started` and
+  `output_at` are read (`started`: of two panes named for one issue, the mark is of the one started
+  last), and of each tab its `id` and `label`. Where the list cannot be read, has no such terminal,
+  or the terminal has no time that is a number, `idle` is false: the look only says the agent has
+  stopped and never takes the mark away, which goes when the pane ends. `idle` goes back to false
+  when the pane writes again.

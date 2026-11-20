@@ -1137,6 +1137,39 @@ fn a_pane_that_has_written_nothing_for_a_while_is_told_as_one_whose_agent_has_st
     std::fs::remove_file(&hold).unwrap();
 }
 
+#[test]
+fn a_pen_begun_again_finds_the_agent_the_one_before_it_started_and_marks_its_issue() {
+    let home = Home::new();
+    // The agent's pane goes on (its `wait` waits for this file to go) after the pen that made it, in
+    // a tab of its own, has ended.
+    let hold = home.path("hold");
+    std::fs::write(&hold, "").unwrap();
+    let in_a_tab = json!({ "id": "issue-412", "agent": "claude", "folder": "here", "open": "tab" });
+    let heard = home.ask(
+        &in_bateri()
+            .env("STANDIN_WAIT", hold.to_str().unwrap())
+            .call("start", in_a_tab),
+    );
+    assert_eq!(heard[0].result()["pane"], "p41", "{:?}", heard[0]);
+    // A new pen knows nothing of it but what bateri's list says: the tab's name is the issue's.
+    let log = home.record(
+        &in_bateri()
+            .env("STANDIN_WAIT", hold.to_str().unwrap())
+            .host_args(&["--subscribe", "issues"])
+            .then(&["--then", "wait"])
+            .limit(4),
+    );
+    let told = pushes(&log);
+    assert!(
+        told.iter()
+            .any(|push| push["working"]["issue-412"]["agent"] == "Claude"),
+        "{told:?}"
+    );
+    assert!(!home.bateri_looks().is_empty());
+    assert!(!log.contains(common::KEY));
+    std::fs::remove_file(&hold).unwrap();
+}
+
 // A pane on a server: `ssh` carries the pane's address as `LC_BATERI_TAB_URL`, and the server's
 // shell has no `BATERI_TAB_URL`. An agent is started there as it is here.
 #[test]

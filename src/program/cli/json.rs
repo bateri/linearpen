@@ -2,8 +2,11 @@
 //! command tells. The fields are the ones `docs/cli.md` lists. JSON escapes every control character,
 //! so Linear's text goes in as it came.
 
+use std::collections::HashMap;
+
 use serde::Serialize;
 
+use super::agents::Working;
 use super::pictures::{Place, Refused, Seen};
 use crate::linear::types::{Comment, Neighbor, Tie};
 use crate::linear::{Issue, Listing};
@@ -84,21 +87,58 @@ impl IssueRow {
     }
 }
 
+/// The agent at work on an issue, in a pane of bateri.
+#[derive(Debug, Serialize)]
+pub struct AgentRow {
+    /// `claude`, `codex` or `cursor`.
+    pub name: &'static str,
+    /// Its pane: `p41`.
+    pub pane: String,
+    /// Its pane has written nothing for a while: it is done, or it waits for the person.
+    pub idle: bool,
+}
+
+impl AgentRow {
+    /// The agent of the issue `identifier` among `agents`, or nothing.
+    fn of(agents: &HashMap<String, Working>, identifier: &str) -> Option<Self> {
+        agents.get(identifier).map(|working| Self {
+            name: working.agent.id(),
+            pane: working.pane.clone(),
+            idle: working.idle,
+        })
+    }
+}
+
+/// An issue of a list, and the agent at work on it.
+#[derive(Debug, Serialize)]
+pub struct Listed {
+    #[serde(flatten)]
+    pub issue: IssueRow,
+    pub agent: Option<AgentRow>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct Issues {
     /// What the list is called (`My issues`).
     pub list: String,
     /// There are more issues in Linear than the ones listed.
     pub truncated: bool,
-    pub issues: Vec<IssueRow>,
+    pub issues: Vec<Listed>,
 }
 
 impl Issues {
-    pub fn of(list: &str, listing: &Listing) -> Self {
+    pub fn of(list: &str, listing: &Listing, agents: &HashMap<String, Working>) -> Self {
         Self {
             list: list.to_owned(),
             truncated: listing.truncated,
-            issues: listing.issues.iter().map(IssueRow::of).collect(),
+            issues: listing
+                .issues
+                .iter()
+                .map(|issue| Listed {
+                    issue: IssueRow::of(issue),
+                    agent: AgentRow::of(agents, &issue.identifier),
+                })
+                .collect(),
         }
     }
 }
@@ -172,6 +212,7 @@ impl Said {
 pub struct Shown {
     #[serde(flatten)]
     pub issue: IssueRow,
+    pub agent: Option<AgentRow>,
     pub description: Option<String>,
     pub parent: Option<Neighbour>,
     pub children: Vec<Neighbour>,
@@ -232,10 +273,11 @@ fn tie_name(tie: Tie) -> &'static str {
 }
 
 impl Shown {
-    pub fn of(issue: &Issue, seen: &[Seen]) -> Self {
+    pub fn of(issue: &Issue, seen: &[Seen], agents: &HashMap<String, Working>) -> Self {
         Self {
             files: seen.iter().map(FileRow::of).collect(),
             issue: IssueRow::of(issue),
+            agent: AgentRow::of(agents, &issue.identifier),
             description: issue.description.clone(),
             parent: issue.parent.as_ref().map(Neighbour::of),
             children: issue.children.iter().map(Neighbour::of).collect(),

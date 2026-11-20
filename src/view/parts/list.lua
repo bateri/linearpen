@@ -321,6 +321,11 @@ function list.press(event)
 		return false
 	end
 	local hit = b.layout.hit({ x = event.x, y = event.y })
+	if hit ~= nil and string.sub(hit, 1, 6) == "agent:" then
+		-- The agent's mark: the keyboard goes to its pane, and the cursor stays where it was.
+		act.go_to_agent(string.sub(hit, 7))
+		return true
+	end
 	if hit ~= nil and string.sub(hit, 1, 6) == "check:" then
 		-- (While the form is open what it is for is let go of by its own boxes, which the keyboard
 		-- reaches too: the list's boxes are not a way to add to it, which only the pointer could do.)

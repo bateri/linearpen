@@ -20,17 +20,67 @@ local b, u, S, SIZE, act = kit.b, kit.u, kit.S, kit.SIZE, kit.act
 
 local status = {}
 
+-- How wide each hint is laid out, points, by the element that is its words: the library guesses the
+-- width of an element, drops what does not fit by its guesses, and a guess that is short lets the line
+-- run off a narrow pane.
+local WIDTHS = setmetatable({}, { __mode = "k" })
+
+-- The keys whose caps hold a word, by how many letters it has (the others are one sign: an arrow, ⌘, ⇧
+-- or a letter).
+local NAMED = { enter = 5, space = 5, escape = 3, home = 4, ["end"] = 3, tab = 3 }
+
+-- How wide the caps of `specs` and the words `words` are laid out, as measured on the line drawn: a
+-- cap of one sign is 16 points and a cap of a word 10 and 6 for each letter, 5 between the parts and
+-- 8 on each side; a letter of the words is the library's own 6.6 (it adds 24 for the whole line). In
+-- the cells of a terminal nothing was measured, and the library's own guess stands (nil).
+local function measure(specs, words)
+	if b.draws == nil or b.draws().cells == true then
+		return nil
+	end
+	local width = 16
+	for _, spec in specs do
+		for part in string.gmatch(spec, "[^+]+") do
+			local count = NAMED[part] or 1
+			width += (count == 1 and 16 or 10 + 6 * count) + 5
+		end
+	end
+	return width + utf8.len(words) * 6.6
+end
+
+-- The caps of the keys `specs`, as the library draws them, and the words `words` of what they do.
+local function keyed(specs, words)
+	local row = b.div():row():items_center():gap(5):no_shrink()
+	for _, spec in specs do
+		row:child(u:kbd(spec))
+	end
+	row:child(b.text(words))
+	WIDTHS[row] = measure(specs, words)
+	return row
+end
+
 -- The keys of a hint, as the library draws them, and its words. `ids` are commands, `words` what
 -- they are said to do.
 local function hint(ids, words)
-	local row = b.div():row():items_center():gap(5):no_shrink()
+	local specs = {}
 	for _, id in ids do
 		local first = commands.first(id)
 		if first ~= nil then
-			row:child(u:kbd(first))
+			specs[#specs + 1] = first
 		end
 	end
-	return row:child(b.text(words))
+	return keyed(specs, words)
+end
+
+-- The line of keys, of the items `parts` (`start`, `finish`), each as wide as it is laid out.
+local function line(parts)
+	for _, group in { parts.start or {}, parts.finish or {} } do
+		for _, item in group do
+			if item.width == nil and type(item.words) ~= "string" then
+				item.width = WIDTHS[item.words]
+			end
+		end
+	end
+	return u:status("status", parts)
 end
 
 -- The two keys at the end of the line: the palette and the card of keys.
@@ -66,9 +116,7 @@ local function work_hints()
 	if not work.typing() then
 		start[#start + 1] = {
 			key = "choose",
-			words = b.div():row():items_center():gap(5):no_shrink():child(u:kbd("left")):child(u:kbd("right")):child(
-				b.text("choose")
-			),
+			words = keyed({ "left", "right" }, "choose"),
 			priority = 6,
 		}
 	end
@@ -87,8 +135,8 @@ end
 -- What the keyboard does while the title of the issue is written: it goes in, or it does not.
 local function edit_hints()
 	return {
-		{ key = "save", words = b.div():row():items_center():gap(5):no_shrink():child(u:kbd("enter")):child(b.text("save")), priority = 8 },
-		{ key = "cancel", words = b.div():row():items_center():gap(5):no_shrink():child(u:kbd("escape")):child(b.text("cancel")), priority = 7 },
+		{ key = "save", words = keyed({ "enter" }, "save"), priority = 8 },
+		{ key = "cancel", words = keyed({ "escape" }, "cancel"), priority = 7 },
 	}
 end
 
@@ -114,7 +162,7 @@ end
 -- on the Comment button, with its key (a key is written once), so the line says only how it is left.
 local function writing_hints()
 	return {
-		{ key = "leave", words = b.div():row():items_center():gap(5):no_shrink():child(u:kbd("escape")):child(b.text("leave")), priority = 8 },
+		{ key = "leave", words = keyed({ "escape" }, "leave"), priority = 8 },
 	}
 end
 
@@ -238,7 +286,7 @@ function status.view()
 				start[#start + 1] = { key = "all", words = hint({ "pdf_select_all" }, "select all"), priority = 6 }
 			end
 		end
-		return u:status("status", { start = start })
+		return line({ start = start })
 	end
 	-- (The bar of the selection stays while a card of its values is open: what is selected and the
 	-- button the card stands by do not go.)
@@ -246,25 +294,25 @@ function status.view()
 		return u:status("status", { start = picker_hints() })
 	end
 	if S.editing then
-		return u:status("status", { start = edit_hints(), finish = status.finish() })
+		return line({ start = edit_hints(), finish = status.finish() })
 	end
 	if S.writing then
-		return u:status("status", { start = writing_hints(), finish = status.finish() })
+		return line({ start = writing_hints(), finish = status.finish() })
 	end
 	if S.new_open then
-		return u:status("status", { start = new_hints(), finish = status.finish() })
+		return line({ start = new_hints(), finish = status.finish() })
 	end
 	if S.work_open then
-		return u:status("status", { start = work_hints(), finish = status.finish() })
+		return line({ start = work_hints(), finish = status.finish() })
 	end
 	if status.selecting() then
 		return status.bar()
 	end
 	if filters.on_chip() then
-		return u:status("status", { start = filter_hints(), finish = status.finish() })
+		return line({ start = filter_hints(), finish = status.finish() })
 	end
 	if head.typing() and head.words() ~= "" then
-		return u:status("status", { start = typing_hints(), finish = status.finish() })
+		return line({ start = typing_hints(), finish = status.finish() })
 	end
 	-- A list with no line has nothing to move on, select or open: its keys are not said. Nor is a
 	-- key said where it does something else: in the filter `x` is a letter, and where the issue has
@@ -278,9 +326,7 @@ function status.view()
 		if list.count() > 1 then
 			start[#start + 1] = {
 				key = "next",
-				words = b.div():row():items_center():gap(5):no_shrink():child(u:kbd("j")):child(u:kbd("k")):child(
-					b.text("next issue")
-				),
+				words = keyed({ "j", "k" }, "next issue"),
 				priority = 7,
 			}
 		end
@@ -321,8 +367,20 @@ function status.view()
 	if S.width < SIZE.roomy and not typing then
 		start[#start + 1] = { key = "new", words = hint({ "new" }, "new issue"), priority = 4 }
 	end
+	-- The marks of the agents on the lines are pressed, and have no key: the key goes to the agent of the
+	-- one issue the keys are for, and is said here, with its name, where that issue has one. Last, so that
+	-- nothing before it moves when the cursor comes to such an issue or leaves it.
+	local reached = not typing and commands.when.reachable() and work.agent_of(change.single()) or nil
+	if reached then
+		start[#start + 1] = {
+			key = "go_to_agent",
+			words = hint({ "go_to_agent" }, "go to " .. reached.agent),
+			priority = 6,
+			press = true,
+		}
+	end
 	local finish = status.finish()
-	return u:status("status", { start = start, finish = finish })
+	return line({ start = start, finish = finish })
 end
 
 -- An item of the line pressed: the command it stands for. Whether it was the line's.
@@ -330,7 +388,13 @@ function status.action(action)
 	if action.from ~= "status" or action.kind ~= "press" then
 		return false
 	end
-	if action.key == "palette" or action.key == "help" or action.key == "filters" or action.key == "search" then
+	if
+		action.key == "palette"
+		or action.key == "help"
+		or action.key == "filters"
+		or action.key == "search"
+		or action.key == "go_to_agent"
+	then
 		act.run(action.key)
 	end
 	return true
@@ -338,13 +402,12 @@ end
 
 -- The line of a screen that has no key to say.
 function status.empty()
-	return u:status("status", {})
+	return line({})
 end
 
 -- The line of the Connect screen: where the keyboard goes next.
 function status.connect()
-	local row = b.div():row():items_center():gap(5):no_shrink():child(u:kbd("tab")):child(b.text("next"))
-	return u:status("status", { start = { { key = "next", words = row, priority = 5 } } })
+	return line({ start = { { key = "next", words = keyed({ "tab" }, "next"), priority = 5 } } })
 end
 
 return status

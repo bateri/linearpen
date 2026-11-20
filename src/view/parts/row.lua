@@ -145,6 +145,54 @@ local function carries(el, issue)
 	end
 end
 
+-- The name the agent's mark on the line of the issue `id` answers the pointer by.
+function row.agent_name(id)
+	return "agent:" .. id
+end
+
+-- The name of the dot that says the agent of the issue `id` has stopped.
+function row.idle_name(id)
+	return "agent-idle:" .. id
+end
+
+-- The agent that works on an issue, after its title: a button that says where it goes, `Go to Claude`,
+-- with the ring while the agent's pane writes and a dot of warning where it has written nothing for a
+-- while (the agent is done, or it waits for the person: which of them cannot be told, so the tip says
+-- both). The ring and the dot are as wide and the words stay, so the line does not move when the one
+-- gives way to the other. A press on it takes the keyboard to the agent's pane.
+local function agent(id, working)
+	local t = u.theme
+	local name = row.agent_name(id)
+	local over = u:hovered(name)
+	local held = over and u:pressed(name)
+	local go = "Go to " .. working.agent
+	local mark = b.div()
+		:press(name)
+		:role("button")
+		:row()
+		:items_center()
+		:gap(6)
+		:h(SIZE.bar_control + 4)
+		:px(7)
+		:no_shrink()
+		:rounded(t.radius.control)
+		:bg(held and t.control_press or over and t.control_hover or t.control)
+		:border(1, b.alpha("foreground", over and 0.22 or 0.1))
+		:motion({ seconds = t.motion, color = true })
+	if working.idle then
+		-- (The state is in the label too, for what reads the page aloud.)
+		local stopped = working.agent .. " has stopped: it is done, or it waits for you"
+		return mark:label(go .. ", " .. stopped):tip(stopped .. ". Go to its pane"):child(
+			b.div():id(row.idle_name(id)):size(12, 12):items_center():justify_center():no_shrink():child(
+				b.div():size(7, 7):rounded(4):bg("warning")
+			)
+		):child(b.text(go):text_size(SIZE.small):color("warning"):no_shrink())
+	end
+	return mark:label(go .. ", at work"):tip(working.agent .. " works on it. Go to its pane"):child(
+		kit.spinner(12, "accent")
+	):child(b.text(go):text_size(SIZE.small):color("accent"):no_shrink())
+end
+
 -- An issue: the box of a selection, its priority, its identifier, its title that gives way, the
 -- agent that is on it, its labels, whose it is (in any list but the person's own, where the page is wide
 -- enough) and the day it changed. `o`: `labels` and `who` say whether there is room for them, `scope` the list shown.
@@ -158,22 +206,8 @@ function row.issue(item, look, o)
 		b.div():w(SIZE.identifier):no_shrink():child(b.text(issue.identifier):text_size(SIZE.small):color("dim"):truncate())
 	)
 	el:child(b.text(issue.title):grow(1):min_w(0):truncate())
-	if look.working ~= nil and look.working.idle then
-		-- Its pane has written nothing for a while: the agent is done, or it waits for the person (which
-		-- of them cannot be told), so no ring and a word that is the person's to read.
-		local words = look.working.agent .. " has stopped: it is done, or it waits for you"
-		el:child(
-			b.div():row():items_center():no_shrink():label(words):tip(words):child(
-				b.text(look.working.agent .. " idle"):text_size(SIZE.small):color("warning"):no_shrink()
-			)
-		)
-	elseif look.working ~= nil then
-		-- An agent works on it: the one that does, after the title.
-		el:child(
-			b.div():row():items_center():gap(6):no_shrink():label("Worked on by " .. look.working.agent):child(
-				kit.spinner(12, "accent")
-			):child(b.text(look.working.agent):text_size(SIZE.small):color("accent"):no_shrink())
-		)
+	if look.working ~= nil then
+		el:child(agent(issue.id, look.working))
 	end
 	if o.labels then
 		for index, info in issue.labels do

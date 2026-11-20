@@ -54,6 +54,14 @@ impl Agent {
         Self::ALL.into_iter().find(|agent| agent.id() == id)
     }
 
+    /// The agent whose program `program` is (the name bateri says of the program in a pane).
+    #[must_use]
+    pub fn by_program(program: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|agent| agent.program() == program)
+    }
+
     /// The command that starts the agent on `prompt`: the program, for Claude the name of its
     /// session where there is one (`--name=<name>`, one word, so a name that begins with a dash is
     /// not taken for an option), and the prompt. The other agents are given no name.

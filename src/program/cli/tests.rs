@@ -185,6 +185,16 @@ fn command(args: &[&str]) -> Command {
 }
 
 fn run_with(memory: &Memory, args: &[&str], stdin: &str) -> Done {
+    run_in_with(memory, None, args, stdin)
+}
+
+fn run_in(memory: &Memory, bateri: Option<&Bateri>, args: &[&str]) -> Done {
+    run_in_with(memory, bateri, args, "")
+}
+
+/// `args` run with `memory` for Linear and `stdin`, in a pane of bateri where `bateri` is given (at
+/// `NOW`).
+fn run_in_with(memory: &Memory, bateri: Option<&Bateri>, args: &[&str], stdin: &str) -> Done {
     let key = Key::new("lin_api_test").unwrap();
     let mut input = stdin.as_bytes();
     run(
@@ -192,6 +202,10 @@ fn run_with(memory: &Memory, args: &[&str], stdin: &str) -> Done {
             transport: memory,
             key: &key,
             key_source: "LINEAR_API_KEY",
+            panes: bateri.map(|runner| Panes {
+                runner: runner as &dyn crate::work::runner::Runner,
+                now: NOW,
+            }),
         },
         &command(args),
         &mut input,
@@ -1177,4 +1191,292 @@ fn picture_world_without_files() -> Memory {
     .with_picture("https://uploads.linear.app/w/2/trace.jpg", Err("HTTP 404"))
     .with_picture("https://uploads.linear.app/w/3/other.png", Err("HTTP 404"))
     .with_picture("https://uploads.linear.app/w/4/build.log", Err("HTTP 404"))
+}
+
+// --- The agents at work, as bateri's list says them ----------------------------------------------
+
+const MY_ISSUES: &str = include_str!("../../../test/stand-in/my-issues.json");
+
+/// The moment the tests are run at, seconds since the epoch.
+const NOW: f64 = 1_763_500_000.0;
+
+/// A stand-in for bateri: what `ls --json` says (or that it fails), whether `focus` is refused, and
+/// the calls it had, a line each.
+struct Bateri {
+    ls: Option<String>,
+    refuse_focus: Option<&'static str>,
+    asked: Mutex<Vec<String>>,
+}
+
+impl Bateri {
+    fn new(ls: Option<String>) -> Self {
+        Self {
+            ls,
+            refuse_focus: None,
+            asked: Mutex::new(Vec::new()),
+        }
+    }
+
+    fn asked(&self) -> Vec<String> {
+        self.asked.lock().unwrap().clone()
+    }
+}
+
+impl crate::work::runner::Runner for Bateri {
+    fn run_with(
+        &self,
+        program: &str,
+        args: &[String],
+        _cwd: Option<&std::path::Path>,
+        _env: &[(&str, &str)],
+    ) -> std::io::Result<crate::work::runner::Ran> {
+        self.asked
+            .lock()
+            .unwrap()
+            .push(format!("{program} {}", args.join(" ")));
+        let answer = |ok: bool, out: &str, err: &str| crate::work::runner::Ran {
+            ok,
+            out: out.to_owned(),
+            err: err.to_owned(),
+        };
+        Ok(match args.first().map(String::as_str) {
+            Some("ls") => match &self.ls {
+                Some(out) => answer(true, out, ""),
+                None => answer(false, "", "bateri: the bateri app is not connected\n"),
+            },
+            Some("focus") => match self.refuse_focus {
+                Some(why) => answer(false, "", why),
+                None => answer(true, "", ""),
+            },
+            _ => answer(false, "", "not a call of these tests\n"),
+        })
+    }
+}
+
+/// A terminal of bateri's list: its pane, its program, its name, when it started and how long ago it
+/// last wrote.
+fn terminal(id: &str, program: &str, label: &str, started: u64, ago: f64) -> serde_json::Value {
+    serde_json::json!({ "id": id, "state": "running", "program": program, "label": label,
+        "tab": null, "started": started, "output_at": NOW - ago })
+}
+
+/// bateri's list: on ACM-412 a Claude that has been quiet for a minute and a Codex started after it
+/// that writes; on ACM-415 a shell and an agent of another machine, which are no agents of this one.
+fn panes() -> String {
+    serde_json::json!({ "windows": null, "terminals": [
+        terminal("p750", "claude", "ACM-412", 100, 60.0),
+        terminal("p751", "codex", "ACM-412", 200, 1.0),
+        terminal("p9", "zsh", "ACM-415", 50, 1.0),
+        terminal("p12@prod", "claude", "ACM-415", 60, 1.0),
+    ] })
+    .to_string()
+}
+
+/// Linear with My issues (the open ones; no closed one) and the issue ACM-412.
+fn my_world() -> Memory {
+    Memory::new(|name, body| match name {
+        "MyIssues" if body.contains("\"in\":[\"completed\",\"canceled\"]") => ok(
+            r#"{"data":{"viewer":{"id":"u","name":"Ada","organization":{"name":"Acme","urlKey":"acme"},"assignedIssues":{"nodes":[],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}}"#,
+        ),
+        "MyIssues" => ok(MY_ISSUES),
+        _ => world().post(&Key::new("k").unwrap(), body),
+    })
+}
+
+/// The line of `text` that names `identifier`.
+fn line_of<'a>(text: &'a str, identifier: &str) -> &'a str {
+    text.lines()
+        .find(|line| line.trim_start().starts_with(&format!("{identifier} ")))
+        .unwrap_or_else(|| panic!("no line of {identifier}: {text}"))
+}
+
+#[test]
+fn in_bateri_list_and_show_say_the_agent_at_work_on_an_issue_the_one_started_last() {
+    let bateri = Bateri::new(Some(panes()));
+    let done = run_in(&my_world(), Some(&bateri), &["list"]);
+    assert_eq!(done.status, 0, "{}", done.err);
+    assert!(
+        line_of(&done.out, "ACM-412").ends_with("  Codex at work in p751"),
+        "{}",
+        done.out
+    );
+    // A shell, and an agent of another machine, named for an issue are no agent at work on it.
+    assert!(
+        !line_of(&done.out, "ACM-415").contains(" in p"),
+        "{}",
+        done.out
+    );
+    let json = run_in(&my_world(), Some(&bateri), &["list", "--json"]);
+    let listed: serde_json::Value = serde_json::from_str(&json.out).unwrap();
+    let issues = listed["issues"].as_array().unwrap();
+    let of = |identifier: &str| {
+        issues
+            .iter()
+            .find(|issue| issue["identifier"] == identifier)
+            .unwrap()["agent"]
+            .clone()
+    };
+    assert_eq!(
+        of("ACM-412"),
+        serde_json::json!({ "name": "codex", "pane": "p751", "idle": false })
+    );
+    assert_eq!(of("ACM-415"), serde_json::Value::Null);
+    // show says it among the fields, with the command that goes there.
+    let done = run_in(&world(), Some(&bateri), &["show", "ACM-412"]);
+    assert!(
+        done.out
+            .contains("\nAgent     Codex at work in p751: linearpen agent ACM-412 goes there\n"),
+        "{}",
+        done.out
+    );
+    let json = run_in(&world(), Some(&bateri), &["show", "ACM-412", "--json"]);
+    let shown: serde_json::Value = serde_json::from_str(&json.out).unwrap();
+    assert_eq!(shown["agent"]["pane"], "p751");
+    assert!(bateri.asked().iter().all(|line| line == "bateri ls --json"));
+}
+
+#[test]
+fn an_agent_quiet_for_a_while_is_idle() {
+    let quiet = serde_json::json!({ "windows": null, "terminals": [
+        terminal("p750", "claude", "ACM-412", 100, 60.0),
+    ] })
+    .to_string();
+    let bateri = Bateri::new(Some(quiet));
+    let done = run_in(&my_world(), Some(&bateri), &["list"]);
+    assert!(
+        line_of(&done.out, "ACM-412").ends_with("  Claude idle in p750"),
+        "{}",
+        done.out
+    );
+    let done = run_in(&world(), Some(&bateri), &["show", "ACM-412", "--json"]);
+    let shown: serde_json::Value = serde_json::from_str(&done.out).unwrap();
+    assert_eq!(
+        shown["agent"],
+        serde_json::json!({ "name": "claude", "pane": "p750", "idle": true })
+    );
+}
+
+#[test]
+fn outside_bateri_or_where_its_list_cannot_be_had_the_issues_are_told_as_they_are() {
+    let plain = run_with(&my_world(), &["list"], "");
+    let failing = Bateri::new(None);
+    for done in [
+        run_in(&my_world(), Some(&failing), &["list"]),
+        run_in(
+            &my_world(),
+            Some(&Bateri::new(Some(String::new()))),
+            &["list"],
+        ),
+    ] {
+        assert_eq!(done.status, 0, "{}", done.err);
+        assert_eq!(done.out, plain.out);
+        assert!(done.err.is_empty(), "{}", done.err);
+    }
+    let json = run_with(&my_world(), &["list", "--json"], "");
+    let listed: serde_json::Value = serde_json::from_str(&json.out).unwrap();
+    assert!(
+        listed["issues"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|issue| issue["agent"].is_null())
+    );
+    let shown = run_with(&world(), &["show", "ACM-412"], "");
+    assert!(!shown.out.contains("\nAgent "), "{}", shown.out);
+    // The change of an issue says no agent: its issues are Linear's word on them, and nothing more.
+    let changed = run_in(
+        &world(),
+        Some(&Bateri::new(Some(panes()))),
+        &["update", "ACM-1", "--status", "done", "--json"],
+    );
+    assert!(!changed.out.contains("\"agent\""), "{}", changed.out);
+}
+
+#[test]
+fn agent_takes_the_keyboard_to_the_pane_of_the_agent_at_work_and_asks_linear_nothing() {
+    let memory = my_world();
+    let bateri = Bateri::new(Some(panes()));
+    let done = run_in(&memory, Some(&bateri), &["agent", "acm-412"]);
+    assert_eq!(done.status, 0, "{}", done.err);
+    assert_eq!(done.out, "ACM-412: went to Codex, in pane p751\n");
+    assert_eq!(
+        bateri.asked(),
+        ["bateri ls --json", "bateri focus pane p751"]
+    );
+    assert!(memory.sent().is_empty(), "{:?}", memory.sent());
+}
+
+#[test]
+fn agent_given_the_id_of_the_issue_asks_linear_its_identifier() {
+    const ID: &str = "0c9e0f1e-6d1b-4d7a-9a56-3b1c0a5e7f10";
+    let memory = Memory::new(|name, body| match name {
+        "Issue" if body.contains(ID) => issue_reply(ID, "ACM-412", "acm"),
+        _ => world().post(&Key::new("k").unwrap(), body),
+    });
+    let bateri = Bateri::new(Some(panes()));
+    let done = run_in(&memory, Some(&bateri), &["agent", ID]);
+    assert_eq!(done.status, 0, "{}", done.err);
+    assert_eq!(done.out, "ACM-412: went to Codex, in pane p751\n");
+    assert_eq!(memory.of("Issue").len(), 1);
+}
+
+#[test]
+fn agent_where_there_is_none_or_bateri_does_not_go_there_ends_with_one_and_says_why() {
+    let bateri = Bateri::new(Some(panes()));
+    // An issue no agent is on (a shell named for it is none), and no pane is gone to.
+    let done = run_in(&world(), Some(&bateri), &["agent", "ACM-415"]);
+    assert_eq!(done.status, 1);
+    assert_eq!(done.err, "linearpen: No agent is at work on ACM-415\n");
+    assert!(done.out.is_empty());
+    assert_eq!(bateri.asked(), ["bateri ls --json"]);
+    // Not in a pane of bateri: bateri is not asked.
+    let done = run_in(&world(), None, &["agent", "ACM-412"]);
+    assert_eq!(done.status, 1);
+    assert_eq!(
+        done.err,
+        "linearpen: linearpen is not in a bateri pane, which is where the agents are\n"
+    );
+    // Its list cannot be had.
+    let done = run_in(&world(), Some(&Bateri::new(None)), &["agent", "ACM-412"]);
+    assert_eq!(done.status, 1);
+    assert_eq!(
+        done.err,
+        "linearpen: bateri did not say which panes there are\n"
+    );
+    // It does not go there: its own words, made one plain line.
+    let refusing = Bateri {
+        refuse_focus: Some("bateri: refused: \u{1b}]52;c;AAAA\u{7}the keyboard is elsewhere\n"),
+        ..Bateri::new(Some(panes()))
+    };
+    let done = run_in(&world(), Some(&refusing), &["agent", "ACM-412"]);
+    assert_eq!(done.status, 1);
+    assert!(
+        done.err.starts_with("linearpen: bateri: refused: ")
+            && done.err.ends_with("the keyboard is elsewhere\n")
+            && !done.err.contains('\u{1b}'),
+        "{:?}",
+        done.err
+    );
+}
+
+#[test]
+fn agent_is_given_one_issue() {
+    for (args, why) in [
+        (
+            &["agent"][..],
+            "agent is given an issue, written like ACM-412",
+        ),
+        (&["agent", "ACM-1", "ACM-2"][..], "agent is given one issue"),
+        (&["agent", "nope"][..], "\"nope\" is not an issue"),
+        (&["agent", "ACM-1", "--json"][..], "--json"),
+    ] {
+        match command_line::read(args.iter().map(|arg| (*arg).to_owned())) {
+            Asked::Refuse(words) => assert!(words.contains(why), "{args:?}: {words}"),
+            other => panic!("{args:?}: {other:?}"),
+        }
+    }
+    match command_line::read(["agent", "--help"].map(str::to_owned)) {
+        Asked::Say(words) => assert!(words.starts_with("linearpen agent: "), "{words}"),
+        other => panic!("{other:?}"),
+    }
 }

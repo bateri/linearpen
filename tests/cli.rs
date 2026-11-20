@@ -943,3 +943,36 @@ fn show_json_tells_each_comment_by_its_id_and_whether_it_is_the_persons() {
     assert_eq!(comments[1]["mine"], true);
     assert!(comments[1]["edited_at"].is_null());
 }
+
+// In a pane of bateri: the stand-in bateri's p41, where it has been split, runs claude named ACM-412.
+#[test]
+fn in_bateri_list_says_the_agent_at_work_on_an_issue_and_agent_goes_to_its_pane() {
+    let home = Home::new();
+    let pane = [("BATERI_TAB_URL", "unix:/not-a-real-pane")];
+    // No agent is at work yet: nothing is gone to, and Linear is not asked.
+    let ran = linearpen(&home, &["agent", "ACM-412"], &pane, None);
+    assert_eq!(ran.status, Some(1), "{}", ran.stderr);
+    assert_eq!(ran.stderr, "linearpen: No agent is at work on ACM-412\n");
+    assert!(home.calls().is_empty(), "{:?}", home.calls().len());
+    std::fs::write(format!("{}.p41", home.bateri_log().display()), "split\n").unwrap();
+    let ran = linearpen(&home, &["list"], &pane, None);
+    assert_eq!(ran.status, Some(0), "{}", ran.stderr);
+    let line = ran
+        .stdout
+        .lines()
+        .find(|line| line.trim_start().starts_with("ACM-412 "))
+        .unwrap();
+    assert!(line.ends_with("  Claude at work in p41"), "{}", ran.stdout);
+    let asked = home.calls().len();
+    let ran = linearpen(&home, &["agent", "acm-412"], &pane, None);
+    assert_eq!(ran.status, Some(0), "{}", ran.stderr);
+    assert_eq!(ran.stdout, "ACM-412: went to Claude, in pane p41\n");
+    assert_eq!(home.bateri_calls(), [["focus", "pane", "p41"]]);
+    assert_eq!(home.calls().len(), asked, "Linear is not asked");
+    // Outside bateri the list says no agent, and bateri is not asked.
+    let looks = home.bateri_looks().len();
+    let ran = linearpen(&home, &["list"], &[], None);
+    assert!(!ran.stdout.contains(" in p41"), "{}", ran.stdout);
+    assert_eq!(home.bateri_looks().len(), looks);
+    assert!(!ran.stdout.contains(KEY) && !ran.stderr.contains(KEY));
+}

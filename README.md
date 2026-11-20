@@ -74,12 +74,15 @@ linearpen comment ACM-412 --edit last --body "It looks like this, on Safari only
 linearpen update ACM-412 --description - < description.md   # the whole description, in place of the one there
 linearpen show ACM-412 --files files    # the files of the issue, saved as files in files
 linearpen teams ACM        # the names a team's issues can be given
+linearpen agent ACM-412    # in a bateri pane: go to the agent at work on it
 ```
 
 `list`, `show` and `teams` only read (`show --files DIR` also writes files, in DIR, and nothing in
-Linear); `create`, `update` and `comment` write what the things below say. Each takes `--json`, whose fields are in [docs/cli.md](docs/cli.md), and
+Linear); `create`, `update` and `comment` write what the things below say; `agent` writes nothing. In
+a bateri pane, `list` and `show` also say which agent is at work on an issue. Each but `agent` takes `--json`, whose fields are in [docs/cli.md](docs/cli.md), and
 `linearpen help COMMAND` tells its options. A command ends with 0 when it is done, 1 where Linear could
-not do it or has nothing by a name, 2 where the command is not understood or there is no key, and 3
+not do it or has nothing by a name (or, for `agent`, where no agent is at work on the issue or bateri
+does not go there), 2 where the command is not understood or there is no key, and 3
 where a write was sent and it is not known whether Linear made it: look in Linear before running it
 again.
 
@@ -353,14 +356,17 @@ right or opens a new tab, and whether the issue moves to the status of work in p
 begun (`Status`: the name of its team's first such state, or `Unchanged`; the row is not there when
 the issue has begun). `Prompt` takes words of yours for the agent, such as "Release it when the gate
 is green": they end what it is started with. Leave it empty and you write to the agent in its own
-pane. `⌘Enter` starts it, and the issue says which agent is on it until the pane ends.
-When the agent stops writing, the row says `Claude idle` where the ring was. The form opens with what
-you chose last time (agent, folder, where the pane goes and `Status`), which is kept in
+pane. `⌘Enter` starts it, and the issue has a mark, `Go to Claude`, until the pane ends: with a ring
+while the agent writes, and an amber dot once it stops. Press the mark, or `⇧W` on the issue, to go
+to the agent's pane: bateri takes the keyboard there, in its tab. Begin linearpen again and the marks
+come back: it knows an agent's pane by its name, the issue's. On the command line, `linearpen list`
+and `show` say which agent is at work on an issue, and `linearpen agent ACM-412` goes to it. The form opens
+with what you chose last time (agent, folder, where the pane goes and `Status`), which is kept in
 `~/.local/state/linearpen/prefs.json`.
 
-<img src="docs/started.png" width="720" alt="linearpen: the issue an agent was started on, marked with its name">
+<img src="docs/started.png" width="720" alt="linearpen: the issue an agent was started on, with its Go to Claude mark">
 
-<img src="docs/started-idle.png" width="720" alt="linearpen: the same issue once the agent has stopped writing, marked Claude idle">
+<img src="docs/started-idle.png" width="720" alt="linearpen: the same issue once the agent has stopped writing, its mark with an amber dot">
 
 How it starts one:
 
@@ -389,10 +395,11 @@ How it starts one:
   that holds several): the agent makes the worktree of the repository under it that the issue is
   about.
 - While an agent is on, bateri is asked for its panes every three seconds (`bateri ls --json`, of which
-  only the id of a pane and when it last wrote are read). A pane that has written nothing for ten
-  seconds is an agent that has stopped, because it is done or because it waits for you: linearpen
-  cannot tell which, so the row says `Claude idle` and no more, and the ring comes back when the pane
-  writes. Where bateri does not say, the row stays as it was.
+  only a pane's id, whether it runs, its program, its name or its tab's, when it started and when
+  it last wrote are read). A pane
+  that has written nothing for ten seconds is an agent that has stopped, because it is done or because
+  it waits for you: linearpen cannot tell which, so the mark has an amber dot in place of the ring and
+  no more, and the ring comes back when the pane writes. Where bateri does not say, the row stays as it was.
 - The files of the issues are for the agent to read, and are put away after 14 days: when linearpen
   begins and after each start, the folders under `work` that it made and that are older than that
   are removed, unless it is the file of a pane that this run of linearpen started and still
@@ -431,6 +438,7 @@ or `Space` then presses.
 | `⌘⇧I` `⌘⇧B` `⌘⇧L`     | copy the identifier, the branch name, the link                       |
 | `⌘⇧S`                 | share: copy the identifier, the title and the link on one line       |
 | `w`                   | work on the issue that is open                                       |
+| `⇧W`                  | go to the pane of the agent that works on the issue                  |
 | `c`                   | write a new issue                                                    |
 | `⇧M`                  | write a comment on the issue open (`⌘Enter` posts it, `Esc` leaves)  |
 | `⌘Enter`              | start the agent, or create the issue, in the form that is open       |

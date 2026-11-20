@@ -11,7 +11,7 @@ local list = require("./list")
 local panel = require("./panel")
 local row_ = require("./row")
 
-local b, u, S = kit.b, kit.u, kit.S
+local b, u, S, act = kit.b, kit.u, kit.S, kit.act
 
 local context = {}
 
@@ -138,6 +138,7 @@ local function entries(ids)
 	list_[#list_ + 1] = entry("share", "Share", "share")
 	list_[#list_ + 1] = "-"
 	list_[#list_ + 1] = entry("link", "Open in Linear", "link")
+	list_[#list_ + 1] = entry("go_to_agent", "Go to the agent", "go_to_agent", act.agent_of(ids[1]) ~= nil)
 	return list_
 end
 
@@ -148,7 +149,12 @@ function context.press(event)
 		return nil
 	end
 	local hit = b.layout.hit({ x = event.x, y = event.y })
+	local agent = hit ~= nil and string.match(hit, "^agent:(.+)$") or nil
 	local key = hit ~= nil and (string.match(hit, "^row:(.+)$") or string.match(hit, "^check:(.+)$")) or nil
+	if agent ~= nil then
+		-- (The agent's mark is the line's too.)
+		key = "i:" .. agent
+	end
 	local item = key ~= nil and list.item_of(key) or nil
 	if item == nil or item.kind ~= "issue" then
 		return nil
@@ -197,6 +203,8 @@ function context.action(action)
 		return context.copy("share", id)
 	elseif key == "link" and #ids == 1 then
 		return context.link(id) or true
+	elseif key == "go_to_agent" and #ids == 1 then
+		return act.go_to_agent(id)
 	end
 	return true
 end

@@ -80,8 +80,15 @@ pub fn stated_lines(issues: &[Issue]) -> String {
     out
 }
 
-/// One list: its title and size, then its issues in the groups of their states.
-pub fn section(out: &mut String, title: &str, listing: &Listing, empty: &str) {
+/// One list: its title and size, then its issues in the groups of their states, each line ended
+/// with what `after` says of its issue (the agent at work on it), where it says anything.
+pub fn section(
+    out: &mut String,
+    title: &str,
+    listing: &Listing,
+    empty: &str,
+    after: &dyn Fn(&Issue) -> Option<String>,
+) {
     let _ = writeln!(out, "{title} ({})", listing.issues.len());
     if listing.truncated {
         let _ = writeln!(
@@ -104,7 +111,14 @@ pub fn section(out: &mut String, title: &str, listing: &Listing, empty: &str) {
     for group in groups {
         let _ = writeln!(out, "  {} ({})", plain(group.name), group.issues.len());
         for issue in group.issues {
-            let _ = writeln!(out, "{}", line(issue, widest));
+            match after(issue) {
+                Some(more) => {
+                    let _ = writeln!(out, "{}  {more}", line(issue, widest));
+                }
+                None => {
+                    let _ = writeln!(out, "{}", line(issue, widest));
+                }
+            }
         }
     }
 }
@@ -124,6 +138,7 @@ impl Summary<'_> {
             "My issues",
             self.mine,
             "Nothing is assigned to you.",
+            &|_| None,
         );
         out.push('\n');
         section(
@@ -131,6 +146,7 @@ impl Summary<'_> {
             "All issues",
             self.all,
             "There are no open issues.",
+            &|_| None,
         );
         let _ = write!(
             out,

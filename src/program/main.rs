@@ -47,6 +47,7 @@ mod work;
 
 use std::process::ExitCode;
 use std::sync::{Arc, Mutex, PoisonError};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[cfg(not(feature = "terminal"))]
 use pencere::serve;
@@ -158,11 +159,20 @@ fn run_command(command: &command_line::Command) -> u8 {
             return failed.status;
         }
     };
+    // bateri is asked which agents are at work only where the program runs in a pane of it.
+    let in_bateri = Setup::resolve(&lookup, None).in_bateri;
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0.0, |since| since.as_secs_f64());
     let done = cli::run(
         &cli::Access {
             transport: &connection.transport,
             key: &connection.key,
             key_source: &connection.source,
+            panes: in_bateri.then_some(cli::Panes {
+                runner: &System,
+                now,
+            }),
         },
         command,
         &mut std::io::stdin().lock(),

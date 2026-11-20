@@ -489,6 +489,7 @@ mod tests {
             transport: &transport,
             key: &key,
             key_source: "test",
+            panes: None,
         };
         let dir = tempfile::tempdir().unwrap();
         let mut found = seen(addresses);

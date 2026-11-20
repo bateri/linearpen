@@ -652,6 +652,11 @@ impl Canned {
             .count()
     }
 
+    /// How many questions were asked, of any query.
+    pub(crate) fn total(&self) -> usize {
+        self.asked.lock().unwrap().len()
+    }
+
     /// The key the last question was asked with.
     pub(crate) fn last_key(&self) -> Option<String> {
         self.key.lock().unwrap().clone()
@@ -2300,6 +2305,8 @@ pub(crate) struct Hands {
     ledger: Mutex<Option<Ledger>>,
     /// What `bateri ls --json` says, where a test says it (else it says nothing).
     ls_says: Mutex<Option<String>>,
+    /// Why `bateri focus` does not, where a test says it does not (else it does).
+    focus_says: Mutex<Option<String>>,
 }
 
 impl Hands {
@@ -2310,7 +2317,13 @@ impl Hands {
             ended: Mutex::new(false),
             ledger: Mutex::new(None),
             ls_says: Mutex::new(None),
+            focus_says: Mutex::new(None),
         })
+    }
+
+    /// From now on `bateri focus` fails, saying `words`.
+    pub(crate) fn refuse_focus(&self, words: &str) {
+        *self.focus_says.lock().unwrap() = Some(words.to_owned());
     }
 
     /// From now on `bateri ls --json` says `text`.
@@ -2332,7 +2345,7 @@ impl Hands {
     }
 
     /// What was run, a line each (`bateri wait p41` is one of them).
-    fn asked(&self) -> Vec<String> {
+    pub(crate) fn asked(&self) -> Vec<String> {
         self.asked.lock().unwrap().clone()
     }
 
@@ -2388,6 +2401,10 @@ impl crate::work::runner::Runner for Hands {
             }
             ("bateri", Some("ls")) => match self.ls_says.lock().unwrap().clone() {
                 Some(text) => said(true, &text, ""),
+                None => said(true, "", ""),
+            },
+            ("bateri", Some("focus")) => match self.focus_says.lock().unwrap().clone() {
+                Some(words) => said(false, "", &words),
                 None => said(true, "", ""),
             },
             ("bateri", Some("split" | "tab")) => match self.split_says.lock().unwrap().clone() {
@@ -2565,11 +2582,12 @@ fn what_is_selected_does_not_start_an_agent_and_w_does_nothing_for_it() {
     page.press("w").expect("w");
     page.advance(0.5).expect("a moment");
     assert!(!page.says("Open in"), "{}", said(&page));
+    // No pane is made (bateri's list, which the lists coming has looked at, makes none).
     assert!(
         rig.hands
             .asked()
             .iter()
-            .all(|line| !line.starts_with("bateri")),
+            .all(|line| !line.starts_with("bateri") || line == "bateri ls --json"),
         "{:?}",
         rig.hands.asked()
     );
@@ -2950,27 +2968,171 @@ fn an_agent_that_has_stopped_is_said_so_in_its_row_and_is_at_work_again_when_it_
     open_form_with_status(&mut page, false);
     page.press("mod+enter").expect("mod+enter");
     form_done(&mut page);
-    // At work: the name, with its ring, and no word of stopping.
-    page.wait_for(WITHIN, |page| page.says("Claude"))
+    // At work: the button says where it goes, with its ring, and no dot of stopping.
+    let stopped = |page: &Page| page.bounds("agent-idle:issue-412").is_some();
+    page.wait_for(WITHIN, |page| page.says("Go to Claude"))
         .unwrap_or_else(|why| panic!("the mark: {why:?}: {}", said(&page)));
-    assert!(!page.says("Claude idle"), "{}", said(&page));
-    // Silent for a minute: the ring is gone and the row says so.
+    assert!(!stopped(&page), "{}", said(&page));
+    let mark = page.bounds("agent:issue-412").expect("the mark");
+    // Silent for a minute: the ring gives way to the dot, and the words and the mark's width stay.
     rig.hands.set_ls(&ls_of_p41(60.0));
-    page.wait_for(WITHIN, |page| page.says("Claude idle"))
+    page.wait_for(WITHIN, stopped)
         .unwrap_or_else(|why| panic!("the row says it has stopped: {why:?}: {}", said(&page)));
+    assert!(page.says("Go to Claude"), "{}", said(&page));
+    let idle = page.bounds("agent:issue-412").expect("the mark");
+    assert!((idle.w - mark.w).abs() < 0.5, "{mark:?} {idle:?}");
     // It writes: the mark is the working one again.
     rig.hands.set_ls(&ls_of_p41(1.0));
-    page.wait_for(WITHIN, |page| {
-        page.says("Claude") && !page.says("Claude idle")
-    })
-    .unwrap_or_else(|why| panic!("at work again: {why:?}: {}", said(&page)));
+    page.wait_for(WITHIN, |page| page.says("Go to Claude") && !stopped(page))
+        .unwrap_or_else(|why| panic!("at work again: {why:?}: {}", said(&page)));
     // And when the pane ends the mark goes, whichever it was.
     rig.hands.set_ls(&ls_of_p41(60.0));
-    page.wait_for(WITHIN, |page| page.says("Claude idle"))
-        .expect("stopped again");
+    page.wait_for(WITHIN, stopped).expect("stopped again");
     rig.hands.end();
-    page.wait_for(WITHIN, |page| !page.says("Claude"))
+    page.wait_for(WITHIN, |page| !page.says("Go to Claude"))
         .unwrap_or_else(|why| panic!("the mark goes with the pane: {why:?}: {}", said(&page)));
+}
+
+/// The `bateri focus` lines the page had run.
+fn focused(rig: &Rig) -> Vec<String> {
+    rig.hands
+        .asked()
+        .into_iter()
+        .filter(|line| line.starts_with("bateri focus"))
+        .collect()
+}
+
+/// The entry titled `title` of the menu that is open: whether it can be picked, or nothing where the
+/// menu has none.
+fn menu_entry(page: &Page, title: &str) -> Option<bool> {
+    page.menu()?.entries.iter().find_map(|entry| match entry {
+        pencere_view::MenuEntry::Item {
+            title: words,
+            enabled,
+            ..
+        } if words == title => Some(*enabled),
+        _ => None,
+    })
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_agents_mark_shift_w_and_the_menu_go_to_its_pane_and_say_why_where_bateri_does_not() {
+    let (rig, mut page) = open_rig(WIDE, true, &["claude"]);
+    // No agent yet: no mark, Shift W does nothing, and the menu says the entry is there and cannot be
+    // picked.
+    assert!(page.bounds("agent:issue-412").is_none(), "{}", said(&page));
+    page.press("shift+w").expect("shift+w");
+    page.advance(0.3).expect("a moment");
+    page.right_click("row:i:issue-412").expect("a right press");
+    page.wait_for(WITHIN, |page| page.menu().is_some())
+        .unwrap_or_else(|why| panic!("the menu: {why:?}: {}", said(&page)));
+    assert_eq!(menu_entry(&page, "Go to the agent"), Some(false));
+    page.press("escape").expect("escape");
+    assert!(focused(&rig).is_empty(), "{:?}", rig.hands.asked());
+    assert!(!page.says("go to Claude"), "{}", said(&page));
+    // An agent is started on it: its mark is on the line, and the line of keys says the key.
+    open_form_with_status(&mut page, false);
+    page.press("mod+enter").expect("mod+enter");
+    form_done(&mut page);
+    page.wait_for(WITHIN, |page| page.bounds("agent:issue-412").is_some())
+        .unwrap_or_else(|why| panic!("the mark: {why:?}: {}", said(&page)));
+    assert!(page.says("go to Claude"), "{}", said(&page));
+    // The mark is pressed: bateri is asked to take the keyboard to the agent's pane, and nothing else
+    // is done on the page (the issue does not open).
+    page.click("agent:issue-412").expect("the mark is pressed");
+    page.wait_for(WITHIN, |_| focused(&rig).len() == 1)
+        .unwrap_or_else(|why| panic!("bateri is asked: {why:?}: {:?}", rig.hands.asked()));
+    assert_eq!(focused(&rig), ["bateri focus pane p41"]);
+    page.advance(0.3).expect("a moment");
+    assert!(page.bounds("panel-close").is_none(), "{}", said(&page));
+    // Shift W does the same, and so does the line's menu.
+    page.press("shift+w").expect("shift+w");
+    page.wait_for(WITHIN, |_| focused(&rig).len() == 2)
+        .unwrap_or_else(|why| panic!("the key: {why:?}: {:?}", rig.hands.asked()));
+    page.right_click("agent:issue-412")
+        .expect("a right press on the mark");
+    page.wait_for(WITHIN, |page| page.menu().is_some())
+        .unwrap_or_else(|why| panic!("the menu of the line: {why:?}: {}", said(&page)));
+    assert_eq!(menu_entry(&page, "Go to the agent"), Some(true));
+    page.pick_titled("Go to the agent")
+        .unwrap_or_else(|why| panic!("the entry is picked: {why:?}"));
+    page.wait_for(WITHIN, |_| focused(&rig).len() == 3)
+        .unwrap_or_else(|why| panic!("the menu: {why:?}: {:?}", rig.hands.asked()));
+    // bateri does not: the page says why, in its words.
+    rig.hands.refuse_focus("the keyboard is in another pane");
+    page.click("agent:issue-412").expect("the mark is pressed");
+    page.wait_for(WITHIN, |page| page.says("the keyboard is in another pane"))
+        .unwrap_or_else(|why| panic!("the words: {why:?}: {}", said(&page)));
+    // The pane ends: the mark goes, and the key goes nowhere.
+    rig.hands.end();
+    page.wait_for(WITHIN, |page| page.bounds("agent:issue-412").is_none())
+        .unwrap_or_else(|why| panic!("the mark goes: {why:?}: {}", said(&page)));
+    let asked = focused(&rig).len();
+    page.press("shift+w").expect("shift+w");
+    page.advance(0.3).expect("a moment");
+    assert_eq!(focused(&rig).len(), asked, "{:?}", rig.hands.asked());
+    assert!(!page.says("go to Claude"), "{}", said(&page));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn in_a_narrow_pane_the_issue_an_agent_works_on_says_the_key_to_its_pane_on_the_line_of_keys() {
+    let (rig, mut page) = open_rig(PANE, true, &["claude"]);
+    open_form_with_status(&mut page, false);
+    page.press("mod+enter").expect("mod+enter");
+    form_done(&mut page);
+    page.wait_for(WITHIN, |page| page.bounds("agent:issue-412").is_some())
+        .unwrap_or_else(|why| panic!("the mark: {why:?}: {}", said(&page)));
+    // The issue has the pane: its line is not seen, and the line of keys says where the agent is, and
+    // still the key of the card of keys (what has less room goes).
+    open_the_issue(&mut page);
+    assert!(page.bounds("agent:issue-412").is_none(), "{}", said(&page));
+    for words in ["go to Claude", "keys"] {
+        assert!(page.says(words), "{words}: {}", said(&page));
+    }
+    page.press("shift+w").expect("shift+w");
+    page.wait_for(WITHIN, |_| focused(&rig) == ["bateri focus pane p41"])
+        .unwrap_or_else(|why| panic!("bateri is asked: {why:?}: {:?}", rig.hands.asked()));
+    rig.hands.end();
+}
+
+/// bateri's list of panes as a pen begun again finds it: the agent the pen before it started on
+/// ACM-412 runs in a tab of its own, which has the issue's name (bateri puts `tab --label` on the tab,
+/// not on the terminal).
+const AGENT_IN_A_TAB: &str = r#"{"windows":[{"id":"w1","visible":true,"groups":[],"tabs":[
+    {"id":"t7","group":null,"label":"ACM-412","title":"claude","selected":false}]}],
+  "terminals":[{"id":"p750","state":"running","activity":"running","program":"claude",
+    "label":null,"tab":"t7"}]}"#;
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_pen_begun_again_finds_the_agent_at_work_on_an_issue_and_goes_to_its_pane() {
+    let linear = Canned::new(Mode::Fine);
+    let rig = rig(&linear, true, &["claude"]);
+    rig.hands.set_ls(AGENT_IN_A_TAB);
+    let mut page = open(&rig.session, WIDE, None, "ACM-412").expect("the page opens");
+    page.wait_for(WITHIN, |page| page.bounds("agent:issue-412").is_some())
+        .unwrap_or_else(|why| panic!("the mark: {why:?}: {}", said(&page)));
+    page.click("agent:issue-412").expect("the mark is pressed");
+    page.wait_for(WITHIN, |_| focused(&rig) == ["bateri focus pane p750"])
+        .unwrap_or_else(|why| panic!("bateri is asked: {why:?}: {:?}", rig.hands.asked()));
+    // Its pane ends: the mark goes.
+    rig.hands.end();
+    page.wait_for(WITHIN, |page| page.bounds("agent:issue-412").is_none())
+        .unwrap_or_else(|why| panic!("the mark goes: {why:?}: {}", said(&page)));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_pen_outside_bateri_looks_at_no_panes() {
+    let linear = Canned::new(Mode::Fine);
+    let rig = rig(&linear, false, &["claude"]);
+    rig.hands.set_ls(AGENT_IN_A_TAB);
+    let mut page = open(&rig.session, WIDE, None, "ACM-412").expect("the page opens");
+    page.advance(0.5).expect("a moment");
+    assert!(page.bounds("agent:issue-412").is_none(), "{}", said(&page));
+    assert!(rig.hands.asked().is_empty(), "{:?}", rig.hands.asked());
 }
 
 /// Puts the cursor on the line that says `words`, going down from where it is.

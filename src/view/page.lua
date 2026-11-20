@@ -328,6 +328,10 @@ for number = 3, 9 do
 		return commands.when.headed() and lists.favorite(number - 2) ~= nil
 	end
 end
+-- The agent of the one issue the keys are for, where one works on it.
+commands.when.reachable = function()
+	return commands.when.idle() and work.agent_of(context.single()) ~= nil
+end
 -- Work on is the open issue's: where an issue is open (its detail has the button).
 commands.when.workable = function()
 	return commands.when.idle() and work.workable()
@@ -656,6 +660,8 @@ local function command(id)
 		act.refresh()
 	elseif id == "work" then
 		return work.show()
+	elseif id == "go_to_agent" then
+		return work.go_to(context.single())
 	elseif id == "start" then
 		return work.start()
 	elseif id == "new" then
@@ -956,6 +962,7 @@ local function shape(event)
 			kit.buttons[over]
 			or string.sub(over, 1, 4) == "row:"
 			or string.sub(over, 1, 6) == "check:"
+			or string.sub(over, 1, 6) == "agent:"
 		)
 	then
 		wanted = "pointer"

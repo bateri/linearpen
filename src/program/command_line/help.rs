@@ -20,6 +20,7 @@ commands:
             to the end of it
   comment   write a comment under an issue, with files if you give them, or edit one of yours
   teams     the teams, or the names that a team's issues can be given
+  agent     go to the pane of the agent at work on an issue (in bateri)
   help      linearpen help COMMAND, or linearpen COMMAND --help, tells the options of a command
 
 A name is written as Linear shows it; capital letters do not matter. Where a name is none of the
@@ -36,7 +37,7 @@ title), a description you edit, a comment, a comment of yours you edit, the file
 comment, to a new issue or to the end of a description, and the status of an issue an agent is
 started on, where the form says In Progress; on the command line, the same with create, update and
 comment. It never moves an issue to another team, and never deletes or archives anything.
-`linearpen --text`, list, show and teams only read.
+`linearpen --text`, list, show and teams only read, and agent writes nothing.
 
 Files are of any kind, up to 100 MiB each and ten at a time (--attach PATH). They are put in
 Linear's storage and named at the end of the words: a picture (PNG, JPEG, GIF, WebP) as a picture
@@ -44,7 +45,7 @@ and any other file as a link. A file in an issue is saved with `linearpen show K
 only files that are on Linear are fetched, and the key goes to Linear's own hosts and nowhere else.
 
 Each command ends with 0 when it is done. It ends with 1 where Linear could not do it, said no, or
-has nothing by a name given, with 2 where the command line is not understood, a file given with
+has nothing by a name given (for agent, where no agent is at work on the issue), with 2 where the command line is not understood, a file given with
 --attach cannot be sent, or there is no usable key, and with 3 where a write was sent and it is not
 known whether Linear made it: look in Linear before running it again.
 ";
@@ -74,7 +75,10 @@ may be repeated):
                     https://github.com/bateri/linearpen/blob/main/docs/cli.md
 
 The open issues are listed, up to 500. --status lists the done and canceled ones too (--status
-Done), the ones that changed last first; a search finds any.
+Done), the ones that changed last first; a search finds any. In a bateri pane, an issue an agent is
+at work on ends its line with the agent and its pane, `Claude at work in p41`, or `Claude idle in
+p41` where the pane has written nothing for ten seconds (the agent is done, or waits for you):
+linearpen agent KEY-N goes there.
 ";
 
 pub const SHOW: &str = "\
@@ -87,8 +91,8 @@ usage: linearpen show KEY-N [--files DIR] [--json]
   --json        print JSON instead of text
 
 Prints its title, status, priority, assignee, labels, team, project, cycle, estimate, due date,
-link and branch name, its description, the issues it is a part of, made of, or tied to, and its
-comments. Each picture in the description or a comment is written where it stands as [image N: name],
+link and branch name, in a bateri pane the agent at work on it (as list says it), its description,
+the issues it is a part of, made of, or tied to, and its comments. Each picture in the description or a comment is written where it stands as [image N: name],
 and each other file of Linear's as [file N: name]; a list of them ends the text: the number, where it
 is, and its address, or its file where --files was given. A file is of any kind and at most 100 MiB.
 It is named N-name.ext, the extension from what the file holds (png, jpg, gif, webp, pdf), else the
@@ -192,6 +196,19 @@ update and list. With --json the same, as JSON; its fields are in
 https://github.com/bateri/linearpen/blob/main/docs/cli.md
 ";
 
+pub const AGENT: &str = "\
+linearpen agent: go to the agent at work on an issue
+
+usage: linearpen agent KEY-N
+
+In a bateri pane, takes the keyboard to the pane of the agent (Claude, Codex or Cursor) at work on the
+issue, as the mark on its line in the pane does. An agent is at work on an issue where its pane, or
+the tab it is in, has the issue's identifier for a name, which is what Work on gives it; of two, the
+one started last. Prints where it went, and ends with 1 where no agent is at work on the issue,
+linearpen is not in a bateri pane, or bateri does not go there. list and show say which issues an
+agent is at work on, and in which pane.
+";
+
 /// The words of a command, `linearpen help COMMAND`.
 #[must_use]
 pub fn of(command: &str) -> Option<&'static str> {
@@ -202,6 +219,7 @@ pub fn of(command: &str) -> Option<&'static str> {
         "update" => UPDATE,
         "comment" => COMMENT,
         "teams" => TEAMS,
+        "agent" => AGENT,
         _ => return None,
     })
 }
