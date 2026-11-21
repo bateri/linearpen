@@ -222,8 +222,14 @@ function values.chip(name, kids, label, o)
 		:color(t.ink)
 		:role("button")
 		:label(label)
+		-- Open or shut to a screen reader, as its ring says to the eye while its card is open.
+		:expanded(picker.by(name))
 		:tip(label)
 		:motion({ seconds = t.motion, color = true })
+	-- The label names the control; what it holds is its value, so that a screen reader says both.
+	if o.value ~= nil and o.value ~= "" then
+		el:value(o.value)
+	end
 	if live then
 		el:press(name):focusable()
 	else
@@ -249,62 +255,64 @@ end
 -- `labels` and `projects` (a team with none of them has no such control).
 function values.chips(shown, o)
 	local row = b.div():row():wrap():gap_x(8):gap_y(8):no_shrink()
-	local function chip(kind, kids, label)
+	local function chip(kind, kids, label, held)
 		local off = o.disabled
 		if kind == "priority" and o.priority_disabled ~= nil then
 			off = o.priority_disabled
 		end
-		return values.chip(o.prefix .. kind, kids, label, { disabled = off })
+		return values.chip(o.prefix .. kind, kids, label, { disabled = off, value = held })
 	end
 	if shown.team ~= nil then
-		row:child(chip("team", { words(shown.team.key) }, "Team"))
+		row:child(chip("team", { words(shown.team.key) }, "Team", shown.team.key))
 	end
 	row:child(chip("state", {
 		icons.state(shown.state ~= nil and shown.state.kind or "other"),
 		words(shown.state ~= nil and shown.state.name or "Status", shown.state == nil),
-	}, "Status"))
+	}, "Status", shown.state ~= nil and shown.state.name or nil))
 	row:child(chip("priority", {
 		icons.priority(shown.priority),
 		words(shown.priority == "none" and "Priority" or values.priority_name(shown.priority), shown.priority == "none"),
-	}, "Priority"))
+	}, "Priority", shown.priority ~= "none" and values.priority_name(shown.priority) or nil))
 	row:child(chip("assignee", {
 		icons.person(),
 		words(shown.assignee ~= nil and shown.assignee.name or "Assignee", shown.assignee == nil),
-	}, "Assignee"))
+	}, "Assignee", shown.assignee ~= nil and shown.assignee.name or nil))
 	if o.labels then
 		local kids = {}
+		local named = {}
 		for _, label in shown.labels do
 			kids[#kids + 1] = icons.dot(label.color)
 			kids[#kids + 1] = words(label.name)
+			named[#named + 1] = label.name
 		end
 		if #kids == 0 then
 			kids = { icons.tag(), words("Labels", true) }
 		end
-		row:child(chip("labels", kids, "Labels"))
+		row:child(chip("labels", kids, "Labels", table.concat(named, ", ")))
 	end
 	if o.projects then
 		row:child(chip("project", {
 			icons.cube(),
 			words(shown.project ~= nil and shown.project.name or "Project", shown.project == nil),
-		}, "Project"))
+		}, "Project", shown.project ~= nil and shown.project.name or nil))
 	end
 	if o.cycles then
 		row:child(chip("cycle", {
 			icons.cycle(),
 			words(shown.cycle ~= nil and shown.cycle.label or "Cycle", shown.cycle == nil),
-		}, "Cycle"))
+		}, "Cycle", shown.cycle ~= nil and shown.cycle.label or nil))
 	end
 	if o.estimates then
 		row:child(chip("estimate", {
 			icons.estimate(),
 			words(shown.estimate ~= nil and shown.estimate.label or "Estimate", shown.estimate == nil),
-		}, "Estimate"))
+		}, "Estimate", shown.estimate ~= nil and shown.estimate.label or nil))
 	end
 	if o.due then
 		row:child(chip("due", {
 			icons.date(),
 			words(shown.due ~= nil and values.day_words(shown.due) or "Due date", shown.due == nil),
-		}, "Due date"))
+		}, "Due date", shown.due ~= nil and values.day_words(shown.due) or nil))
 	end
 	if o.busy then
 		row:child(b.div():h(SIZE.control):row():items_center():child(kit.spinner(13, "dim")))

@@ -3791,6 +3791,111 @@ fn a_value_opens_its_menu_and_the_pick_is_written_to_the_control() {
     .unwrap_or_else(|why| panic!("{why:?}: {:?}", page.words_in("new-value:project")));
 }
 
+/// What a screen reader is told of the control `name`: whether it is open, as its ring says to the eye.
+fn expanded_of(page: &Page, name: &str) -> Option<bool> {
+    let id = pencere_view::Id::named(name);
+    page.outline()
+        .accessible
+        .iter()
+        .find(|node| node.id == Some(id))
+        .unwrap_or_else(|| panic!("a screen reader is told nothing of {name}"))
+        .state
+        .expanded
+}
+
+/// What a screen reader is told of the value the control `name` holds, beside its name.
+fn value_of(page: &Page, name: &str) -> Option<String> {
+    let id = pencere_view::Id::named(name);
+    page.outline()
+        .accessible
+        .iter()
+        .find(|node| node.id == Some(id))
+        .unwrap_or_else(|| panic!("a screen reader is told nothing of {name}"))
+        .state
+        .value
+        .clone()
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_chip_tells_a_screen_reader_what_it_holds_beside_what_it_is() {
+    let (_linear, _session, mut page) = open_lists((1280.0, 800.0));
+    open_new(&mut page);
+    let named = page
+        .outline()
+        .accessible
+        .iter()
+        .find(|node| node.id == Some(pencere_view::Id::named("new-value:priority")))
+        .map(|node| node.words.clone());
+    assert_eq!(named.as_deref(), Some("Priority"), "its name stays");
+    assert_eq!(
+        value_of(&page, "new-value:priority"),
+        None,
+        "nothing is held"
+    );
+    pick_value(&mut page, "priority", "High");
+    page.wait_for(WITHIN, |page| {
+        value_of(page, "new-value:priority").as_deref() == Some("High")
+    })
+    .unwrap_or_else(|why| panic!("it holds High: {why:?}: {}", said(&page)));
+    assert_eq!(value_of(&page, "new-value:project"), None);
+    // The labels: all that are on, in a card that is put away.
+    page.click("new-value:labels").expect("labels");
+    turn(&mut page, "api");
+    turn(&mut page, "bug");
+    close_picker(&mut page);
+    page.advance(0.3).expect("a moment");
+    assert_eq!(
+        value_of(&page, "new-value:labels").as_deref(),
+        Some("api, bug")
+    );
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_filter_chip_tells_a_screen_reader_what_it_filters_by() {
+    let (_linear, _session, mut page) = open_lists(WIDE);
+    page.advance(0.3).expect("a moment");
+    page.press("f").expect("f");
+    page.wait_for(WITHIN, |page| pressable(page, "filters:status"))
+        .unwrap_or_else(|why| panic!("the row opens: {why:?}: {}", said(&page)));
+    assert_eq!(value_of(&page, "filters:status"), None);
+    page.click("filters:status").expect("status");
+    turn(&mut page, "In Progress");
+    close_picker(&mut page);
+    page.advance(0.3).expect("a moment");
+    assert_eq!(
+        value_of(&page, "filters:status").as_deref(),
+        Some("In Progress")
+    );
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_value_whose_card_is_open_is_expanded_to_a_screen_reader_and_not_by_its_ring_alone() {
+    let (_linear, _session, mut page) = open_lists((1280.0, 800.0));
+    open_new(&mut page);
+    assert_eq!(expanded_of(&page, "new-value:labels"), Some(false));
+    page.click("new-value:labels").expect("labels");
+    picker_offers(&mut page, "api");
+    assert_eq!(
+        expanded_of(&page, "new-value:labels"),
+        Some(true),
+        "its card is open"
+    );
+    assert_eq!(
+        expanded_of(&page, "new-value:project"),
+        Some(false),
+        "the others are not"
+    );
+    close_picker(&mut page);
+    assert_eq!(
+        expanded_of(&page, "new-value:labels"),
+        Some(false),
+        "its card is put away"
+    );
+}
+
 #[test]
 #[ignore = "opens the kit's interpreter: make test-page"]
 fn the_labels_of_a_new_issue_are_turned_in_a_card_that_stays_open_and_esc_puts_only_it_away() {

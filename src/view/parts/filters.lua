@@ -342,7 +342,14 @@ local function chip(kind, title)
 		kids[#kids + 1] = words(title, true)
 	end
 	-- (The ring is drawn where the keyboard is: a press of the pointer does not leave it on a chip.)
-	return values.chip(chip_name(kind), kids, title, { ring = u:target() == chip_name(kind) })
+	local named = {}
+	for _, one in held do
+		named[#named + 1] = name_of(kind, one)
+	end
+	return values.chip(chip_name(kind), kids, title, {
+		ring = u:target() == chip_name(kind),
+		value = table.concat(named, ", "),
+	})
 end
 
 -- The row under the head, or nil where there is none (nothing is set, and it is not open). A row of
