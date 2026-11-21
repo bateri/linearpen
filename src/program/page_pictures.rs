@@ -1289,15 +1289,16 @@ fn esc_is_written_once_where_the_comment_or_the_description_tray_has_it_and_clos
     not_moved(before, head_of_the_issue(page));
 }
 
-/// The page with the issue open, that waits no longer than a moment for the program's answer: a step
-/// that tells it something while an answer is owed comes back `Slow`, and the answer is still owed.
+/// The page with the issue open, that waits no longer than [`crate::page_tests::HURRIED`] for the
+/// program's answer: a step that tells it something while an answer is owed comes back `Slow`, and
+/// the answer is still owed.
 fn opened_in_a_hurry() -> Pictured {
     let mut rig = open_with_patience(
         WIDE,
         None,
         &description(),
         &format!("Here is what the customer sees: ![reply]({REPLY})"),
-        Some(std::time::Duration::from_millis(1500)),
+        Some(crate::page_tests::HURRIED),
     )
     .expect("the page opens");
     open_the_issue(&mut rig.page);

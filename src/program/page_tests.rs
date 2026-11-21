@@ -26,6 +26,11 @@ pub(crate) const PANE: (f32, f32) = (600.0, 330.0);
 /// How long a test waits for what the program says on its own (a list, a call).
 pub(crate) const WITHIN: Duration = Duration::from_secs(20);
 
+/// How long a page waits for the program where it is told something while the program owes an
+/// answer (a step then comes back `Error::Slow`, and the answer is still owed). The host's patience is
+/// the opening's too: a busy machine took longer than a second and a half to open a page.
+pub(crate) const HURRIED: Duration = Duration::from_secs(4);
+
 pub(crate) type Page = Headless<InProcess>;
 
 const MY_ISSUES: &str = include_str!("../../test/stand-in/my-issues.json");
@@ -4470,14 +4475,8 @@ fn the_labels_turned_while_a_change_is_on_its_way_wait_for_it_and_a_turn_that_un
     let linear = Canned::new(Mode::Fine);
     let session = session_over(&linear, Some("lin_api_test"), None);
     // (The program owes the answer while a change is held: a step that tells the page is then slow.)
-    let mut page = open_patiently(
-        &session,
-        WIDE,
-        None,
-        "ACM-412",
-        Some(Duration::from_millis(1500)),
-    )
-    .expect("the page opens");
+    let mut page =
+        open_patiently(&session, WIDE, None, "ACM-412", Some(HURRIED)).expect("the page opens");
     picker_after(&mut page, "l");
     linear.hold_changes(true);
     // bug is on its way; Customer and docs... Customer waits for it, and is turned back before it goes.
@@ -8590,14 +8589,8 @@ fn a_chip_pressed_before_its_choices_have_come_opens_its_card_at_once_which_fill
     linear.refuse_filter_options(true);
     let session = session_over(&linear, Some("lin_api_test"), None);
     // (The program owes the answer while the choices are held: a step that tells the page is then slow.)
-    let mut page = open_patiently(
-        &session,
-        WIDE,
-        None,
-        "ACM-412",
-        Some(Duration::from_millis(1500)),
-    )
-    .expect("the page opens");
+    let mut page =
+        open_patiently(&session, WIDE, None, "ACM-412", Some(HURRIED)).expect("the page opens");
     page.wait_for(WITHIN, |page| {
         page.says("The choices of the filters could not be")
     })
