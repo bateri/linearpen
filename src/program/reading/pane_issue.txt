@@ -1,0 +1,98 @@
+focus: page
+items:
+waac17  button "Work on issue" [description "Start an agent on it, in a pane beside this one"]
+wx7gpn  button "Open in Linear" [description "Open the issue in your browser"]
+zd6rfy  button "Close"
+        text "ACM-412"
+nx7kja  button "Share" [description "Copy its identifier, title and link, to paste where you share it"]
+sspycs  button "Add rate limiting to the public API" [description "Edit the title"]
+t3thj7  button "Status" [collapsed, value "In Progress"]
+2rsy5w  button "Priority" [collapsed, value "High"]
+gnzqed  button "Assignee" [collapsed, value "Me"]
+46wqdp  button "Labels" [collapsed, value "api"]
+3pk1mt  button "Project" [collapsed]
+tr9yaf  button "Cycle" [collapsed, value "Cycle 12"]
+fn7g2r  button "Estimate" [collapsed]
+6tfb7f  button "Due date" [collapsed]
+0rqdrc  button "Parent ACM-400, Billing limits per plan"
+tz5z06  button "Blocked by ACM-389, Cache the pricing table at the edge"
+        text "The public API has no limit per key. On Nov 3 one customer’s import script took the read replicas down."
+        text "What we want"
+        text "↑"
+        text "↓"
+        text "scroll"
+        text "J"
+        text "K"
+        text "next issue"
+        text "S"
+        text "status"
+        text "⌘"
+        text "R"
+        text "refresh"
+        text "C"
+        text "new issue"
+c9zsn1  button "help" [description "Show the keys"]
+scrolls:
+tjhhq5  scroll 0% (at the top)
+commands:
+  "Close the group" [left] (disabled)
+  "Open the group" [right] (disabled)
+  "Select the issue" [x] (disabled)
+  "Select all" [cmd+a] (disabled)
+  "Status" [s]
+  "Priority" [p]
+  "Assignee" [a]
+  "Assign to me" [i]
+  "Labels" [l]
+  "Project" [shift+p]
+  "Cycle" [shift+c]
+  "Estimate" [shift+e]
+  "Due date" [shift+d]
+  "Rename" [r]
+  "Copy ID" [shift+cmd+i]
+  "Copy branch name" [shift+cmd+b]
+  "Copy link" [shift+cmd+l]
+  "Share" [shift+cmd+s]
+  "Open in Linear" [shift+o]
+  "Open the parent issue" [shift+cmd+up]
+  "Open a sub-issue or a related issue" [shift+cmd+down]
+  "Scroll the issue down" [space]
+  "Scroll the issue up" [shift+space]
+  "Work on the issue" [w]
+  "Go to the agent" [shift+w] (disabled)
+  "Leave a comment" [shift+m]
+  "Edit the description" [e]
+  "Edit your last comment" [shift+cmd+m] (disabled)
+  "Save the edit" [cmd+enter] (disabled)
+  "Post the comment" (disabled)
+  "Attach file" [shift+cmd+u]
+  "Add the files to the description" (disabled)
+  "Save the file" [cmd+s] (disabled)
+  "Read the PDF" [shift+cmd+r] (disabled)
+  "Open the link" [shift+cmd+e] (disabled)
+  "Copy the file's link" [shift+cmd+k] (disabled)
+  "Find in the PDF" [cmd+f] (disabled)
+  "Next match" [cmd+g] (disabled)
+  "Previous match" [shift+cmd+g] (disabled)
+  "Copy the selection" [cmd+c] (disabled)
+  "Select all the words of the page" (disabled)
+  "New issue" [c]
+  "Start the agent" (disabled)
+  "Create the issue" (disabled)
+  "Go to a list" [g] (disabled)
+  "Show my issues" [1] (disabled)
+  "Show all issues" [2] (disabled)
+  "Go to the first favorite" [3] (disabled)
+  "Go to the second favorite" [4] (disabled)
+  "Go to the third favorite" [5] (disabled)
+  "Go to the fourth favorite" [6] (disabled)
+  "Go to the fifth favorite" [7] (disabled)
+  "Go to the sixth favorite" [8] (disabled)
+  "Go to the seventh favorite" [9] (disabled)
+  "Filter issues" [/] (disabled)
+  "Filter by status, label and more" [f] (disabled)
+  "Clear the filters" [shift+f] (disabled)
+  "Search all of Linear" (disabled)
+  "Ask Linear again" [cmd+r]
+  "Find a command" [cmd+k]
+  "Show the keys" [?]

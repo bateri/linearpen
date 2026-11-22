@@ -1,0 +1,114 @@
+focus: field zv1jeb
+items:
+tvyqqt  button "My issues" [description "Go to another list, key G"]
+        text "/"
+5eas2b  button "Refresh" [description "Ask Linear for the issues again"]
+        button "New issue" [disabled, description "A form is open"]
+kkd8ks  menuitem "In Progress, 4" [expanded]
+w35jhj  menuitem "ACM-412, Add rate limiting to the public API" [selected]
+7jqnj6    checkbox "Select" [unchecked]
+          text "Nov 9"
+17kgg8  menuitem "ACM-398, Checkout test fails one run in ten"
+4p4dvy  menuitem "ACM-405, Webhook retries ignore the backoff setting"
+n3sq8q  menuitem "ACM-377, Write the 3.0 migration guide"
+sn24e3  menuitem "In Review, 2" [expanded]
+mr4fyw  menuitem "ACM-389, Cache the pricing table at the edge"
+mjc070  menuitem "ACM-371, Show the plan limit on the usage page"
+wxdzn9  menuitem "Todo, 6" [expanded]
+kmh0n6  menuitem "ACM-420, Invoice PDF cuts long company names"
+tgpxwf  menuitem "ACM-418, Let owners transfer a workspace"
+216mar  menuitem "ACM-415, Rotate signing keys without downtime"
+cmgnvk  menuitem "ACM-409, Empty state for the audit log"
+5323pm  menuitem "ACM-402, Move the cron jobs to the queue"
+bhrsjb  menuitem "ACM-396, Search matches only the first word"
+zfkyy4  menuitem "Backlog, 2" [collapsed]
+        text "New issue"
+fqhk3m  button "Close"
+23aec9  button "Attach file" [description "Choose files of any kind, up to 100 MiB each"]
+49gp2j  button "Team" [collapsed, value "ACM"]
+bh6b9h  button "Status" [collapsed, value "Todo"]
+jpmp1p  button "Priority" [collapsed]
+yn34wk  button "Assignee" [collapsed, value "Me"]
+1a3gb4  button "Labels" [expanded]
+c437zf  button "Project" [collapsed]
+        button "Create issue" [disabled, description "Give it a title first"]
+        text "↑"
+        text "↓"
+        text "move"
+        text "Enter"
+        text "turn on or off"
+        text "Esc"
+        text "close"
+vc3q0h  listbox "List"
+xfnbvc    checkbox "api" [unchecked, selected, 1 of 3]
+esh5ev    checkbox "bug" [unchecked, 2 of 3]
+dx039s    checkbox "Customer" [unchecked, 3 of 3]
+fields:
+dxc3be  field "Filter issues"
+t01mj0  field "Title" = ""
+zv1jeb  field "Labels"
+editors:
+v9ygbw  editor "Description" lines 1-1 of 1, caret 1:1
+  1| 
+commands:
+  "Close the group" [left] (disabled)
+  "Open the group" [right] (disabled)
+  "Select the issue" [x] (disabled)
+  "Select all" [cmd+a] (disabled)
+  "Status" [s] (disabled)
+  "Priority" [p] (disabled)
+  "Assignee" [a] (disabled)
+  "Assign to me" [i] (disabled)
+  "Labels" [l] (disabled)
+  "Project" [shift+p] (disabled)
+  "Cycle" [shift+c] (disabled)
+  "Estimate" [shift+e] (disabled)
+  "Due date" [shift+d] (disabled)
+  "Rename" [r] (disabled)
+  "Copy ID" [shift+cmd+i] (disabled)
+  "Copy branch name" [shift+cmd+b] (disabled)
+  "Copy link" [shift+cmd+l] (disabled)
+  "Share" [shift+cmd+s] (disabled)
+  "Open in Linear" [shift+o] (disabled)
+  "Open the parent issue" [shift+cmd+up] (disabled)
+  "Open a sub-issue or a related issue" [shift+cmd+down] (disabled)
+  "Scroll the issue down" [space] (disabled)
+  "Scroll the issue up" [shift+space] (disabled)
+  "Work on the issue" [w] (disabled)
+  "Go to the agent" [shift+w] (disabled)
+  "Leave a comment" [shift+m] (disabled)
+  "Edit the description" [e] (disabled)
+  "Edit your last comment" [shift+cmd+m] (disabled)
+  "Save the edit" [cmd+enter] (disabled)
+  "Post the comment" (disabled)
+  "Attach file" [shift+cmd+u] (disabled)
+  "Add the files to the description" (disabled)
+  "Save the file" [cmd+s] (disabled)
+  "Read the PDF" [shift+cmd+r] (disabled)
+  "Open the link" [shift+cmd+e] (disabled)
+  "Copy the file's link" [shift+cmd+k] (disabled)
+  "Find in the PDF" [cmd+f] (disabled)
+  "Next match" [cmd+g] (disabled)
+  "Previous match" [shift+cmd+g] (disabled)
+  "Copy the selection" [cmd+c] (disabled)
+  "Select all the words of the page" (disabled)
+  "New issue" [c] (disabled)
+  "Start the agent" (disabled)
+  "Create the issue" (disabled)
+  "Go to a list" [g] (disabled)
+  "Show my issues" [1] (disabled)
+  "Show all issues" [2] (disabled)
+  "Go to the first favorite" [3] (disabled)
+  "Go to the second favorite" [4] (disabled)
+  "Go to the third favorite" [5] (disabled)
+  "Go to the fourth favorite" [6] (disabled)
+  "Go to the fifth favorite" [7] (disabled)
+  "Go to the sixth favorite" [8] (disabled)
+  "Go to the seventh favorite" [9] (disabled)
+  "Filter issues" [/] (disabled)
+  "Filter by status, label and more" [f] (disabled)
+  "Clear the filters" [shift+f] (disabled)
+  "Search all of Linear" (disabled)
+  "Ask Linear again" [cmd+r] (disabled)
+  "Find a command" [cmd+k] (disabled)
+  "Show the keys" [?] (disabled)

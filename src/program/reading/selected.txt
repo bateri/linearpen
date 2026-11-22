@@ -1,0 +1,131 @@
+focus: page
+items:
+tvyqqt  button "My issues" [description "Go to another list, key G"]
+        text "/"
+5eas2b  button "Refresh" [description "Ask Linear for the issues again"]
+rcfzep  button "New issue" [description "Write an issue and add it to Linear"]
+kkd8ks  menuitem "In Progress, 4" [expanded]
+w35jhj  menuitem "ACM-412, Add rate limiting to the public API"
+7jqnj6    checkbox "Select" [checked]
+          text "api"
+          text "Nov 9"
+17kgg8  menuitem "ACM-398, Checkout test fails one run in ten" [selected]
+9je1dt    checkbox "Select" [checked]
+          text "bug"
+          text "Nov 9"
+4p4dvy  menuitem "ACM-405, Webhook retries ignore the backoff setting"
+gjhdwx    checkbox "Select" [unchecked]
+          text "bug"
+          text "api"
+          text "Nov 6"
+n3sq8q  menuitem "ACM-377, Write the 3.0 migration guide"
+t1zh3b    checkbox "Select" [unchecked]
+          text "docs"
+          text "Nov 5"
+sn24e3  menuitem "In Review, 2" [expanded]
+mr4fyw  menuitem "ACM-389, Cache the pricing table at the edge"
+ax6w0r    checkbox "Select" [unchecked]
+          text "perf"
+          text "Nov 8"
+mjc070  menuitem "ACM-371, Show the plan limit on the usage page"
+82hftf    checkbox "Select" [unchecked]
+          text "web"
+          text "Nov 5"
+wxdzn9  menuitem "Todo, 6" [expanded]
+kmh0n6  menuitem "ACM-420, Invoice PDF cuts long company names"
+yxsj0v    checkbox "Select" [unchecked]
+          text "bug"
+          text "Nov 10"
+tgpxwf  menuitem "ACM-418, Let owners transfer a workspace"
+swbyj2    checkbox "Select" [unchecked]
+          text "Nov 9"
+216mar  menuitem "ACM-415, Rotate signing keys without downtime"
+45vxb1    checkbox "Select" [unchecked]
+          text "security"
+          text "Nov 7"
+cmgnvk  menuitem "ACM-409, Empty state for the audit log"
+hcgjx9    checkbox "Select" [unchecked]
+          text "web"
+          text "Nov 4"
+5323pm  menuitem "ACM-402, Move the cron jobs to the queue"
+2defgj    checkbox "Select" [unchecked]
+          text "infra"
+          text "Nov 2"
+bhrsjb  menuitem "ACM-396, Search matches only the first word"
+08cz8e    checkbox "Select" [unchecked]
+          text "bug"
+          text "Oct 29"
+zfkyy4  menuitem "Backlog, 2" [collapsed]
+        text "2 selected"
+52zzn6  button "Status" [description "Change the status of the issues selected"]
+8npfwn  button "Priority" [description "Change the priority of the issues selected"]
+zsar8p  button "Assignee" [description "Change the assignee of the issues selected"]
+fgc1sy  button "Labels" [description "Change the labels of the issues selected"]
+ekv0qt  button "Project" [description "Change the project of the issues selected"]
+a7h4pw  button "Cycle" [description "Change the cycle of the issues selected"]
+f8249c  button "More" [description "Every change, for the issues selected"]
+g4x60r  button "Clear" [description "Let go of the issues selected"]
+fields:
+dxc3be  field "Filter issues"
+commands:
+  "Close the group" [left]
+  "Open the group" [right]
+  "Select the issue" [x]
+  "Select all" [cmd+a]
+  "Status" [s]
+  "Priority" [p]
+  "Assignee" [a]
+  "Assign to me" [i]
+  "Labels" [l]
+  "Project" [shift+p]
+  "Cycle" [shift+c]
+  "Estimate" [shift+e]
+  "Due date" [shift+d]
+  "Rename" [r] (disabled)
+  "Copy ID" [shift+cmd+i] (disabled)
+  "Copy branch name" [shift+cmd+b] (disabled)
+  "Copy link" [shift+cmd+l] (disabled)
+  "Share" [shift+cmd+s] (disabled)
+  "Open in Linear" [shift+o] (disabled)
+  "Open the parent issue" [shift+cmd+up] (disabled)
+  "Open a sub-issue or a related issue" [shift+cmd+down] (disabled)
+  "Scroll the issue down" [space] (disabled)
+  "Scroll the issue up" [shift+space] (disabled)
+  "Work on the issue" [w] (disabled)
+  "Go to the agent" [shift+w] (disabled)
+  "Leave a comment" [shift+m] (disabled)
+  "Edit the description" [e] (disabled)
+  "Edit your last comment" [shift+cmd+m] (disabled)
+  "Save the edit" [cmd+enter] (disabled)
+  "Post the comment" (disabled)
+  "Attach file" [shift+cmd+u] (disabled)
+  "Add the files to the description" (disabled)
+  "Save the file" [cmd+s] (disabled)
+  "Read the PDF" [shift+cmd+r] (disabled)
+  "Open the link" [shift+cmd+e] (disabled)
+  "Copy the file's link" [shift+cmd+k] (disabled)
+  "Find in the PDF" [cmd+f] (disabled)
+  "Next match" [cmd+g] (disabled)
+  "Previous match" [shift+cmd+g] (disabled)
+  "Copy the selection" [cmd+c] (disabled)
+  "Select all the words of the page" (disabled)
+  "New issue" [c]
+  "Start the agent" (disabled)
+  "Create the issue" (disabled)
+  "Go to a list" [g]
+  "Show my issues" [1]
+  "Show all issues" [2]
+  "Go to the first favorite" [3]
+  "Go to the second favorite" [4]
+  "Go to the third favorite" [5]
+  "Go to the fourth favorite" [6] (disabled)
+  "Go to the fifth favorite" [7] (disabled)
+  "Go to the sixth favorite" [8] (disabled)
+  "Go to the seventh favorite" [9] (disabled)
+  "Filter issues" [/]
+  "Filter by status, label and more" [f]
+  "Clear the filters" [shift+f] (disabled)
+  "Search all of Linear" (disabled)
+  "Ask Linear again" [cmd+r]
+  "Find a command" [cmd+k]
+  "Show the keys" [?]

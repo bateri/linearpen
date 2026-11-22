@@ -36,6 +36,8 @@ mod model;
 #[cfg(test)]
 mod page_pictures;
 #[cfg(test)]
+mod page_reading;
+#[cfg(test)]
 mod page_shots;
 #[cfg(test)]
 mod page_tests;

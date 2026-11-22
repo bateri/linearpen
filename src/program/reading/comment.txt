@@ -1,0 +1,131 @@
+focus: editor tb964x
+items:
+tvyqqt  button "My issues" [description "Go to another list, key G"]
+        text "/"
+5eas2b  button "Refresh" [description "Ask Linear for the issues again"]
+rcfzep  button "New issue" [description "Write an issue and add it to Linear"]
+kkd8ks  menuitem "In Progress, 4" [expanded]
+w35jhj  menuitem "ACM-412, Add rate limiting to the public API" [selected]
+7jqnj6    checkbox "Select" [unchecked]
+          text "Nov 9"
+17kgg8  menuitem "ACM-398, Checkout test fails one run in ten"
+4p4dvy  menuitem "ACM-405, Webhook retries ignore the backoff setting"
+n3sq8q  menuitem "ACM-377, Write the 3.0 migration guide"
+sn24e3  menuitem "In Review, 2" [expanded]
+mr4fyw  menuitem "ACM-389, Cache the pricing table at the edge"
+mjc070  menuitem "ACM-371, Show the plan limit on the usage page"
+wxdzn9  menuitem "Todo, 6" [expanded]
+kmh0n6  menuitem "ACM-420, Invoice PDF cuts long company names"
+tgpxwf  menuitem "ACM-418, Let owners transfer a workspace"
+216mar  menuitem "ACM-415, Rotate signing keys without downtime"
+cmgnvk  menuitem "ACM-409, Empty state for the audit log"
+5323pm  menuitem "ACM-402, Move the cron jobs to the queue"
+bhrsjb  menuitem "ACM-396, Search matches only the first word"
+zfkyy4  menuitem "Backlog, 2" [collapsed]
+waac17  button "Work on issue" [description "Start an agent on it, in a pane beside this one"]
+wx7gpn  button "Open in Linear" [description "Open the issue in your browser"]
+zd6rfy  button "Close"
+        text "ACM-412"
+nx7kja  button "Share" [description "Copy its identifier, title and link, to paste where you share it"]
+sspycs  button "Add rate limiting to the public API" [description "Edit the title"]
+t3thj7  button "Status" [collapsed, value "In Progress"]
+2rsy5w  button "Priority" [collapsed, value "High"]
+gnzqed  button "Assignee" [collapsed, value "Me"]
+46wqdp  button "Labels" [collapsed, value "api"]
+3pk1mt  button "Project" [collapsed]
+tr9yaf  button "Cycle" [collapsed, value "Cycle 12"]
+fn7g2r  button "Estimate" [collapsed]
+6tfb7f  button "Due date" [collapsed]
+        text "What we want"
+        text "•"
+        text "A limit per API key, 600 requests a minute unless the plan says more"
+        text "•"
+        text "429 with a Retry-After header"
+        text "•"
+        text "The limit shown on the usage page (ACM-371)"
+xyrt5z  button "Attach file" [description "Choose files of any kind, up to 100 MiB each"]
+rfjrkn  button "Edit description" [description "Edit the words of the description"]
+        text "COMMENTS"
+        text "2"
+        text "Deniz"
+        text "Nov 6"
+        text "Redis is already there for the sessions. A sliding window in a Lua script would do."
+        text "Mert"
+        text "Nov 8"
+        text "Keep a fallback for when Redis is down. We cannot fail closed on reads."
+        text "⇧"
+        text "M"
+wx4wdv  button "Attach file" [description "Choose files of any kind, up to 100 MiB each"]
+e2w63k  button "Comment" [description "Post the comment to Linear"]
+        text "Esc"
+        text "leave"
+b2gqrr  button "palette" [description "Find a command"]
+fields:
+dxc3be  field "Filter issues"
+editors:
+tb964x  editor "Comment" lines 1-1 of 1, caret 1:20 (keyboard)
+  1| Why so? Looks right
+scrolls:
+tjhhq5  scroll 100% (at the bottom)
+commands:
+  "Close the group" [left] (disabled)
+  "Open the group" [right] (disabled)
+  "Select the issue" [x] (disabled)
+  "Select all" [cmd+a] (disabled)
+  "Status" [s] (disabled)
+  "Priority" [p] (disabled)
+  "Assignee" [a] (disabled)
+  "Assign to me" [i] (disabled)
+  "Labels" [l] (disabled)
+  "Project" [shift+p] (disabled)
+  "Cycle" [shift+c] (disabled)
+  "Estimate" [shift+e] (disabled)
+  "Due date" [shift+d] (disabled)
+  "Rename" [r] (disabled)
+  "Copy ID" [shift+cmd+i] (disabled)
+  "Copy branch name" [shift+cmd+b] (disabled)
+  "Copy link" [shift+cmd+l] (disabled)
+  "Share" [shift+cmd+s] (disabled)
+  "Open in Linear" [shift+o] (disabled)
+  "Open the parent issue" [shift+cmd+up] (disabled)
+  "Open a sub-issue or a related issue" [shift+cmd+down] (disabled)
+  "Scroll the issue down" [space] (disabled)
+  "Scroll the issue up" [shift+space] (disabled)
+  "Work on the issue" [w] (disabled)
+  "Go to the agent" [shift+w] (disabled)
+  "Leave a comment" [shift+m] (disabled)
+  "Edit the description" [e] (disabled)
+  "Edit your last comment" [shift+cmd+m] (disabled)
+  "Save the edit" (disabled)
+  "Post the comment" [cmd+enter]
+  "Attach file" [shift+cmd+u]
+  "Add the files to the description" (disabled)
+  "Save the file" [cmd+s] (disabled)
+  "Read the PDF" [shift+cmd+r] (disabled)
+  "Open the link" [shift+cmd+e] (disabled)
+  "Copy the file's link" [shift+cmd+k] (disabled)
+  "Find in the PDF" [cmd+f] (disabled)
+  "Next match" [cmd+g] (disabled)
+  "Previous match" [shift+cmd+g] (disabled)
+  "Copy the selection" [cmd+c] (disabled)
+  "Select all the words of the page" (disabled)
+  "New issue" [c] (disabled)
+  "Start the agent" (disabled)
+  "Create the issue" (disabled)
+  "Go to a list" [g] (disabled)
+  "Show my issues" [1] (disabled)
+  "Show all issues" [2] (disabled)
+  "Go to the first favorite" [3] (disabled)
+  "Go to the second favorite" [4] (disabled)
+  "Go to the third favorite" [5] (disabled)
+  "Go to the fourth favorite" [6] (disabled)
+  "Go to the fifth favorite" [7] (disabled)
+  "Go to the sixth favorite" [8] (disabled)
+  "Go to the seventh favorite" [9] (disabled)
+  "Filter issues" [/] (disabled)
+  "Filter by status, label and more" [f] (disabled)
+  "Clear the filters" [shift+f] (disabled)
+  "Search all of Linear" (disabled)
+  "Ask Linear again" [cmd+r] (disabled)
+  "Find a command" [cmd+k]
+  "Show the keys" [?] (disabled)

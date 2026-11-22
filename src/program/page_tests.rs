@@ -3566,11 +3566,15 @@ fn picker_rows(page: &Page) -> Vec<(String, bool, pencere_view::Rect)> {
     let Some(card) = page.bounds(PICKER) else {
         return Vec::new();
     };
-    page.outline()
-        .accessible
-        .iter()
+    let told = &page.outline().accessible;
+    told.iter()
         .filter(|node| {
+            // (A row of the list the card lies over has its box too, and is read: a card of values is not a
+            // modal one. The card's rows are the ones in its list.)
             node.role == pencere_view::AccessibleRole::Checkbox
+                && node
+                    .parent
+                    .is_some_and(|at| told[at].role == pencere_view::AccessibleRole::ListBox)
                 && node.rect.y >= card.y
                 && node.rect.y + node.rect.h <= card.y + card.h + 0.5
                 && node.rect.x >= card.x

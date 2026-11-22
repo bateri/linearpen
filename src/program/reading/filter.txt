@@ -1,0 +1,90 @@
+focus: field dxc3be
+items:
+tvyqqt  button "My issues" [description "Go to another list, key G"]
+        text "4 of 14"
+rekx9s  button "Clear the filter" [keys "Esc"]
+5eas2b  button "Refresh" [description "Ask Linear for the issues again"]
+rcfzep  button "New issue" [description "Write an issue and add it to Linear"]
+kkd8ks  menuitem "In Progress, 2" [expanded]
+17kgg8  menuitem "ACM-398, Checkout test fails one run in ten" [selected]
+9je1dt    checkbox "Select" [unchecked]
+          text "bug"
+          text "Nov 9"
+4p4dvy  menuitem "ACM-405, Webhook retries ignore the backoff setting"
+wxdzn9  menuitem "Todo, 2" [expanded]
+kmh0n6  menuitem "ACM-420, Invoice PDF cuts long company names"
+bhrsjb  menuitem "ACM-396, Search matches only the first word"
+        text "↑"
+        text "↓"
+        text "move"
+        text "Enter"
+        text "open"
+gvgcqp  button "search"
+        text "Esc"
+        text "clear"
+b2gqrr  button "palette" [description "Find a command"]
+c9zsn1  button "help" [description "Show the keys"]
+fields:
+dxc3be  field "Filter issues" = "bug"
+commands:
+  "Close the group" [left]
+  "Open the group" [right]
+  "Select the issue" [x]
+  "Select all" [cmd+a] (disabled)
+  "Status" [s] (disabled)
+  "Priority" [p] (disabled)
+  "Assignee" [a] (disabled)
+  "Assign to me" [i] (disabled)
+  "Labels" [l] (disabled)
+  "Project" [shift+p] (disabled)
+  "Cycle" [shift+c] (disabled)
+  "Estimate" [shift+e] (disabled)
+  "Due date" [shift+d] (disabled)
+  "Rename" [r] (disabled)
+  "Copy ID" [shift+cmd+i]
+  "Copy branch name" [shift+cmd+b]
+  "Copy link" [shift+cmd+l]
+  "Share" [shift+cmd+s]
+  "Open in Linear" [shift+o] (disabled)
+  "Open the parent issue" [shift+cmd+up] (disabled)
+  "Open a sub-issue or a related issue" [shift+cmd+down] (disabled)
+  "Scroll the issue down" [space] (disabled)
+  "Scroll the issue up" [shift+space] (disabled)
+  "Work on the issue" [w] (disabled)
+  "Go to the agent" [shift+w] (disabled)
+  "Leave a comment" [shift+m] (disabled)
+  "Edit the description" [e] (disabled)
+  "Edit your last comment" [shift+cmd+m] (disabled)
+  "Save the edit" (disabled)
+  "Post the comment" (disabled)
+  "Attach file" [shift+cmd+u] (disabled)
+  "Add the files to the description" (disabled)
+  "Save the file" [cmd+s] (disabled)
+  "Read the PDF" [shift+cmd+r] (disabled)
+  "Open the link" [shift+cmd+e] (disabled)
+  "Copy the file's link" [shift+cmd+k] (disabled)
+  "Find in the PDF" [cmd+f] (disabled)
+  "Next match" [cmd+g] (disabled)
+  "Previous match" [shift+cmd+g] (disabled)
+  "Copy the selection" [cmd+c] (disabled)
+  "Select all the words of the page" (disabled)
+  "New issue" [c] (disabled)
+  "Start the agent" (disabled)
+  "Create the issue" (disabled)
+  "Go to a list" [g]
+  "Show my issues" [1]
+  "Show all issues" [2]
+  "Go to the first favorite" [3]
+  "Go to the second favorite" [4]
+  "Go to the third favorite" [5]
+  "Go to the fourth favorite" [6] (disabled)
+  "Go to the fifth favorite" [7] (disabled)
+  "Go to the sixth favorite" [8] (disabled)
+  "Go to the seventh favorite" [9] (disabled)
+  "Filter issues" [/]
+  "Filter by status, label and more" [f] (disabled)
+  "Clear the filters" [shift+f] (disabled)
+  "Search all of Linear" [cmd+enter]
+  "Ask Linear again" [cmd+r]
+  "Find a command" [cmd+k]
+  "Show the keys" [?]

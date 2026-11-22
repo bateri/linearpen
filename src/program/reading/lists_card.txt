@@ -1,0 +1,86 @@
+focus: field 9fatfy
+note: behind the modal in front, 33 items of the page, not read
+items:
+5bzy95  dialog "Lists" [action "Close"]
+he0aw9    listbox "List"
+tzhnw8      option "My issues" [selected, 1 of 17]
+ckdxnh      option "All issues" [2 of 17]
+7zmdjz      option "Bugs to triage" [3 of 17]
+k01w7k      option "Billing" [4 of 17]
+97d15p      option "Agent-ready" [5 of 17]
+htwhy3      option "ACM · Current cycle" [6 of 17]
+c7xcms      option "ACM · Issues" [7 of 17]
+tpt3v4      option "WEB · Current cycle" [8 of 17]
+k7mq8n      option "WEB · Issues" [9 of 17]
+2hjzjc      option "MOB · Current cycle" [10 of 17]
+qa8144      option "MOB · Issues" [11 of 17]
+          text "Enter"
+          text "Open"
+          text "Esc"
+          text "Close"
+fields:
+9fatfy  field "Lists"
+scrolls:
+he0aw9  scroll 0% (at the top)
+commands:
+  "Close the group" [left] (disabled)
+  "Open the group" [right] (disabled)
+  "Select the issue" [x] (disabled)
+  "Select all" [cmd+a] (disabled)
+  "Status" [s] (disabled)
+  "Priority" [p] (disabled)
+  "Assignee" [a] (disabled)
+  "Assign to me" [i] (disabled)
+  "Labels" [l] (disabled)
+  "Project" [shift+p] (disabled)
+  "Cycle" [shift+c] (disabled)
+  "Estimate" [shift+e] (disabled)
+  "Due date" [shift+d] (disabled)
+  "Rename" [r] (disabled)
+  "Copy ID" [shift+cmd+i] (disabled)
+  "Copy branch name" [shift+cmd+b] (disabled)
+  "Copy link" [shift+cmd+l] (disabled)
+  "Share" [shift+cmd+s] (disabled)
+  "Open in Linear" [shift+o] (disabled)
+  "Open the parent issue" [shift+cmd+up] (disabled)
+  "Open a sub-issue or a related issue" [shift+cmd+down] (disabled)
+  "Scroll the issue down" [space] (disabled)
+  "Scroll the issue up" [shift+space] (disabled)
+  "Work on the issue" [w] (disabled)
+  "Go to the agent" [shift+w] (disabled)
+  "Leave a comment" [shift+m] (disabled)
+  "Edit the description" [e] (disabled)
+  "Edit your last comment" [shift+cmd+m] (disabled)
+  "Save the edit" [cmd+enter] (disabled)
+  "Post the comment" (disabled)
+  "Attach file" [shift+cmd+u] (disabled)
+  "Add the files to the description" (disabled)
+  "Save the file" [cmd+s] (disabled)
+  "Read the PDF" [shift+cmd+r] (disabled)
+  "Open the link" [shift+cmd+e] (disabled)
+  "Copy the file's link" [shift+cmd+k] (disabled)
+  "Find in the PDF" [cmd+f] (disabled)
+  "Next match" [cmd+g] (disabled)
+  "Previous match" [shift+cmd+g] (disabled)
+  "Copy the selection" [cmd+c] (disabled)
+  "Select all the words of the page" (disabled)
+  "New issue" [c] (disabled)
+  "Start the agent" (disabled)
+  "Create the issue" (disabled)
+  "Go to a list" [g] (disabled)
+  "Show my issues" [1] (disabled)
+  "Show all issues" [2] (disabled)
+  "Go to the first favorite" [3] (disabled)
+  "Go to the second favorite" [4] (disabled)
+  "Go to the third favorite" [5] (disabled)
+  "Go to the fourth favorite" [6] (disabled)
+  "Go to the fifth favorite" [7] (disabled)
+  "Go to the sixth favorite" [8] (disabled)
+  "Go to the seventh favorite" [9] (disabled)
+  "Filter issues" [/] (disabled)
+  "Filter by status, label and more" [f] (disabled)
+  "Clear the filters" [shift+f] (disabled)
+  "Search all of Linear" (disabled)
+  "Ask Linear again" [cmd+r] (disabled)
+  "Find a command" [cmd+k] (disabled)
+  "Show the keys" [?] (disabled)

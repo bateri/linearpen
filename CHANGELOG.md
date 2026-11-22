@@ -7,6 +7,8 @@
 - A screen reader, and an agent that reads the pane, are told which value's card is open (the labels
   and the filters), and what each value chip holds (the status, the priority, the labels, a filter's
   choices) beside what it is. They were told by the ring around it, and of the chip only its name.
+  The issue's title, in the pane that shows the issue, is read as the title (the button that edits it was
+  named "Edit the title", and the title itself was not read).
 
 ## [0.7.0] - 2026-11-20
 

@@ -56,14 +56,14 @@ test:
 # 250 ms, which is the wall clock's: a runner under load takes many times what one at rest does, and
 # a test of what the page does should not fail for that. check-timing is the strict one (below).
 test-page:
-	cargo test --locked --bin linearpen -- page_tests:: page_pictures:: --ignored --test-threads=2
+	cargo test --locked --bin linearpen -- page_tests:: page_reading:: page_pictures:: --ignored --test-threads=2
 
 # check-timing runs the page's tests with every call of the page held to the kit's 250 ms
 # (CALL_MS=125 for half of it), as a terminal holds it. Not part of the gate: it measures the
 # machine as much as the page, so run it on one at rest.
 CALL_MS ?= 250
 check-timing:
-	LINEARPEN_CALL_MS=$(CALL_MS) cargo test --locked --bin linearpen -- page_tests:: page_pictures:: --ignored --test-threads=2
+	LINEARPEN_CALL_MS=$(CALL_MS) cargo test --locked --bin linearpen -- page_tests:: page_reading:: page_pictures:: --ignored --test-threads=2
 
 # shots draws the pictures of docs/ from the page as it is, over a fixture machine (never the
 # machine's own processes), in the fonts of this machine (macOS: SF Mono, or Menlo, and SF): not part

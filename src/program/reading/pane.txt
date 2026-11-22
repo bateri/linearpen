@@ -1,0 +1,94 @@
+focus: page
+items:
+tvyqqt  button "My issues" [description "Go to another list, key G"]
+        text "/"
+kkd8ks  menuitem "In Progress, 4" [expanded]
+w35jhj  menuitem "ACM-412, Add rate limiting to the public API" [selected]
+7jqnj6    checkbox "Select" [unchecked]
+          text "Nov 9"
+17kgg8  menuitem "ACM-398, Checkout test fails one run in ten"
+4p4dvy  menuitem "ACM-405, Webhook retries ignore the backoff setting"
+n3sq8q  menuitem "ACM-377, Write the 3.0 migration guide"
+sn24e3  menuitem "In Review, 2" [expanded]
+mr4fyw  menuitem "ACM-389, Cache the pricing table at the edge"
+mjc070  menuitem "ACM-371, Show the plan limit on the usage page"
+        text "↑"
+        text "↓"
+        text "move"
+        text "X"
+        text "select"
+        text "Enter"
+        text "open"
+        text "S"
+        text "status"
+        text "G"
+        text "go to"
+        text "C"
+        text "new issue"
+c9zsn1  button "help" [description "Show the keys"]
+fields:
+dxc3be  field "Filter issues"
+scrolls:
+p7gfhy  scroll 0% (at the top)
+commands:
+  "Close the group" [left]
+  "Open the group" [right]
+  "Select the issue" [x]
+  "Select all" [cmd+a]
+  "Status" [s]
+  "Priority" [p]
+  "Assignee" [a]
+  "Assign to me" [i]
+  "Labels" [l]
+  "Project" [shift+p]
+  "Cycle" [shift+c]
+  "Estimate" [shift+e]
+  "Due date" [shift+d]
+  "Rename" [r]
+  "Copy ID" [shift+cmd+i]
+  "Copy branch name" [shift+cmd+b]
+  "Copy link" [shift+cmd+l]
+  "Share" [shift+cmd+s]
+  "Open in Linear" [shift+o]
+  "Open the parent issue" [shift+cmd+up] (disabled)
+  "Open a sub-issue or a related issue" [shift+cmd+down] (disabled)
+  "Scroll the issue down" [space] (disabled)
+  "Scroll the issue up" [shift+space] (disabled)
+  "Work on the issue" [w] (disabled)
+  "Go to the agent" [shift+w] (disabled)
+  "Leave a comment" [shift+m] (disabled)
+  "Edit the description" [e] (disabled)
+  "Edit your last comment" [shift+cmd+m] (disabled)
+  "Save the edit" [cmd+enter] (disabled)
+  "Post the comment" (disabled)
+  "Attach file" [shift+cmd+u] (disabled)
+  "Add the files to the description" (disabled)
+  "Save the file" [cmd+s] (disabled)
+  "Read the PDF" [shift+cmd+r] (disabled)
+  "Open the link" [shift+cmd+e] (disabled)
+  "Copy the file's link" [shift+cmd+k] (disabled)
+  "Find in the PDF" [cmd+f] (disabled)
+  "Next match" [cmd+g] (disabled)
+  "Previous match" [shift+cmd+g] (disabled)
+  "Copy the selection" [cmd+c] (disabled)
+  "Select all the words of the page" (disabled)
+  "New issue" [c]
+  "Start the agent" (disabled)
+  "Create the issue" (disabled)
+  "Go to a list" [g]
+  "Show my issues" [1]
+  "Show all issues" [2]
+  "Go to the first favorite" [3]
+  "Go to the second favorite" [4]
+  "Go to the third favorite" [5]
+  "Go to the fourth favorite" [6] (disabled)
+  "Go to the fifth favorite" [7] (disabled)
+  "Go to the sixth favorite" [8] (disabled)
+  "Go to the seventh favorite" [9] (disabled)
+  "Filter issues" [/]
+  "Filter by status, label and more" [f]
+  "Clear the filters" [shift+f] (disabled)
+  "Search all of Linear" (disabled)
+  "Ask Linear again" [cmd+r]
+  "Find a command" [cmd+k]
+  "Show the keys" [?]
