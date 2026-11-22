@@ -36,11 +36,7 @@ fn check(name: &str, page: &mut Page) {
     }
     let flaws: String = pencere_drive::audit::report(&page.audit())
         .lines()
-        .filter(|line| {
-            !WAIVED
-                .iter()
-                .any(|(state, flaw)| name.starts_with(*state) && line.contains(flaw))
-        })
+        .filter(|line| !waived(line, &reading))
         .map(|line| format!("{line}\n"))
         .collect();
     assert!(
@@ -49,13 +45,27 @@ fn check(name: &str, page: &mut Page) {
     );
 }
 
-/// What the audit finds that is not this page's to mend, by the states it is found in (their names begin so): a button that cannot be
-/// pressed now (the kit's `disabled`) answers no press, so it has no id for an agent to name (it is read, as
-/// disabled, with what it does in its description).
-const WAIVED: &[(&str, &str)] = &[
-    ("", "no id: button \"New issue\""),
-    ("", "no id: button \"Create issue\""),
-];
+/// Whether the audit's `finding` (`line N: - no id: button "New issue"`) is one that is not this page's to mend:
+/// a button that cannot be pressed now (the kit's `disabled`) answers no press, so it has no id for an agent to
+/// name; it is read, as disabled, with what it does in its description. Only a line of the reading that says
+/// `[disabled` is let off, and only for these two buttons: one that can be pressed and has no id is a flaw.
+fn waived(finding: &str, reading: &str) -> bool {
+    let Some(number) = finding
+        .strip_prefix("line ")
+        .and_then(|rest| rest.split(':').next())
+        .and_then(|number| number.parse::<usize>().ok())
+    else {
+        return false;
+    };
+    let said = reading.lines().nth(number.saturating_sub(1)).unwrap_or("");
+    [
+        "no id: button \"New issue\"",
+        "no id: button \"Create issue\"",
+    ]
+    .iter()
+    .any(|flaw| finding.contains(flaw))
+        && said.contains("[disabled")
+}
 
 /// Waits until the page says `words`.
 fn says(page: &mut Page, words: &str) {
