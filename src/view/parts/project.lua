@@ -381,7 +381,9 @@ local function body(open)
 	end
 	local data = kept.data
 	-- (It comes in as it comes, fading: what is over it stays where it was.)
-	local told = b.div():id("project-body:" .. open.id):col():no_shrink():motion({ enter = { opacity = 0, seconds = 0.24 } })
+	-- (One box for every project: going from a project told to the next does not bring it in again, so an
+	-- arrow held down does not leave it half seen.)
+	local told = b.div():id("project-body"):col():no_shrink():motion({ enter = { opacity = 0, seconds = 0.24 } })
 	if data.update ~= nil then
 		told:child(words(data.update, "project-update:" .. open.id))
 	elseif row.update ~= nil and row.update.summary ~= nil then

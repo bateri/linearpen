@@ -10517,3 +10517,78 @@ fn in_an_80_by_24_pane_a_project_has_the_pane_and_j_goes_to_the_next() {
     page.wait_for(WITHIN, |page| page.bounds("lists").is_some())
         .unwrap_or_else(|why| panic!("the list again: {why:?}: {}", said(&page)));
 }
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_groups_of_the_projects_fold_and_open_and_what_is_done_is_reached() {
+    let (_linear, _session, mut page) = open_lists(WIDE);
+    go_to_projects(&mut page);
+    // Completed begins folded: its head opened, its project is there.
+    page.click("row:g:ps-done").expect("the head of Completed");
+    page.wait_for(WITHIN, |page| page.says("Invoices v1"))
+        .unwrap_or_else(|why| panic!("Completed opens: {why:?}: {}", said(&page)));
+    // A started group folds with the left arrow on its head, and opens with the right.
+    page.click("row:g:ps-started")
+        .expect("the head of In Progress");
+    page.press("left").expect("left");
+    page.wait_for(WITHIN, |page| !page.says("Billing v2"))
+        .unwrap_or_else(|why| panic!("In Progress folds: {why:?}: {}", said(&page)));
+    page.press("right").expect("right");
+    page.wait_for(WITHIN, |page| page.says("Billing v2"))
+        .unwrap_or_else(|why| panic!("In Progress opens: {why:?}: {}", said(&page)));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn an_issue_made_while_the_projects_are_shown_is_shown_in_all_issues() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    go_to_projects(&mut page);
+    open_new(&mut page);
+    page.type_text("Made from the projects").expect("the title");
+    page.press("mod+enter").expect("mod+enter");
+    made(&linear, &mut page, 1);
+    list_button_says(&mut page, "All issues");
+    cursor_on(&mut page, "ACM-900");
+    assert!(page.bounds("panel-close").is_some(), "{}", said(&page));
+    assert!(page.bounds("project-close").is_none(), "{}", said(&page));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn going_to_the_projects_while_the_description_is_edited_leaves_the_keys_to_the_list() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    open_the_controls(&mut page);
+    page.press("e").expect("e");
+    page.wait_for(WITHIN, |page| typing_in(page, &edit_editor("issue-412")))
+        .unwrap_or_else(|why| panic!("the keyboard is in the field: {why:?}: {}", said(&page)));
+    page.type_text(" more").expect("the words");
+    page.click("lists").expect("the button of the lists");
+    page.wait_for(WITHIN, |page| page.says("Assigned to you"))
+        .unwrap_or_else(|why| panic!("the card of lists: {why:?}: {}", said(&page)));
+    page.type_text("projects").expect("the words");
+    page.press("enter").expect("enter");
+    list_button_says(&mut page, "Projects");
+    page.wait_for(WITHIN, |page| page.says("Billing v2"))
+        .unwrap_or_else(|why| panic!("the projects come: {why:?}: {}", said(&page)));
+    page.advance(0.3).expect("a moment");
+    // The issue and its edit are not beside the projects, and the keys are the list's: down and Enter
+    // open the second project.
+    assert!(page.bounds("panel-close").is_none(), "{}", said(&page));
+    page.press("down").expect("down");
+    page.press("enter").expect("enter");
+    page.wait_for(WITHIN, |page| page.bounds("project-close").is_some())
+        .unwrap_or_else(|why| panic!("the project opens: {why:?}: {}", said(&page)));
+    page.wait_for(WITHIN, |_| {
+        linear
+            .variables_of("Project")
+            .iter()
+            .any(|variables| variables["id"] == "p-billing")
+    })
+    .unwrap_or_else(|why| {
+        panic!(
+            "the second project: {why:?}: {:?}",
+            linear.variables_of("Project")
+        )
+    });
+    assert_eq!(written(&linear), 0);
+}

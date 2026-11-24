@@ -178,12 +178,20 @@ pub fn fetch(transport: &dyn Transport, key: &Key) -> Result<Fetched, Error> {
         &query::PROJECTS,
         Some(First { first: MOST }),
     )?;
-    let projects = data
+    let told = data.projects.nodes.len();
+    let projects: Vec<Project> = data
         .projects
         .nodes
         .into_iter()
         .filter_map(|node| serde_json::from_value::<Project>(node).ok())
         .collect();
+    // Projects told and none read is not a workspace with none: the shape Linear tells is not the one
+    // asked for, and the page says so rather than "No projects".
+    if told > 0 && projects.is_empty() {
+        return Err(Error::Failed(format!(
+            "Linear told {told} projects in a shape linearpen does not read"
+        )));
+    }
     Ok(Fetched {
         viewer: data.viewer,
         listing: Listing {
@@ -223,6 +231,43 @@ pub fn detail(transport: &dyn Transport, key: &Key, id: &str) -> Result<Detail, 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::linear::transport::Reply;
+
+    /// Linear as a test says: one reply to every question.
+    struct Says(String);
+
+    impl Transport for Says {
+        fn post(&self, _: &Key, _: &str) -> Result<Reply, Error> {
+            Ok(Reply {
+                status: 200,
+                body: self.0.clone(),
+            })
+        }
+    }
+
+    #[test]
+    fn projects_told_in_a_shape_none_of_which_is_read_are_a_failure_and_not_none() {
+        let mut fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../../../test/stand-in/projects.json")).unwrap();
+        let key = Key::new("lin_api_k").unwrap();
+        let read = fetch(&Says(fixture.to_string()), &key).expect("the fixture is read");
+        assert_eq!(read.listing.projects.len(), 9);
+        // Every project without its state: Linear told some, the program read none.
+        for node in fixture["data"]["projects"]["nodes"].as_array_mut().unwrap() {
+            node.as_object_mut().unwrap().remove("status");
+        }
+        match fetch(&Says(fixture.to_string()), &key) {
+            Err(Error::Failed(words)) => assert!(words.contains("does not read"), "{words}"),
+            other => panic!(
+                "not a failure: {:?}",
+                other.map(|fetched| fetched.listing.projects.len())
+            ),
+        }
+        // None told is a workspace with none.
+        fixture["data"]["projects"]["nodes"] = serde_json::json!([]);
+        let none = fetch(&Says(fixture.to_string()), &key).expect("none is read");
+        assert!(none.listing.projects.is_empty());
+    }
 
     #[test]
     fn a_project_in_a_shape_not_a_projects_is_let_go_of_and_the_others_are_read() {

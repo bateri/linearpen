@@ -18,8 +18,15 @@ palette.state = P
 local LIMIT = 40
 
 -- What the person typed as the words of the filter.
+-- (In the list of projects the words filter the projects by their names.)
 local function as_filter(query)
-	return { key = "go:" .. query, title = string.format("Filter issues by “%s”", query), hint = "Issues", text = query }
+	local what = S.scope == "projects" and "Projects" or "Issues"
+	return {
+		key = "go:" .. query,
+		title = string.format("Filter %s by “%s”", string.lower(what), query),
+		hint = what,
+		text = query,
+	}
 end
 
 -- The page's own way of finding: the commands that fuzzily match, then the query as a filter (where
@@ -69,7 +76,8 @@ function palette.view(root)
 		items = P.items,
 		state = P.state,
 		label = "Command palette",
-		hint = P.filters and "Find a command, or filter the issues" or "Find a command",
+		hint = P.filters and ("Find a command, or filter the " .. (S.scope == "projects" and "projects" or "issues"))
+			or "Find a command",
 		filter = found,
 		rows = kit.card_rows(),
 		footer = {
