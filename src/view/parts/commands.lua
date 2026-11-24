@@ -126,7 +126,7 @@ local TABLE = {
 		title = "Filter by status, label and more",
 		group = "Everywhere",
 		keys = { "f" },
-		when = "headed_idle",
+		when = "filterable",
 	},
 	{ id = "clear_filters", title = "Clear the filters", group = "Everywhere", keys = { "shift+f" }, when = "narrowed" },
 	{ id = "search", title = "Search all of Linear", group = "Everywhere", keys = { "mod+enter" }, when = "searchable" },

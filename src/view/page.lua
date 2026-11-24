@@ -314,8 +314,12 @@ commands.when.postable = function()
 end
 -- The filters can be let go of where some are set and their row is on the page. (Shift and F is a
 -- letter of the words of a field.)
+-- The list takes the filters of Linear: every list but the inbox.
+commands.when.filterable = function()
+	return commands.when.headed_idle() and S.scope ~= "inbox"
+end
 commands.when.narrowed = function()
-	return commands.when.headed_idle() and filters.any()
+	return commands.when.filterable() and filters.any()
 end
 -- The words of the field can be searched for in all of Linear where the person is typing them, or
 -- where nothing held matches them (the card says so, with the key): not in a form or a comment, and
@@ -412,7 +416,9 @@ local function body()
 		return screens.nothing({
 			words = head.field.value,
 			search = S.scope == "search",
-			narrowed = filters.any(),
+			inbox = S.scope == "inbox",
+			-- (The inbox takes no filter: what is set is the other lists'.)
+			narrowed = S.scope ~= "inbox" and filters.any(),
 		})
 	end
 	return list.view(S.room, S.panel_open)

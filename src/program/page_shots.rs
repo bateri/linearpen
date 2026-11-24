@@ -101,9 +101,8 @@ fn new_form(page: &mut Page) -> Result<(), Error> {
 /// The cycle of the first team, from the card of lists.
 fn go_to_cycle(page: &mut Page) -> Result<(), Error> {
     page.press("g")?;
-    page.wait_for(Duration::from_secs(20), |page| {
-        page.says("Bug bash, November")
-    })?;
+    // (The card's first lines, which an 80 by 24 pane has room for too.)
+    page.wait_for(Duration::from_secs(20), |page| page.says("Assigned to you"))?;
     page.advance(0.3)?;
     page.type_text("Current cycle")?;
     page.press("enter")?;
@@ -131,6 +130,33 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     page.wait_for(Duration::from_secs(20), |page| page.says("ACM-417"))?;
     page.advance(0.4)?;
     save(&page, &fonts, Palette::Dark, "all.png");
+
+    // The inbox: the issues of the notifications, unread first, each with who and what; beside an issue
+    // open; in an 80 by 24 pane; in the colours of a light terminal.
+    let inbox = |size: (f32, f32), fonts: &Fonts| -> Result<Page, Error> {
+        let mut page = lists(size, fonts)?;
+        page.press("g")?;
+        page.wait_for(Duration::from_secs(20), |page| {
+            page.says("Your notifications")
+        })?;
+        page.advance(0.3)?;
+        page.type_text("inbox")?;
+        page.press("enter")?;
+        page.wait_for(Duration::from_secs(20), |page| page.says("Unread"))?;
+        page.advance(0.4)?;
+        Ok(page)
+    };
+    let mut page = inbox(BIG, &fonts)?;
+    save(&page, &fonts, Palette::Dark, "inbox.png");
+    save(&page, &fonts, Palette::Light, "light-inbox.png");
+    page.press("enter")?;
+    page.wait_for(Duration::from_secs(20), |page| {
+        page.says("600 requests a minute")
+    })?;
+    page.advance(0.4)?;
+    save(&page, &fonts, Palette::Dark, "inbox-issue.png");
+    let page = inbox(PANE, &fonts)?;
+    save(&page, &fonts, Palette::Dark, "narrow-inbox.png");
 
     // The filter, on a word.
     let mut page = lists(BIG, &fonts)?;
@@ -317,9 +343,7 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     save(&page, &fonts, Palette::Dark, "cycle.png");
     let mut page = lists(PANE, &fonts)?;
     page.press("g")?;
-    page.wait_for(Duration::from_secs(20), |page| {
-        page.says("The workspace") && page.says("Bug bash, November")
-    })?;
+    page.wait_for(Duration::from_secs(20), |page| page.says("The workspace"))?;
     page.advance(0.6)?;
     save(&page, &fonts, Palette::Dark, "narrow-lists.png");
     page.press("escape")?;

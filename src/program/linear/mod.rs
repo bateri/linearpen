@@ -17,6 +17,7 @@ mod error;
 mod filter_options;
 mod filters;
 pub mod images;
+pub mod inbox;
 mod key;
 pub mod limits;
 mod names;
@@ -41,7 +42,7 @@ pub use transport::Transport;
 pub use types::{Issue, Priority, Viewer};
 pub use upload::{NotSent, send_file};
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -58,6 +59,8 @@ pub enum Scope {
     All,
     Created,
     Subscribed,
+    /// The person's inbox: the issues of their notifications.
+    Inbox,
     Team(String),
     Cycle(String),
     View(String),
@@ -77,6 +80,7 @@ impl Scope {
             Self::All => "all",
             Self::Created => "created",
             Self::Subscribed => "subscribed",
+            Self::Inbox => "inbox",
             Self::Team(_) => "team",
             Self::Cycle(_) => "cycle",
             Self::View(_) => "view",
@@ -90,7 +94,7 @@ impl Scope {
     #[must_use]
     pub fn id(&self) -> Option<&str> {
         match self {
-            Self::Mine | Self::All | Self::Created | Self::Subscribed => None,
+            Self::Mine | Self::All | Self::Created | Self::Subscribed | Self::Inbox => None,
             Self::Team(id)
             | Self::Cycle(id)
             | Self::View(id)
@@ -110,6 +114,7 @@ impl Scope {
             ("all", None) => Some(Self::All),
             ("created", None) => Some(Self::Created),
             ("subscribed", None) => Some(Self::Subscribed),
+            ("inbox", None) => Some(Self::Inbox),
             ("team", Some(id)) if !id.is_empty() => Some(Self::Team(id)),
             ("cycle", Some(id)) if !id.is_empty() => Some(Self::Cycle(id)),
             ("view", Some(id)) if !id.is_empty() => Some(Self::View(id)),
@@ -151,6 +156,8 @@ pub struct Listing {
     /// where a state was asked for by name. The closed ones a list takes of its own accord are only
     /// the ones that changed last, and are not counted as cut.
     pub truncated: bool,
+    /// For the inbox, what each issue (by its id) carries beside it; empty for any other list.
+    pub notes: HashMap<String, inbox::Note>,
 }
 
 impl Listing {
@@ -343,9 +350,17 @@ pub fn fetch(
     filters: &Filters,
     closed: Closed,
 ) -> Result<Fetched, Error> {
+    if *scope == Scope::Inbox {
+        // (Linear's inbox takes no filter: what the other lists are narrowed by is left to them.)
+        return inbox::fetch(transport, key);
+    }
     let fetched = |viewer, issues, truncated| Fetched {
         viewer,
-        listing: Listing { issues, truncated },
+        listing: Listing {
+            issues,
+            truncated,
+            notes: HashMap::new(),
+        },
     };
     if matches!(scope, Scope::Search(_)) {
         let (viewer, issues, more) =
@@ -414,6 +429,12 @@ fn pages(
             Scope::All => {
                 let data: AllData = run(transport, key, &query::ALL_ISSUES, Some(page))?;
                 (data.viewer, data.issues)
+            }
+            // (The inbox is asked for apart, by `inbox::fetch`: it is not pages of issues.)
+            Scope::Inbox => {
+                return Err(Error::Failed(
+                    "the inbox is not asked for by pages of issues".to_owned(),
+                ));
             }
             Scope::Created | Scope::Subscribed => {
                 // The workspace's issues that are the person's in one more way: they made it, or they

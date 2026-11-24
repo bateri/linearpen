@@ -1624,6 +1624,7 @@ mod tests {
         let listing = Listing {
             issues,
             truncated: false,
+            notes: Default::default(),
         };
         session.shared.lock().lists = Some(Lists {
             viewer: Viewer {
@@ -2427,6 +2428,7 @@ mod tests {
                 Listing {
                     issues: vec![held],
                     truncated: false,
+                    notes: Default::default(),
                 },
             ));
             state.view.scope = Scope::Search("add".to_owned());
@@ -2461,6 +2463,7 @@ mod tests {
                 Listing {
                     issues: vec![held],
                     truncated: false,
+                    notes: Default::default(),
                 },
             ));
             state.view.scope = team("t-acm");

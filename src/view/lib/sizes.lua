@@ -38,6 +38,11 @@ local SIZE = {
 	identifier = 76,
 	date = 52,
 	who = 56,
+	-- A row of the inbox: its note (who, and what it is about), where the list is this wide, whatever
+	-- stands beside it (it says why the row is there); in a narrower one what it is about alone.
+	note = 150,
+	note_short = 96,
+	noted = 760,
 	-- A page this wide shows the labels of an issue, and this much the name of whose it is.
 	labels = 760,
 	assignee = 880,

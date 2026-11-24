@@ -122,8 +122,8 @@ function screens.empty()
 end
 
 -- The list has no line: what Linear found, the words of the field or the filters let nothing through, or
--- there is nothing open. `o`: `words` (the field's), `search` (the list is a search), `narrowed` (filters
--- are set).
+-- there is nothing open. `o`: `words` (the field's), `search` (the list is a search), `inbox` (the list is
+-- the inbox), `narrowed` (filters are set).
 function screens.nothing(o)
 	local card = b.div():col():items_center():gap(6)
 	if o.search then
@@ -138,6 +138,8 @@ function screens.nothing(o)
 		})))
 	elseif o.narrowed then
 		card:child(b.text("Nothing in " .. lists.name() .. " matches the filters"):text_size(15):weight(700):truncate():max_w(520))
+	elseif o.inbox then
+		card:child(b.text("Your inbox is empty"):text_size(15):weight(700))
 	else
 		card:child(b.text("No issues"):text_size(15):weight(700))
 	end

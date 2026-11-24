@@ -65,7 +65,11 @@ function row.group(item, look, late)
 		:selected(look.selected)
 		:expanded(not group.closed)
 	inner:child(arrow(item.key, group.closed))
-	inner:child(icons.state(group.kind, late))
+	if group.kind == "unread" or group.kind == "read" then
+		inner:child(icons.inbox(group.kind == "unread"))
+	else
+		inner:child(icons.state(group.kind, late))
+	end
 	inner:child(b.text(group.name):weight(700):color(group.closed and "dim" or "foreground"):no_shrink())
 	inner:child(b.text(tostring(group.count)):text_size(SIZE.small):color("dim"):no_shrink())
 	return b.div():h(SIZE.row + SIZE.group_gap):pt(SIZE.group_gap):px(9):no_shrink():child(inner)
@@ -212,9 +216,23 @@ end
 -- An issue: the box of a selection, its priority, its identifier, its title that gives way, the
 -- agent that is on it, its labels, whose it is (in any list but the person's own, where the page is wide
 -- enough) and the day it changed. `o`: `labels` and `who` say whether there is room for them, `scope` the list shown.
+-- What a row of the inbox says of its notification, in words: who and what (`Deniz · Mention`).
+local function note_words(note)
+	if note.who ~= nil and note.who ~= "" then
+		return note.who .. " \u{b7} " .. note.what
+	end
+	return note.what
+end
+
 function row.issue(item, look, o)
 	local issue = item.row
-	local el = line(row.name(item.key), look):gap(10):label(issue.identifier .. ", " .. issue.title):selected(look.selected)
+	local note = issue.note
+	local spoken = issue.identifier .. ", " .. issue.title
+	if note ~= nil then
+		-- (Whether it is unread is its group's, said once.)
+		spoken = spoken .. ", " .. note_words(note)
+	end
+	local el = line(row.name(item.key), look):gap(10):label(spoken):selected(look.selected)
 	carries(el, issue)
 	el:child(check(item.key, look))
 	el:child(icons.priority(issue.priority))
@@ -225,7 +243,7 @@ function row.issue(item, look, o)
 	if look.working ~= nil then
 		el:child(agent(issue.id, look.working))
 	end
-	if o.labels then
+	if o.labels and note == nil then
 		for index, info in issue.labels do
 			if index > 3 then
 				break
@@ -233,7 +251,17 @@ function row.issue(item, look, o)
 			el:child(label(info))
 		end
 	end
-	if o.scope ~= "mine" and o.who then
+	if note ~= nil then
+		el:child(
+			b.div():w(o.noted and SIZE.note or SIZE.note_short):no_shrink():row():justify_end():child(
+				b.text(o.noted and note_words(note) or note.what)
+					:text_size(SIZE.small)
+					:color(note.unread and "foreground" or "dim")
+					:truncate()
+			)
+		)
+	end
+	if note == nil and o.scope ~= "mine" and o.who then
 		el:child(
 			b.div():w(SIZE.who):no_shrink():row():justify_end():child(
 				b.text(issue.assignee or ""):text_size(SIZE.tiny):color("dim"):truncate()

@@ -101,7 +101,7 @@ optional (`{}` asks for the list as it is). Params:
   to the person, the default), `"all"` (the issues of the workspace; asked for when it is shown),
   `"created"` (the issues the person made, by hand or through an integration, as Linear's My issues
   tab Created) and `"subscribed"` (the issues the person is subscribed to), each asked for when it is
-  shown, or one of `"team"` (the issues of a team), `"cycle"` (the issues of a cycle: the `id` of any
+  shown; `"inbox"` (the issues of the person's inbox in Linear, below); or one of `"team"` (the issues of a team), `"cycle"` (the issues of a cycle: the `id` of any
   cycle, the running one of a team is in the `catalog`),
   `"view"` (a saved view of issues), `"project"` (a project's issues) and `"label"` (the
   issues with a label), which take the `id` of what they are of (the ids the topic's `catalog` tells);
@@ -109,8 +109,19 @@ optional (`{}` asks for the list as it is). Params:
   and is what Linear finds for them in the whole workspace, up to 500. A list holds up to 500
   issues: every open one first, then the 100 done and canceled ones that changed last (where
   `filters` name states, as many of those as there is room for; a search, every state as Linear ranks
-  them); the groups of the closed ones begin folded. `mine`, `all`, `created` and `subscribed` take
-  no `id`. Only the list shown and My issues are asked for: going to another
+  them); the groups of the closed ones begin folded. `mine`, `all`, `created`, `subscribed` and
+  `inbox` take no `id`.
+
+  The **inbox** is what Linear's Inbox shows the person (`inboxNotifications`: one notification for each
+  thing that had activity, archived and snoozed ones left out), the first 50, asked for when it is shown
+  and at each refresh while it is: of those, the ones about an issue, one row for each issue (a second
+  of the same issue is one with the first: unread where either is, of the later day; one not about an
+  issue, a pull request's or a project's, is not told). Where Linear has more than 50, `counts.shownCut`
+  says so. Each row carries a `note` (below); the groups are `inbox:unread`
+  (`Unread`) and `inbox:read` (`Read`, folded at first where there are unread ones), in each the latest
+  first. `filters` do not
+  narrow it (Linear's inbox takes none: `view` keeps them for the other lists), the words of `filter`
+  do. Reading it changes nothing in Linear: an issue opened here is not marked read there. Only the list shown and My issues are asked for: going to another
   list lets go of the one left and asks Linear for the new one, and the topic tells it as `listing`
   `"loading"` until it comes. An `id` Linear does not know is not an error of the call: `listing` is `failed`
   and `error` has Linear's words. The old member `scope` is not taken.
@@ -819,8 +830,9 @@ the lists came, asking failed). The same value `view` answers with.
   (`{ "kind", "message" }`, the kinds of the errors above). With `loaded` the lists are the last that
   came, and an `error` says that the last asking failed.
 - `refreshing`: Linear is being asked now.
-- `scope` is the kind of the list shown (`mine`, `all`, `team`, `cycle`, `view`, `project`, `label` or
-  `search`) and `listId` its id (null for `mine` and `all`; the words, for a `search`).
+- `scope` is the kind of the list shown (`mine`, `all`, `created`, `subscribed`, `inbox`, `team`,
+  `cycle`, `view`, `project`, `label` or `search`) and `listId` its id (null for the person's lists, the
+  workspace's and the inbox; the words, for a `search`).
 - `filters`: what the lists are narrowed by in Linear, as `view` set it.
 - `listing`: whether the list shown has come: `ready`; `loading` (it is being asked for: `groups` is
   empty, and `counts.shown` is 0); or `failed` (Linear could not tell it: `error` says why, and
@@ -832,6 +844,15 @@ the lists came, asking failed). The same value `view` answers with.
   states; the 100 closed ones that changed last are not a cut), and for a search the first 500 Linear
   finds (it has no order of its own).
 - A row tells at most 10 labels of its issue (the first Linear gives); the 11th is not marked.
+- A row of the inbox has `note`: `{ "who": "Deniz", "what": "Mention", "unread": true }`. `who` is the
+  name of whoever caused it (a person, a bot or someone of an integration; null where Linear says no
+  one). `what` names what it is about, in words true of the whole of what Linear tells: by its type
+  where Linear documents it (`Created`, `Reopened`, `Due`, `Blocking`, `Unblocked`, `Urgent`, `SLA
+  breached`, `SLA at risk`, `Resolved`, `Triage`), else by its category (`Mention`, `Assignee`,
+  `Comment`, `Status`, `Reaction`, `Triage`, `Reminder`), else `Update`. `unread` is whether the person
+  has not read it in Linear. Its `updated` is the day of the notification, not of the issue, and it has
+  `state`, `{ "name": "In Progress", "kind": "started" }`, the state of its issue (in any other list
+  the group of a row is its state). A row of any other list has neither `note` nor `state`. `counts.shownOpen` is, for the inbox, how many of its rows are unread.
 - `catalog`: the lists the page can go to besides My issues and All issues, as Linear last said them.
   `loaded` is false until the first answer, and `error` says why one could not come (the lists of
   before stay). Each `item` has `key` (`kind:id`, what the page keeps it by), `kind` and `id` (what

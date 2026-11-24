@@ -94,6 +94,17 @@ fn the_page_is_read_in_its_states() {
     says(&mut page, "4 of 14");
     check("filter", &mut page);
 
+    // The inbox: the issues of the notifications, each line saying who, what, and whether it is unread.
+    let (_linear, _session, mut page) = open_lists(WIDE);
+    page.press("g").expect("g");
+    says(&mut page, "Your notifications");
+    page.advance(0.3).expect("a moment");
+    page.type_text("inbox").expect("the words");
+    page.press("enter").expect("enter");
+    says(&mut page, "Unread");
+    page.advance(0.3).expect("a moment");
+    check("inbox", &mut page);
+
     // The menu of a line, opened by a right press.
     let (_linear, _session, mut page) = open_lists(WIDE);
     page.right_click("row:i:issue-398").expect("a right press");

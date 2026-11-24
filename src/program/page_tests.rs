@@ -37,6 +37,7 @@ pub(crate) type Page = Headless<InProcess>;
 
 const MY_ISSUES: &str = include_str!("../../test/stand-in/my-issues.json");
 const MY_ISSUES_EMPTY: &str = include_str!("../../test/stand-in/my-issues-empty.json");
+const INBOX: &str = include_str!("../../test/stand-in/inbox.json");
 const ALL_ISSUES: &str = include_str!("../../test/stand-in/all-issues.json");
 const TEAM_ISSUES: &str = include_str!("../../test/stand-in/team-issues.json");
 const TEAM_ISSUES_BIG: &str = include_str!("../../test/stand-in/team-issues-big.json");
@@ -150,6 +151,8 @@ pub(crate) struct Canned {
     /// Linear answers no `FilterOptions` (until it is let go), and then refuses it.
     filter_options_hold: Mutex<bool>,
     filter_options_refused: Mutex<bool>,
+    /// What the inbox answers, where a test made it other than the fixture's.
+    inbox: Mutex<Option<String>>,
     /// Whether `Issue` is held (after it is written down) until a test lets it go.
     issue_holds: Mutex<bool>,
 }
@@ -223,6 +226,7 @@ impl Canned {
             changes_hold: Mutex::new(false),
             filter_options_hold: Mutex::new(false),
             filter_options_refused: Mutex::new(false),
+            inbox: Mutex::new(None),
             issue_holds: Mutex::new(false),
         })
     }
@@ -251,6 +255,40 @@ impl Canned {
 
     /// From now on `Issue` tells the issue `id` with `extra` (the members of an object) over what the
     /// fixture says: its parent, its parts, what it is tied to.
+    /// From now on the inbox is the fixture's changed by `change`.
+    fn set_inbox(&self, change: impl FnOnce(&mut serde_json::Value)) {
+        let mut value: serde_json::Value = serde_json::from_str(INBOX).unwrap();
+        change(&mut value);
+        *self.inbox.lock().unwrap() = Some(value.to_string());
+    }
+
+    /// From now on the inbox is empty.
+    pub(crate) fn empty_inbox(&self) {
+        self.set_inbox(|value| {
+            value["data"]["inboxNotifications"]["nodes"] = serde_json::json!([])
+        });
+    }
+
+    /// From now on every notification of the inbox was read.
+    pub(crate) fn read_inbox(&self) {
+        self.set_inbox(|value| {
+            for node in value["data"]["inboxNotifications"]["nodes"]
+                .as_array_mut()
+                .unwrap()
+            {
+                node["readAt"] = "2026-11-10T12:00:00.000Z".into();
+            }
+        });
+    }
+
+    /// From now on Linear refuses the question of the inbox, in its own words.
+    pub(crate) fn refuse_inbox(&self) {
+        *self.inbox.lock().unwrap() = Some(
+            r#"{"errors":[{"message":"Inbox notifications are not available to this key"}]}"#
+                .to_owned(),
+        );
+    }
+
     pub(crate) fn set_detail(&self, id: &str, extra: serde_json::Value) {
         self.details.lock().unwrap().insert(id.to_owned(), extra);
     }
@@ -992,6 +1030,7 @@ impl Transport for Canned {
             "SearchIssues",
             "FilterOptions",
             "FileUpload",
+            "Inbox",
             "Issue",
         ]
         .into_iter()
@@ -1061,6 +1100,10 @@ impl Transport for Canned {
                     reply(200, &big_all_page(page))
                 }
                 "SearchIssues" => reply(200, SEARCH_ISSUES),
+                "Inbox" => match self.inbox.lock().unwrap().clone() {
+                    Some(text) => reply(200, &text),
+                    None => reply(200, INBOX),
+                },
                 "FilterOptions" => {
                     // (Held for the most of half a minute: a test that forgets to let go is not left
                     // waiting.)
@@ -6422,11 +6465,18 @@ fn the_list_button_says_which_list_and_how_many_and_opens_the_card_of_lists() {
 
 /// The card of lists, open (`g`), with the names of the other lists in it.
 fn open_card_of_lists(page: &mut Page) {
-    page.press("g").expect("g");
+    // (The names have come where the key of the first favorite can be pressed, before the card is open:
+    // in a card too short to show the favorites, as in an 80 by 24 pane, their lines are not drawn.)
     page.wait_for(WITHIN, |page| {
-        page.says("Assigned to you") && page.says("Bug bash, November")
+        page.outline()
+            .commands
+            .iter()
+            .any(|command| command.title == "Go to the first favorite" && command.enabled)
     })
-    .unwrap_or_else(|why| panic!("the card of lists with the names: {why:?}: {}", said(page)));
+    .unwrap_or_else(|why| panic!("the names come: {why:?}: {}", said(page)));
+    page.press("g").expect("g");
+    page.wait_for(WITHIN, |page| page.says("Assigned to you"))
+        .unwrap_or_else(|why| panic!("the card of lists: {why:?}: {}", said(page)));
     // (A card put away in the frame it came in loses the next key, which is the kit's; it is at rest.)
     page.advance(0.3).expect("the card comes to rest");
 }
@@ -6493,6 +6543,172 @@ fn an_issue_made_while_the_issues_the_person_made_are_shown_is_in_them_under_the
     );
     cursor_on(&mut page, "ACM-900");
     list_button_says(&mut page, "Created by me");
+}
+
+/// Goes to the inbox by the card of lists.
+fn go_to_inbox(page: &mut Page) {
+    open_card_of_lists(page);
+    page.type_text("inbox").expect("the words");
+    page.press("enter").expect("enter");
+    list_button_says(page, "Inbox");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_inbox_is_the_issues_of_the_notifications_unread_first_each_with_who_and_what() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    go_to_inbox(&mut page);
+    page.wait_for(WITHIN, |page| page.says("Unread"))
+        .unwrap_or_else(|why| panic!("the inbox comes: {why:?}: {}", said(&page)));
+    // The button counts the unread (and no more: that Linear has more of the inbox, read ones, is said at
+    // its end); asked once, of the first fifty, with no filter.
+    let button = page.words_in("lists");
+    assert!(
+        button.contains(&"4".to_owned()) && !button.iter().any(|word| word.contains('+')),
+        "{button:?}"
+    );
+    assert!(
+        page.says("The latest of your inbox. The rest of it is in Linear."),
+        "{}",
+        said(&page)
+    );
+    assert_eq!(
+        linear.variables_of("Inbox"),
+        [serde_json::json!({ "first": 50 })]
+    );
+    // Unread, the latest first: one row for an issue with two notifications; a pull request's and a
+    // project's are not there. The read ones are folded.
+    let ys: Vec<f32> = ["issue-412", "issue-405", "issue-398", "issue-420"]
+        .iter()
+        .map(|id| {
+            page.bounds(&format!("row:i:{id}"))
+                .unwrap_or_else(|| panic!("{id}: {}", said(&page)))
+                .y
+        })
+        .collect();
+    assert!(ys.windows(2).all(|pair| pair[0] < pair[1]), "{ys:?}");
+    assert!(page.says("Read"), "{}", said(&page));
+    assert!(page.bounds("row:i:issue-377").is_none(), "{}", said(&page));
+    // Who and what, as words.
+    assert!(
+        page.words_in("row:i:issue-412")
+            .contains(&"Deniz \u{b7} Mention".to_owned())
+    );
+    assert!(
+        page.words_in("row:i:issue-405")
+            .contains(&"Codex \u{b7} Assignee".to_owned())
+    );
+    assert!(
+        page.words_in("row:i:issue-398")
+            .contains(&"Mert \u{b7} Comment".to_owned())
+    );
+    // The issue opens beside it, as from any list, in its own state (not its group's, Unread).
+    page.press("enter").expect("enter");
+    page.wait_for(WITHIN, |page| page.says("API key"))
+        .unwrap_or_else(|why| panic!("the issue opens: {why:?}: {}", said(&page)));
+    let state = page.words_in("panel-value:state");
+    assert!(state.contains(&"In Progress".to_owned()), "{state:?}");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_inbox_takes_no_filter_and_the_filters_of_the_other_lists_wait_for_them() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    page.advance(0.3).expect("a moment");
+    page.press("f").expect("f");
+    page.wait_for(WITHIN, |page| pressable(page, "filters:priority"))
+        .unwrap_or_else(|why| panic!("the row opens: {why:?}: {}", said(&page)));
+    page.advance(0.3).expect("the row is open");
+    pick_filter(&mut page, "priority", "High");
+    page.press("escape").expect("the row is put away");
+    page.wait_for(WITHIN, |page| page.bounds("filters:priority").is_some())
+        .unwrap_or_else(|why| panic!("the chip: {why:?}: {}", said(&page)));
+    go_to_inbox(&mut page);
+    page.wait_for(WITHIN, |page| page.says("Unread"))
+        .unwrap_or_else(|why| panic!("the inbox comes: {why:?}: {}", said(&page)));
+    // No row of chips, and neither `f` nor `Shift F` does a thing.
+    assert!(page.bounds("filters:priority").is_none(), "{}", said(&page));
+    page.press("f").expect("f");
+    page.press("shift+f").expect("shift and f");
+    page.advance(0.3).expect("a moment");
+    assert!(page.bounds("filters:status").is_none(), "{}", said(&page));
+    assert_eq!(
+        linear.variables_of("Inbox"),
+        [serde_json::json!({ "first": 50 })]
+    );
+    // Back in My issues, the filter is as it was.
+    page.press("1").expect("1");
+    list_button_says(&mut page, "My issues");
+    page.wait_for(WITHIN, |page| page.bounds("filters:priority").is_some())
+        .unwrap_or_else(|why| panic!("the filter is still on: {why:?}: {}", said(&page)));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_read_of_the_inbox_open_to_their_notes_and_with_nothing_unread_they_are_open_at_once() {
+    let (_linear, _session, mut page) = open_lists(WIDE);
+    go_to_inbox(&mut page);
+    page.wait_for(WITHIN, |page| page.says("Unread"))
+        .unwrap_or_else(|why| panic!("the inbox comes: {why:?}: {}", said(&page)));
+    page.click("row:g:inbox:read")
+        .expect("the head of the read");
+    page.wait_for(WITHIN, |page| page.bounds("row:i:issue-377").is_some())
+        .unwrap_or_else(|why| panic!("the read open: {why:?}: {}", said(&page)));
+    assert!(
+        page.words_in("row:i:issue-377")
+            .contains(&"Deniz \u{b7} Status".to_owned())
+    );
+    // No one caused it, and Linear's category is one of later: what it is about is an update.
+    assert!(
+        page.words_in("row:i:issue-389")
+            .contains(&"Update".to_owned())
+    );
+    // An inbox with nothing unread shows its read ones at once.
+    let (linear, _session, mut page) = open_lists(WIDE);
+    linear.read_inbox();
+    go_to_inbox(&mut page);
+    page.wait_for(WITHIN, |page| page.bounds("row:i:issue-412").is_some())
+        .unwrap_or_else(|why| panic!("the read are open: {why:?}: {}", said(&page)));
+    assert!(!page.says("Unread"), "{}", said(&page));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn work_on_an_issue_of_the_inbox_that_has_not_begun_offers_to_move_it() {
+    let (_linear, _rig, mut page) = open_machine(WIDE, true, &["claude"]);
+    go_to_inbox(&mut page);
+    page.wait_for(WITHIN, |page| page.says("Unread"))
+        .unwrap_or_else(|why| panic!("the inbox comes: {why:?}: {}", said(&page)));
+    // ACM-420 is in Todo, in the group of the unread: its state is its own, not its group's.
+    go_down_to(&mut page, "ACM-420");
+    open_form_with_status(&mut page, true);
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn an_inbox_linear_will_not_tell_says_so_in_its_place_and_my_issues_are_there() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    linear.refuse_inbox();
+    go_to_inbox(&mut page);
+    page.wait_for(WITHIN, |page| {
+        page.says("Inbox notifications are not available")
+    })
+    .unwrap_or_else(|why| panic!("Linear's words: {why:?}: {}", said(&page)));
+    list_button_says(&mut page, "Inbox");
+    page.press("1").expect("1");
+    list_button_says(&mut page, "My issues");
+    page.wait_for(WITHIN, |page| page.says("ACM-412"))
+        .unwrap_or_else(|why| panic!("my issues: {why:?}: {}", said(&page)));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn an_empty_inbox_says_it_is_empty() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    linear.empty_inbox();
+    go_to_inbox(&mut page);
+    page.wait_for(WITHIN, |page| page.says("Your inbox is empty"))
+        .unwrap_or_else(|why| panic!("it says so: {why:?}: {}", said(&page)));
 }
 
 /// Waits until the button of the lists says `name`.
@@ -7099,9 +7315,9 @@ fn in_an_80_by_24_pane_the_card_of_lists_and_the_palette_stay_inside_it_with_the
     for words in ["Enter", "Close", "Assigned to you", "Agent-ready"] {
         assert!(page.says(words), "{words}: {}", said(&page));
     }
-    // The last list is reached by the arrows, and Enter goes to it (four lists of the person's and the
-    // workspace's come first).
-    for _ in 0..18 {
+    // The last list is reached by the arrows, and Enter goes to it (five lists of the person's, the
+    // workspace's and the inbox are among them).
+    for _ in 0..19 {
         page.press("down").expect("down");
     }
     page.press("enter").expect("enter");

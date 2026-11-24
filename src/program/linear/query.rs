@@ -243,6 +243,21 @@ pub const ISSUE: Operation = Operation {
     ),
 };
 
+/// The person's inbox: the first notifications Linear's Inbox shows them, what each is about, and the
+/// issue of each that is about one (as a row of a list has it).
+pub const INBOX: Operation = Operation {
+    name: "Inbox",
+    text: concat!(
+        "query Inbox($first: Int!) { viewer { ",
+        viewer_fields!(),
+        " } inboxNotifications(first: $first) { nodes { type category readAt createdAt \
+         actor { displayName } botActor { name } externalUserActor { name } \
+         ... on IssueNotification { issue { ",
+        issue_fields!(),
+        " } } } pageInfo { hasNextPage } } }"
+    ),
+};
+
 /// The teams an issue can be made in.
 pub const NEW_ISSUE_TEAMS: Operation = Operation {
     name: "NewIssueTeams",
@@ -336,11 +351,12 @@ pub const FILE_UPLOAD: Operation = Operation {
 
 /// Every operation there is, for the test that scans for a `mutation`.
 #[cfg(test)]
-pub const ALL: [Operation; 23] = [
+pub const ALL: [Operation; 24] = [
     VERIFY,
     MY_ISSUES,
     ALL_ISSUES,
     SEARCH_ISSUES,
+    INBOX,
     TEAM_ISSUES,
     CYCLE_ISSUES,
     VIEW_ISSUES,

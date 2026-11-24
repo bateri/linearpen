@@ -15,13 +15,14 @@ local lists = {}
 local L = { open = false, state = nil, serial = 0, built = nil, version = nil, items = nil }
 lists.state = L
 
--- The lists every workspace has: the person's in three ways (as Linear's My issues has them), and the
--- workspace's.
+-- The lists every workspace has: the person's issues, the workspace's and the inbox first; the
+-- person's in the two other ways Linear's My issues has them after the favorites (`AFTER`).
 local OWN = {
 	{ key = "mine", title = "My issues", hint = "Assigned to you", keys = "1", list = { kind = "mine" } },
 	{ key = "all", title = "All issues", hint = "The workspace", keys = "2", list = { kind = "all" } },
-	{ key = "created", title = "Created by me", hint = "Made by you", list = { kind = "created" } },
-	{ key = "subscribed", title = "Subscribed", hint = "You follow them", list = { kind = "subscribed" } },
+	{ key = "inbox", title = "Inbox", hint = "Your notifications", list = { kind = "inbox" } },
+	{ key = "created", title = "Created by me", hint = "Made by you", list = { kind = "created" }, after = true },
+	{ key = "subscribed", title = "Subscribed", hint = "You follow them", list = { kind = "subscribed" }, after = true },
 }
 
 -- What a list of the program's says of what it is.
@@ -56,12 +57,27 @@ local function items()
 	end
 	local out, keys = {}, {}
 	for _, own in OWN do
-		out[#out + 1] = own
-		keys[#keys + 1] = own.key
+		if not own.after then
+			out[#out + 1] = own
+			keys[#keys + 1] = own.key
+		end
+	end
+	local placed = false
+	local function after()
+		placed = true
+		for _, own in OWN do
+			if own.after then
+				out[#out + 1] = own
+				keys[#keys + 1] = own.key
+			end
+		end
 	end
 	local number = 3
 	if catalog ~= nil then
 		for _, item in catalog.items or {} do
+			if not placed and item.section ~= "favorite" then
+				after()
+			end
 			local entry = {
 				key = item.key,
 				title = item.title,
@@ -76,6 +92,9 @@ local function items()
 			-- (A view that was renamed, or a cycle whose end moved, is the same list with other words.)
 			keys[#keys + 1] = item.key .. "\n" .. item.title .. "\n" .. (entry.hint or "") .. "\n" .. (entry.keys or "")
 		end
+		if not placed then
+			after()
+		end
 		-- Where the names have not come, or could not be asked for, the card says so in a line that
 		-- goes nowhere.
 		if not catalog.loaded then
@@ -88,6 +107,9 @@ local function items()
 			}
 			keys[#keys + 1] = "names:note"
 		end
+	end
+	if not placed then
+		after()
 	end
 	local version = table.concat(keys, "|")
 	-- (The same lists keep the same items, so that the search is not made again at every push.)

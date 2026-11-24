@@ -218,7 +218,7 @@ function panel.show(item)
 		title = row.title,
 		priority = row.priority,
 		labels = row.labels,
-		state = { name = item.group.name, kind = item.group.kind },
+		state = list.state_of(item),
 		late = false,
 	}
 	bring(row.id)
@@ -449,7 +449,7 @@ function panel.info()
 			title = row.title,
 			priority = row.priority,
 			labels = row.labels,
-			state = { id = row.stateId, name = item.group.name, kind = item.group.kind },
+			state = { id = row.stateId, name = list.state_of(item).name, kind = list.state_of(item).kind },
 			teamId = row.teamId,
 			assigneeId = row.assigneeId,
 			projectId = row.projectId,

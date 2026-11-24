@@ -1,0 +1,384 @@
+{
+ "data": {
+  "viewer": {
+   "id": "user-1",
+   "name": "Ada",
+   "organization": {
+    "name": "Acme",
+    "urlKey": "acme"
+   }
+  },
+  "inboxNotifications": {
+   "nodes": [
+    {
+     "type": "issueMention",
+     "category": "mentions",
+     "readAt": null,
+     "createdAt": "2026-11-10T09:12:00.000Z",
+     "actor": {
+      "displayName": "Deniz"
+     },
+     "botActor": null,
+     "externalUserActor": null,
+     "issue": {
+      "id": "issue-412",
+      "identifier": "ACM-412",
+      "title": "Add rate limiting to the public API",
+      "priority": 2.0,
+      "updatedAt": "2026-11-09T14:20:00.000Z",
+      "url": "https://linear.app/acme/issue/ACM-412/add-rate-limiting-to-the-public-api",
+      "branchName": "ada/acm-412-add-rate-limiting-to-the-public-api",
+      "state": {
+       "id": "s-prog",
+       "name": "In Progress",
+       "type": "started",
+       "position": 2.0
+      },
+      "labels": {
+       "nodes": [
+        {
+         "id": "l-api",
+         "name": "api",
+         "color": "#3e63dd"
+        }
+       ]
+      },
+      "team": {
+       "id": "team-acm",
+       "key": "ACM"
+      },
+      "cycle": {
+       "id": "c-12",
+       "number": 12
+      },
+      "project": null,
+      "assignee": {
+       "id": "u-ada",
+       "displayName": "Ada",
+       "isMe": true
+      }
+     }
+    },
+    {
+     "type": "pullRequestReviewRequested",
+     "category": "reviews",
+     "readAt": null,
+     "createdAt": "2026-11-10T08:40:00.000Z",
+     "actor": {
+      "displayName": "Mert"
+     },
+     "botActor": null,
+     "externalUserActor": null
+    },
+    {
+     "type": "issueAssignedToYou",
+     "category": "assignments",
+     "readAt": null,
+     "createdAt": "2026-11-10T08:05:00.000Z",
+     "actor": null,
+     "botActor": {
+      "name": "Codex"
+     },
+     "externalUserActor": null,
+     "issue": {
+      "id": "issue-405",
+      "identifier": "ACM-405",
+      "title": "Webhook retries ignore the backoff setting",
+      "priority": 2.0,
+      "updatedAt": "2026-11-06T14:20:00.000Z",
+      "url": "https://linear.app/acme/issue/ACM-405/webhook-retries-ignore-the-backoff-setting",
+      "branchName": "ada/acm-405-webhook-retries-ignore-the-backoff-setti",
+      "state": {
+       "id": "s-prog",
+       "name": "In Progress",
+       "type": "started",
+       "position": 2.0
+      },
+      "labels": {
+       "nodes": [
+        {
+         "id": "l-bug",
+         "name": "bug",
+         "color": "#e5484d"
+        },
+        {
+         "id": "l-api",
+         "name": "api",
+         "color": "#3e63dd"
+        }
+       ]
+      },
+      "team": {
+       "id": "team-acm",
+       "key": "ACM"
+      },
+      "cycle": {
+       "id": "c-12",
+       "number": 12
+      },
+      "project": null,
+      "assignee": {
+       "id": "u-ada",
+       "displayName": "Ada",
+       "isMe": true
+      }
+     }
+    },
+    {
+     "type": "issueNewComment",
+     "category": "commentsAndReplies",
+     "readAt": null,
+     "createdAt": "2026-11-09T17:30:00.000Z",
+     "actor": {
+      "displayName": "Mert"
+     },
+     "botActor": null,
+     "externalUserActor": null,
+     "issue": {
+      "id": "issue-398",
+      "identifier": "ACM-398",
+      "title": "Checkout test fails one run in ten",
+      "priority": 1.0,
+      "updatedAt": "2026-11-09T13:50:00.000Z",
+      "url": "https://linear.app/acme/issue/ACM-398/checkout-test-fails-one-run-in-ten",
+      "branchName": "ada/acm-398-checkout-test-fails-one-run-in-ten",
+      "state": {
+       "id": "s-prog",
+       "name": "In Progress",
+       "type": "started",
+       "position": 2.0
+      },
+      "labels": {
+       "nodes": [
+        {
+         "id": "l-bug",
+         "name": "bug",
+         "color": "#e5484d"
+        }
+       ]
+      },
+      "team": {
+       "id": "team-acm",
+       "key": "ACM"
+      },
+      "cycle": {
+       "id": "c-12",
+       "number": 12
+      },
+      "project": null,
+      "assignee": {
+       "id": "u-ada",
+       "displayName": "Ada",
+       "isMe": true
+      }
+     }
+    },
+    {
+     "type": "issueSubscribed",
+     "category": "subscriptions",
+     "readAt": null,
+     "createdAt": "2026-11-09T10:00:00.000Z",
+     "actor": {
+      "displayName": "Ada"
+     },
+     "botActor": null,
+     "externalUserActor": null,
+     "issue": {
+      "id": "issue-420",
+      "identifier": "ACM-420",
+      "title": "Invoice PDF cuts long company names",
+      "priority": 3.0,
+      "updatedAt": "2026-11-10T14:20:00.000Z",
+      "url": "https://linear.app/acme/issue/ACM-420/invoice-pdf-cuts-long-company-names",
+      "branchName": "ada/acm-420-invoice-pdf-cuts-long-company-names",
+      "state": {
+       "id": "s-todo",
+       "name": "Todo",
+       "type": "unstarted",
+       "position": 1.0
+      },
+      "labels": {
+       "nodes": [
+        {
+         "id": "l-bug",
+         "name": "bug",
+         "color": "#e5484d"
+        }
+       ]
+      },
+      "team": {
+       "id": "team-acm",
+       "key": "ACM"
+      },
+      "cycle": null,
+      "project": null,
+      "assignee": {
+       "id": "u-ada",
+       "displayName": "Ada",
+       "isMe": true
+      }
+     }
+    },
+    {
+     "type": "projectUpdateCreated",
+     "category": "postsAndUpdates",
+     "readAt": null,
+     "createdAt": "2026-11-09T12:00:00.000Z",
+     "actor": {
+      "displayName": "Deniz"
+     },
+     "botActor": null,
+     "externalUserActor": null
+    },
+    {
+     "type": "issueStatusChanged",
+     "category": "statusChanges",
+     "readAt": "2026-11-08T10:00:00.000Z",
+     "createdAt": "2026-11-08T09:00:00.000Z",
+     "actor": {
+      "displayName": "Deniz"
+     },
+     "botActor": null,
+     "externalUserActor": null,
+     "issue": {
+      "id": "issue-377",
+      "identifier": "ACM-377",
+      "title": "Write the 3.0 migration guide",
+      "priority": 3.0,
+      "updatedAt": "2026-11-05T14:20:00.000Z",
+      "url": "https://linear.app/acme/issue/ACM-377/write-the-3.0-migration-guide",
+      "branchName": "ada/acm-377-write-the-3.0-migration-guide",
+      "state": {
+       "id": "s-prog",
+       "name": "In Progress",
+       "type": "started",
+       "position": 2.0
+      },
+      "labels": {
+       "nodes": [
+        {
+         "id": "l-docs",
+         "name": "docs",
+         "color": "#05a2c2"
+        }
+       ]
+      },
+      "team": {
+       "id": "team-acm",
+       "key": "ACM"
+      },
+      "cycle": {
+       "id": "c-12",
+       "number": 12
+      },
+      "project": null,
+      "assignee": {
+       "id": "u-ada",
+       "displayName": "Ada",
+       "isMe": true
+      }
+     }
+    },
+    {
+     "type": "issueNewComment",
+     "category": "commentsAndReplies",
+     "readAt": "2026-11-07T10:00:00.000Z",
+     "createdAt": "2026-11-07T09:00:00.000Z",
+     "actor": {
+      "displayName": "Deniz"
+     },
+     "botActor": null,
+     "externalUserActor": null,
+     "issue": {
+      "id": "issue-412",
+      "identifier": "ACM-412",
+      "title": "Add rate limiting to the public API",
+      "priority": 2.0,
+      "updatedAt": "2026-11-09T14:20:00.000Z",
+      "url": "https://linear.app/acme/issue/ACM-412/add-rate-limiting-to-the-public-api",
+      "branchName": "ada/acm-412-add-rate-limiting-to-the-public-api",
+      "state": {
+       "id": "s-prog",
+       "name": "In Progress",
+       "type": "started",
+       "position": 2.0
+      },
+      "labels": {
+       "nodes": [
+        {
+         "id": "l-api",
+         "name": "api",
+         "color": "#3e63dd"
+        }
+       ]
+      },
+      "team": {
+       "id": "team-acm",
+       "key": "ACM"
+      },
+      "cycle": {
+       "id": "c-12",
+       "number": 12
+      },
+      "project": null,
+      "assignee": {
+       "id": "u-ada",
+       "displayName": "Ada",
+       "isMe": true
+      }
+     }
+    },
+    {
+     "type": "issueSomethingNew",
+     "category": "somethingNew",
+     "readAt": "2026-11-06T10:00:00.000Z",
+     "createdAt": "2026-11-06T09:00:00.000Z",
+     "actor": null,
+     "botActor": null,
+     "externalUserActor": null,
+     "issue": {
+      "id": "issue-389",
+      "identifier": "ACM-389",
+      "title": "Cache the pricing table at the edge",
+      "priority": 3.0,
+      "updatedAt": "2026-11-08T14:20:00.000Z",
+      "url": "https://linear.app/acme/issue/ACM-389/cache-the-pricing-table-at-the-edge",
+      "branchName": "ada/acm-389-cache-the-pricing-table-at-the-edge",
+      "state": {
+       "id": "s-review",
+       "name": "In Review",
+       "type": "started",
+       "position": 3.0
+      },
+      "labels": {
+       "nodes": [
+        {
+         "id": "l-perf",
+         "name": "perf",
+         "color": "#ffc53d"
+        }
+       ]
+      },
+      "team": {
+       "id": "team-acm",
+       "key": "ACM"
+      },
+      "cycle": {
+       "id": "c-12",
+       "number": 12
+      },
+      "project": null,
+      "assignee": {
+       "id": "u-ada",
+       "displayName": "Ada",
+       "isMe": true
+      }
+     }
+    }
+   ],
+   "pageInfo": {
+    "hasNextPage": true
+   }
+  }
+ }
+}

@@ -141,7 +141,8 @@ local function count_words(snapshot)
 		return nil
 	end
 	local count = S.scope == "search" and counts.shown or counts.shownOpen
-	return tostring(count) .. (counts.shownCut and "+" or "")
+	-- (The inbox counts its unread: that Linear has more of it, read ones, is said at its end.)
+	return tostring(count) .. ((counts.shownCut and S.scope ~= "inbox") and "+" or "")
 end
 
 -- The most of a list's name the button shows; a longer one is cut with the kit's mark.

@@ -6,6 +6,9 @@
 
 - **Size the issue.** Drag the edge between the list and the issue (or press `Cmd Shift Left` and
   `Cmd Shift Right`) to make the issue wider or narrower. linearpen opens it as wide the next time.
+- **Inbox.** Your Linear inbox is a list of the card of lists (`g`): the issues of your notifications,
+  the unread ones first, each saying who and what it is about (`Deniz · Mention`). Open one beside it,
+  change it or work on it as from any list. Reading it here marks nothing read in Linear.
 - **The pull request of an issue.** An issue with a pull request of GitHub linked to it shows it under
   the issues round it, by its number and its title: press it (or `Shift G`) to open it in your browser.
 - **Created by me and Subscribed.** Two more lists in the card of lists (`g`), as Linear's My issues

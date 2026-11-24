@@ -75,8 +75,9 @@ function filters.is_open()
 end
 
 -- Whether the row is on the page: open, or there is something set, or a picker of it is open.
+-- (Not in the inbox: Linear's inbox takes no filter, and what the other lists are narrowed by stays theirs.)
 function filters.visible()
-	return F.open or F.picking ~= nil or filters.any()
+	return S.scope ~= "inbox" and (F.open or F.picking ~= nil or filters.any())
 end
 
 -- The name of the chip of `kind`.

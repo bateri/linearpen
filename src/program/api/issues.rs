@@ -2,7 +2,7 @@
 //! made from the lists the session holds, as the topic `issues` and the answer of `view`, and the
 //! names of the lists a person can go to.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -10,6 +10,7 @@ use std::time::Duration;
 use pencere::{Options, ViewError};
 use serde::Serialize;
 
+use crate::linear::inbox::Note;
 use crate::linear::{Entry, Filters, Issue, Listing, Scope, plain};
 use crate::model::filter::Filter;
 use crate::model::groups::{Group, group};
@@ -58,6 +59,25 @@ pub struct RowMessage {
     pub assignee: Option<String>,
     #[serde(flatten)]
     pub ids: Ids,
+    /// For a row of the inbox: who caused its notification, what it is about, and whether it is unread.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<NoteMessage>,
+    /// For a row of the inbox, the state of its issue: its group is not its state.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state: Option<RowState>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RowState {
+    pub name: String,
+    pub kind: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+pub struct NoteMessage {
+    pub who: Option<String>,
+    pub what: &'static str,
+    pub unread: bool,
 }
 
 pub fn ids(issue: &Issue) -> Ids {
@@ -253,6 +273,12 @@ pub fn branch_name(issue: &Issue) -> Option<String> {
 }
 
 fn row(issue: &Issue, scope: &Scope) -> RowMessage {
+    row_noted(issue, scope, None)
+}
+
+/// A row, with the note of its notification where it is one of the inbox: the day it says is then the
+/// notification's.
+fn row_noted(issue: &Issue, scope: &Scope, note: Option<&Note>) -> RowMessage {
     RowMessage {
         id: issue.id.clone(),
         identifier: issue.identifier.clone(),
@@ -260,7 +286,7 @@ fn row(issue: &Issue, scope: &Scope) -> RowMessage {
         url: plain(&issue.url),
         branch_name: branch_name(issue),
         priority: issue.priority.name(),
-        updated: short_date(&issue.updated_at),
+        updated: short_date(note.map_or(&issue.updated_at, |note| &note.at)),
         labels: labels(issue),
         // Whose it is is said where the list is not the person's own.
         assignee: match (scope, &issue.assignee) {
@@ -269,7 +295,66 @@ fn row(issue: &Issue, scope: &Scope) -> RowMessage {
             (_, Some(who)) => Some(who.display_name.clone()),
         },
         ids: ids(issue),
+        note: note.map(|note| NoteMessage {
+            who: note.who.clone(),
+            what: note.what,
+            unread: note.unread,
+        }),
+        state: note.map(|_| RowState {
+            name: issue.state.name.clone(),
+            kind: issue.state.kind.name(),
+        }),
     }
+}
+
+/// The groups of the inbox: its unread issues, then the read ones (folded at first), in each the latest
+/// notification first; the filter's words narrow them as any list's. How many the filter let through.
+fn inbox_groups(
+    listing: &Listing,
+    filter: &Filter,
+    closed: &HashMap<String, bool>,
+) -> (Vec<GroupMessage>, usize) {
+    let mut groups = Vec::new();
+    let mut matched = 0;
+    for (key, name, unread, kind) in [
+        ("inbox:unread", "Unread", true, "unread"),
+        ("inbox:read", "Read", false, "read"),
+    ] {
+        let mut found: Vec<(&Issue, &Note)> = listing
+            .issues
+            .iter()
+            .filter(|issue| filter.matches(issue))
+            .filter_map(|issue| Some((issue, listing.notes.get(&issue.id)?)))
+            .filter(|(_, note)| note.unread == unread)
+            .collect();
+        if found.is_empty() {
+            continue;
+        }
+        found.sort_by(|(a, x), (b, y)| {
+            y.at.cmp(&x.at)
+                .then_with(|| a.identifier.cmp(&b.identifier))
+        });
+        // (The read ones are folded at first where there are unread ones to read.)
+        let any_unread = listing.notes.values().any(|note| note.unread);
+        let folded = filter.is_empty() && closed.get(key).copied().unwrap_or(!unread && any_unread);
+        matched += found.len();
+        groups.push(GroupMessage {
+            key: key.to_owned(),
+            name: name.to_owned(),
+            kind,
+            count: found.len(),
+            closed: folded,
+            rows: if folded {
+                Vec::new()
+            } else {
+                found
+                    .into_iter()
+                    .map(|(issue, note)| row_noted(issue, &Scope::Inbox, Some(note)))
+                    .collect()
+            },
+        });
+    }
+    (groups, matched)
 }
 
 /// The key of a group, which the page names it by when it folds it.
@@ -292,7 +377,9 @@ pub fn snapshot(state: &State) -> Snapshot {
         .lists
         .as_ref()
         .and_then(|lists| lists.of(scope, &state.view.filters));
-    if let Some(listing) = held {
+    if let Some(listing) = held.filter(|_| *scope == Scope::Inbox) {
+        (groups, matched) = inbox_groups(listing, &filter, &state.view.closed);
+    } else if let Some(listing) = held {
         for found in group(&listing.issues, &filter) {
             let key = key_of(&found);
             // A filter shows what it finds: no group is folded over a match.
@@ -331,7 +418,14 @@ pub fn snapshot(state: &State) -> Snapshot {
             mine_cut: lists.mine.truncated,
             shown: held.map_or(0, |listing| listing.issues.len()),
             shown_cut: held.is_some_and(|listing| listing.truncated),
-            shown_open: held.map_or(0, Listing::open),
+            // (For the inbox, the unread ones.)
+            shown_open: held.map_or(0, |listing| {
+                if *scope == Scope::Inbox {
+                    listing.notes.values().filter(|note| note.unread).count()
+                } else {
+                    listing.open()
+                }
+            }),
         },
     );
     // The list the page looks at: here, or on its way, or one Linear could not tell.

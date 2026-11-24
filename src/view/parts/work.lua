@@ -123,7 +123,7 @@ function work.moving()
 		local item = list.item(id)
 		local team, kind
 		if item ~= nil then
-			team, kind = item.row.teamId, item.group.kind
+			team, kind = item.row.teamId, list.state_of(item).kind
 		elseif W.row ~= nil then
 			team, kind = W.row.teamId, W.row.kind
 		end
@@ -157,7 +157,7 @@ local function status_known()
 		local item = list.item(id)
 		local team, kind
 		if item ~= nil then
-			team, kind = item.row.teamId, item.group.kind
+			team, kind = item.row.teamId, list.state_of(item).kind
 		elseif W.row ~= nil then
 			team, kind = W.row.teamId, W.row.kind
 		end

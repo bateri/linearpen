@@ -207,6 +207,7 @@ mod tests {
         let all = Listing {
             issues: vec![a, b],
             truncated: false,
+            notes: Default::default(),
         };
         let viewer = viewer();
         let text = Summary {
@@ -257,6 +258,7 @@ a note
         let listing = Listing {
             issues: vec![issue("A-1", "t", "Todo", "unstarted", 0.0, "2026-11-01")],
             truncated: true,
+            notes: Default::default(),
         };
         let viewer = viewer();
         let text = Summary {
@@ -287,10 +289,12 @@ a note
         let mine = Listing {
             issues: vec![a],
             truncated: false,
+            notes: Default::default(),
         };
         let all = Listing {
             issues: Vec::new(),
             truncated: false,
+            notes: Default::default(),
         };
         let text = Summary {
             viewer: &viewer(),

@@ -126,6 +126,14 @@ function icons.person()
 	}):no_shrink()
 end
 
+-- The head of a group of the inbox: a dot for the unread, a ring for the read.
+function icons.inbox(unread)
+	if unread then
+		return canvas({ b.path():circle(7, 7, 3.5):fill("accent") }):no_shrink()
+	end
+	return canvas({ b.path():circle(7, 7, 3.5):stroke(1.4, b.alpha("foreground", 0.45)) }):no_shrink()
+end
+
 -- A pull request: two commits on a line, and the line of the branch that comes back to it, its arrow
 -- at the end (Tabler's git-pull-request, drawn at this size).
 function icons.pull_request(color)

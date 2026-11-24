@@ -59,6 +59,15 @@ local function neighbour(old_items, old_at, key, at)
 	return nil
 end
 
+-- The state of the issue of `item`, a line of the list: its own where the line says it (the inbox's
+-- groups are not states), else its group's. `{ name, kind }`.
+function list.state_of(item)
+	if item.row ~= nil and item.row.state ~= nil then
+		return item.row.state
+	end
+	return { name = item.group.name, kind = item.group.kind }
+end
+
 -- What the program told: the lines made again from it, the cursor kept where it still stands (or on
 -- the head of its group, where its line is gone with a fold, or on the first issue).
 function list.load(snapshot)
@@ -409,6 +418,9 @@ end
 -- The line at the end of a list of `shown` issues that Linear has more of.
 function list.note(shown)
 	local words = string.format("The %d issues changed last. Filter them, or go to a list, for the others.", shown)
+	if S.scope == "inbox" then
+		words = "The latest of your inbox. The rest of it is in Linear."
+	end
 	return b.div():id("list-cut"):h(NOTE):no_shrink():row():items_center():px(19):child(
 		b.text(words):text_size(SIZE.small):color("dim"):wrap():min_w(0):grow(1)
 	)
@@ -421,6 +433,8 @@ function list.view(room, panel_open)
 		scope = S.scope,
 		labels = not panel_open and room >= SIZE.labels,
 		who = not panel_open and room >= SIZE.assignee,
+		-- (Where the list is narrow, a line of the inbox says what its notification is about, not whose.)
+		noted = room >= SIZE.noted,
 	}
 	-- A list Linear has more of than the program takes says so at its end, as a line that is not one
 	-- of the list's (the cursor does not stop on it): which ones it holds and what to do for the others.
