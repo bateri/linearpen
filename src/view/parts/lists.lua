@@ -12,15 +12,16 @@ local u, S, act = kit.u, kit.S, kit.act
 
 local lists = {}
 
-local L = { open = false, state = nil, serial = 0, built = nil, version = nil, items = nil }
+local L = { open = false, state = nil, serial = 0, built = nil, version = nil, items = nil, names = {} }
 lists.state = L
 
--- The lists every workspace has: the person's issues, the workspace's and the inbox first; the
+-- The lists every workspace has: the person's issues, the workspace's, the inbox and the projects first; the
 -- person's in the two other ways Linear's My issues has them after the favorites (`AFTER`).
 local OWN = {
 	{ key = "mine", title = "My issues", hint = "Assigned to you", keys = "1", list = { kind = "mine" } },
 	{ key = "all", title = "All issues", hint = "The workspace", keys = "2", list = { kind = "all" } },
 	{ key = "inbox", title = "Inbox", hint = "Your notifications", list = { kind = "inbox" } },
+	{ key = "projects", title = "Projects", hint = "The workspace's projects", list = { kind = "projects" } },
 	{ key = "created", title = "Created by me", hint = "Made by you", list = { kind = "created" }, after = true },
 	{ key = "subscribed", title = "Subscribed", hint = "You follow them", list = { kind = "subscribed" }, after = true },
 }
@@ -151,7 +152,16 @@ function lists.name()
 			return item.title
 		end
 	end
+	-- (A project gone to from the list of projects, which the catalog need not hold: the name it had there.)
+	if L.names[key] ~= nil then
+		return L.names[key]
+	end
 	return KINDS[S.scope] or "A list"
+end
+
+-- The name of the list of `kind` and `id`, where the page knows it from elsewhere than the catalog.
+function lists.remember(kind, id, title)
+	L.names[kind .. ":" .. id] = title
 end
 
 function lists.is_open()

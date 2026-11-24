@@ -260,6 +260,30 @@ pub const INBOX: Operation = Operation {
     ),
 };
 
+/// The projects of the workspace, the first that changed last: each as its line in the list has it
+/// (its state, health, progress, lead, dates and the summary of its last update). Their milestones and
+/// the words of an update are asked for one project at a time (`PROJECT`).
+pub const PROJECTS: Operation = Operation {
+    name: "Projects",
+    text: concat!(
+        "query Projects($first: Int!) { viewer { ",
+        viewer_fields!(),
+        " } projects(first: $first, orderBy: updatedAt) { nodes { id name url progress health \
+         startDate startDateResolution targetDate targetDateResolution \
+         status { id name type position } lead { displayName isMe } \
+         lastUpdate { createdAt shortSummary isStale user { displayName } } } \
+         pageInfo { hasNextPage } } }"
+    ),
+};
+
+/// What one project carries that its line does not: the words of its last update and its first
+/// milestones.
+pub const PROJECT: Operation = Operation {
+    name: "Project",
+    text: "query Project($id: String!) { project(id: $id) { id lastUpdate { body } \
+           projectMilestones(first: 20) { nodes { name progress targetDate } } } }",
+};
+
 /// Marks every notification of one issue read in the person's inbox (`input: { issueId }`), at
 /// `readAt`: what Linear's Inbox does when the person reads them there. Nothing else of a
 /// notification is written (no archive, no snooze).
@@ -362,12 +386,14 @@ pub const FILE_UPLOAD: Operation = Operation {
 
 /// Every operation there is, for the test that scans for a `mutation`.
 #[cfg(test)]
-pub const ALL: [Operation; 25] = [
+pub const ALL: [Operation; 27] = [
     VERIFY,
     MY_ISSUES,
     ALL_ISSUES,
     SEARCH_ISSUES,
     INBOX,
+    PROJECTS,
+    PROJECT,
     TEAM_ISSUES,
     CYCLE_ISSUES,
     VIEW_ISSUES,

@@ -20,8 +20,9 @@ use crate::page_pictures::{
     read_to_the_end,
 };
 use crate::page_tests::{
-    Canned, Gh, HURRIED, Mode, PANE, Page, close_picker, cursor, ls_of_p41, open, open_patiently,
-    pressable, rig, rig_polling, session_over, session_with_gh, turn, with_my_comment,
+    Canned, Gh, HURRIED, Mode, PANE, Page, close_picker, cursor, go_to_projects, ls_of_p41, open,
+    open_patiently, pressable, rig, rig_polling, session_over, session_with_gh, turn,
+    with_my_comment,
 };
 
 /// A page as large as a terminal pane on a laptop.
@@ -199,6 +200,55 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     save(&page, &fonts, Palette::Dark, "pull-signed-out.png");
     let page = pulled(PANE, &fonts, "here", false)?;
     save(&page, &fonts, Palette::Dark, "narrow-pull.png");
+
+    // The projects of the workspace, by their state; one open beside them (its update and milestones);
+    // in the colours of a light terminal; in an 80 by 24 pane, the list and one open; none; refused.
+    let projects = |size: (f32, f32), fonts: &Fonts, opened: bool| -> Result<Page, Error> {
+        let mut page = lists(size, fonts)?;
+        go_to_projects(&mut page);
+        if opened {
+            page.press("down")?;
+            page.press("enter")?;
+            page.wait_for(Duration::from_secs(20), |page| page.says("Invoice PDF"))?;
+        }
+        page.advance(0.5)?;
+        Ok(page)
+    };
+    let page = projects(BIG, &fonts, false)?;
+    save(&page, &fonts, Palette::Dark, "projects.png");
+    save(&page, &fonts, Palette::Light, "light-projects.png");
+    let page = projects(BIG, &fonts, true)?;
+    save(&page, &fonts, Palette::Dark, "project.png");
+    save(&page, &fonts, Palette::Light, "light-project.png");
+    let page = projects(PANE, &fonts, false)?;
+    save(&page, &fonts, Palette::Dark, "narrow-projects.png");
+    let page = projects(PANE, &fonts, true)?;
+    save(&page, &fonts, Palette::Dark, "narrow-project.png");
+    for (refused, name) in [(false, "projects-none.png"), (true, "projects-refused.png")] {
+        let linear = Canned::new(Mode::Fine);
+        if refused {
+            linear.refuse_projects();
+        } else {
+            linear.no_projects();
+        }
+        let session = session_over(&linear, Some("lin_api_test"), None);
+        let mut page = open(&session, BIG, Some(&fonts), "ACM-412")?;
+        page.press("g")?;
+        page.wait_for(Duration::from_secs(20), |page| {
+            page.says("Your notifications")
+        })?;
+        page.advance(0.3)?;
+        page.type_text("projects")?;
+        page.press("enter")?;
+        let words = if refused {
+            "Projects are not available"
+        } else {
+            "No projects"
+        };
+        page.wait_for(Duration::from_secs(20), |page| page.says(words))?;
+        page.advance(0.4)?;
+        save(&page, &fonts, Palette::Dark, name);
+    }
 
     // The filter, on a word.
     let mut page = lists(BIG, &fonts)?;

@@ -16,6 +16,7 @@ mod issue;
 mod issues;
 mod params;
 mod pictures;
+mod projects;
 mod session;
 mod work;
 
@@ -141,5 +142,6 @@ pub fn serve(options: Options, session: &Arc<Session>) -> Options {
     let options = filters::calls(options, session);
     let options = inbox::calls(options, session);
     let options = github::calls(options, session);
+    let options = projects::calls(options, session);
     issues::topic(options, session)
 }

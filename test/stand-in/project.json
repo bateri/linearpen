@@ -1,0 +1,29 @@
+{
+ "data": {
+  "project": {
+   "id": "p-billing",
+   "lastUpdate": {
+    "body": "## This week\n\nInvoices ship behind a flag on **Thursday**. See [the plan](https://linear.app/acme/document/plan).\n\n- PDF next\n- Then the emails\n\n![chart](https://uploads.linear.app/x/chart.png)\n"
+   },
+   "projectMilestones": {
+    "nodes": [
+     {
+      "name": "Data model",
+      "progress": 1.0,
+      "targetDate": "2026-11-10"
+     },
+     {
+      "name": "Invoice PDF",
+      "progress": 0.4,
+      "targetDate": "2026-12-01"
+     },
+     {
+      "name": "Emails",
+      "progress": 0.0,
+      "targetDate": null
+     }
+    ]
+   }
+  }
+ }
+}

@@ -6,6 +6,10 @@
 
 - **Size the issue.** Drag the edge between the list and the issue (or press `Cmd Shift Left` and
   `Cmd Shift Right`) to make the issue wider or narrower. linearpen opens it as wide the next time.
+- **Projects.** The workspace's projects are a list of the card of lists (`g`), as Linear's Projects
+  page has them: by their state, each with its health (a shape and a word), its lead, its target and
+  how far it is. Enter opens one beside the list with its last update, whole, and its milestones;
+  `Shift I` (Show issues) goes to its issues and `Esc` comes back. Read only.
 - **Inbox.** Your Linear inbox is a list of the card of lists (`g`): the issues of your notifications,
   the unread ones first, each saying who and what it is about (`Deniz · Mention`). Open one beside it,
   change it or work on it as from any list. Opening an issue marks nothing read; press `u` (or Mark

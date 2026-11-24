@@ -1,0 +1,247 @@
+{
+ "data": {
+  "viewer": {
+   "id": "user-1",
+   "name": "Ada",
+   "organization": {
+    "name": "Acme",
+    "urlKey": "acme"
+   }
+  },
+  "projects": {
+   "nodes": [
+    {
+     "id": "p-billing",
+     "name": "Billing v2",
+     "url": "https://linear.app/acme/project/p-billing",
+     "progress": 0.64,
+     "health": "onTrack",
+     "startDate": "2026-11-01",
+     "startDateResolution": null,
+     "targetDate": "2026-12-12",
+     "targetDateResolution": null,
+     "status": {
+      "id": "ps-started",
+      "name": "In Progress",
+      "type": "started",
+      "position": 1
+     },
+     "lead": {
+      "displayName": "Deniz",
+      "isMe": false
+     },
+     "lastUpdate": {
+      "createdAt": "2026-11-20T10:00:00.000Z",
+      "shortSummary": "Invoices ship behind a flag this week; the PDF comes next.",
+      "isStale": false,
+      "user": {
+       "displayName": "Deniz"
+      }
+     }
+    },
+    {
+     "id": "p-limits",
+     "name": "Public API limits",
+     "url": "https://linear.app/acme/project/p-limits",
+     "progress": 0.22,
+     "health": "atRisk",
+     "startDate": "2026-10-20",
+     "startDateResolution": null,
+     "targetDate": "2026-11-20",
+     "targetDateResolution": null,
+     "status": {
+      "id": "ps-started",
+      "name": "In Progress",
+      "type": "started",
+      "position": 1
+     },
+     "lead": {
+      "displayName": "Ada",
+      "isMe": true
+     },
+     "lastUpdate": {
+      "createdAt": "2026-11-02T10:00:00.000Z",
+      "shortSummary": "Redis windows work; the plans' limits are not decided.",
+      "isStale": true,
+      "user": {
+       "displayName": "Ada"
+      }
+     }
+    },
+    {
+     "id": "p-mobile",
+     "name": "Mobile offline mode",
+     "url": "https://linear.app/acme/project/p-mobile",
+     "progress": 0.05,
+     "health": "offTrack",
+     "startDate": null,
+     "startDateResolution": null,
+     "targetDate": "2027-03-31",
+     "targetDateResolution": "quarter",
+     "status": {
+      "id": "ps-started",
+      "name": "In Progress",
+      "type": "started",
+      "position": 1
+     },
+     "lead": {
+      "displayName": "Mert",
+      "isMe": false
+     },
+     "lastUpdate": {
+      "createdAt": "2026-11-18T10:00:00.000Z",
+      "shortSummary": null,
+      "isStale": false,
+      "user": {
+       "displayName": "Mert"
+      }
+     }
+    },
+    {
+     "id": "p-usage",
+     "name": "Usage page redesign that shows the plan, the limits and what is left of each",
+     "url": "https://linear.app/acme/project/p-usage",
+     "progress": 0.0,
+     "health": null,
+     "startDate": null,
+     "startDateResolution": null,
+     "targetDate": "2026-12-01",
+     "targetDateResolution": "month",
+     "status": {
+      "id": "ps-planned",
+      "name": "Planned",
+      "type": "planned",
+      "position": 1
+     },
+     "lead": null,
+     "lastUpdate": null
+    },
+    {
+     "id": "p-search",
+     "name": "Search v2",
+     "url": "https://linear.app/acme/project/p-search",
+     "progress": 0.0,
+     "health": null,
+     "startDate": null,
+     "startDateResolution": null,
+     "targetDate": null,
+     "targetDateResolution": null,
+     "status": {
+      "id": "ps-planned",
+      "name": "Planned",
+      "type": "planned",
+      "position": 1
+     },
+     "lead": null,
+     "lastUpdate": null
+    },
+    {
+     "id": "p-docs",
+     "name": "Docs migration",
+     "url": "https://linear.app/acme/project/p-docs",
+     "progress": 0.4,
+     "health": "atRisk",
+     "startDate": null,
+     "startDateResolution": null,
+     "targetDate": "2027-01-01",
+     "targetDateResolution": "halfYear",
+     "status": {
+      "id": "ps-paused",
+      "name": "Paused",
+      "type": "paused",
+      "position": 1
+     },
+     "lead": {
+      "displayName": "Deniz",
+      "isMe": false
+     },
+     "lastUpdate": {
+      "createdAt": "2026-10-01T10:00:00.000Z",
+      "shortSummary": "Paused until the API limits ship.",
+      "isStale": true,
+      "user": {
+       "displayName": "Deniz"
+      }
+     }
+    },
+    {
+     "id": "p-audit",
+     "name": "Audit log",
+     "url": "https://linear.app/acme/project/p-audit",
+     "progress": 0.0,
+     "health": null,
+     "startDate": null,
+     "startDateResolution": null,
+     "targetDate": null,
+     "targetDateResolution": null,
+     "status": {
+      "id": "ps-backlog",
+      "name": "Backlog",
+      "type": "backlog",
+      "position": 1
+     },
+     "lead": {
+      "displayName": "Mert",
+      "isMe": false
+     },
+     "lastUpdate": null
+    },
+    {
+     "id": "p-invoices",
+     "name": "Invoices v1",
+     "url": "https://linear.app/acme/project/p-invoices",
+     "progress": 1.0,
+     "health": "onTrack",
+     "startDate": null,
+     "startDateResolution": null,
+     "targetDate": "2026-10-15",
+     "targetDateResolution": null,
+     "status": {
+      "id": "ps-done",
+      "name": "Completed",
+      "type": "completed",
+      "position": 1
+     },
+     "lead": {
+      "displayName": "Deniz",
+      "isMe": false
+     },
+     "lastUpdate": {
+      "createdAt": "2026-10-15T10:00:00.000Z",
+      "shortSummary": "Shipped.",
+      "isStale": false,
+      "user": {
+       "displayName": "Deniz"
+      }
+     }
+    },
+    {
+     "id": "p-exporter",
+     "name": "Legacy exporter",
+     "url": "https://linear.app/acme/project/p-exporter",
+     "progress": 0.3,
+     "health": null,
+     "startDate": null,
+     "startDateResolution": null,
+     "targetDate": null,
+     "targetDateResolution": null,
+     "status": {
+      "id": "ps-canceled",
+      "name": "Canceled",
+      "type": "canceled",
+      "position": 1
+     },
+     "lead": null,
+     "lastUpdate": null
+    },
+    {
+     "id": "p-broken",
+     "name": "A project with no state"
+    }
+   ],
+   "pageInfo": {
+    "hasNextPage": false
+   }
+  }
+ }
+}

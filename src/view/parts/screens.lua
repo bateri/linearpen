@@ -123,11 +123,15 @@ end
 
 -- The list has no line: what Linear found, the words of the field or the filters let nothing through, or
 -- there is nothing open. `o`: `words` (the field's), `search` (the list is a search), `inbox` (the list is
--- the inbox), `narrowed` (filters are set).
+-- the inbox), `projects` (the list is the projects), `narrowed` (filters are set).
 function screens.nothing(o)
 	local card = b.div():col():items_center():gap(6)
 	if o.search then
 		card:child(b.text("Nothing found"):text_size(15):weight(700))
+		card:child(b.text(o.words):color("dim"):truncate():max_w(420))
+	elseif o.words ~= "" and o.projects then
+		-- (A search of Linear finds issues, not projects: the words are the names'.)
+		card:child(b.text("No project's name has these words"):text_size(15):weight(700))
 		card:child(b.text(o.words):color("dim"):truncate():max_w(420))
 	elseif o.words ~= "" then
 		-- The words match nothing held: all of Linear is the next place to look.
@@ -140,6 +144,9 @@ function screens.nothing(o)
 		card:child(b.text("Nothing in " .. lists.name() .. " matches the filters"):text_size(15):weight(700):truncate():max_w(520))
 	elseif o.inbox then
 		card:child(b.text("Your inbox is empty"):text_size(15):weight(700))
+	elseif o.projects then
+		card:child(b.text("No projects"):text_size(15):weight(700))
+		card:child(b.text("The workspace has none yet"):color("dim"))
 	else
 		card:child(b.text("No issues"):text_size(15):weight(700))
 	end

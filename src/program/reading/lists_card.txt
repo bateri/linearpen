@@ -3,17 +3,17 @@ note: behind the modal in front, 33 items of the page, not read
 items:
 5bzy95  dialog "Lists" [action "Close"]
 he0aw9    listbox "List"
-tzhnw8      option "My issues" [selected, 1 of 20]
-ckdxnh      option "All issues" [2 of 20]
-c53z9e      option "Inbox" [3 of 20]
-7zmdjz      option "Bugs to triage" [4 of 20]
-k01w7k      option "Billing" [5 of 20]
-97d15p      option "Agent-ready" [6 of 20]
-hs60wy      option "Created by me" [7 of 20]
-833rv9      option "Subscribed" [8 of 20]
-htwhy3      option "ACM · Current cycle" [9 of 20]
-c7xcms      option "ACM · Issues" [10 of 20]
-tpt3v4      option "WEB · Current cycle" [11 of 20]
+tzhnw8      option "My issues" [selected, 1 of 21]
+ckdxnh      option "All issues" [2 of 21]
+c53z9e      option "Inbox" [3 of 21]
+x6cab8      option "Projects" [4 of 21]
+7zmdjz      option "Bugs to triage" [5 of 21]
+k01w7k      option "Billing" [6 of 21]
+97d15p      option "Agent-ready" [7 of 21]
+hs60wy      option "Created by me" [8 of 21]
+833rv9      option "Subscribed" [9 of 21]
+htwhy3      option "ACM · Current cycle" [10 of 21]
+c7xcms      option "ACM · Issues" [11 of 21]
           text "Enter"
           text "Open"
           text "Esc"
@@ -49,6 +49,7 @@ commands:
   "Mark read" [u] (disabled)
   "Show the pull request" [shift+g] (disabled)
   "Open the pull request on GitHub" [shift+cmd+o] (disabled)
+  "Show the project's issues" [shift+i] (disabled)
   "Scroll the issue down" [space] (disabled)
   "Scroll the issue up" [shift+space] (disabled)
   "Work on the issue" [w] (disabled)

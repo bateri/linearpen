@@ -17,6 +17,10 @@ local function apply(snapshot)
 	S.catalog = snapshot.catalog
 	S.refreshing = snapshot.refreshing == true
 	list.load(snapshot)
+	-- What stands beside the list is of the list's kind (a project beside the projects).
+	if act.lists_shown ~= nil then
+		act.lists_shown()
+	end
 	-- A new issue that is waited for is shown when it comes.
 	if act.listed ~= nil then
 		act.listed()
@@ -37,6 +41,9 @@ end
 -- Tells the program what the page looks at (`list`: `{ kind, id }`, `filters`, `filter`, `closed`). `after`, where there is one, is
 -- called when the program has answered (or has not).
 function act.view(params, after)
+	if params.list ~= nil and act.list_going ~= nil then
+		act.list_going(params.list)
+	end
 	-- Another list than a search is gone to: the words of the search were the search's, and go with it.
 	if params.list ~= nil and params.list.kind ~= "search" and S.scope == "search" and params.filter == nil then
 		params.filter = ""
@@ -119,6 +126,10 @@ function act.refresh()
 		return
 	end
 	S.refreshing = true
+	-- (What was told of a project beside the list of projects is asked for again too.)
+	if act.lists_asked ~= nil then
+		act.lists_asked()
+	end
 	kit.call("refresh", {}, function(_, err)
 		if err then
 			S.refreshing = false

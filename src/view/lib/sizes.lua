@@ -43,6 +43,11 @@ local SIZE = {
 	note = 150,
 	note_short = 96,
 	noted = 760,
+	-- A row of the list of projects: the word of its health, its target, and how far it is (the ring
+	-- and `100%`).
+	health = 84,
+	target = 80,
+	progress = 48,
 	-- A page this wide shows the labels of an issue, and this much the name of whose it is.
 	labels = 760,
 	assignee = 880,

@@ -113,6 +113,7 @@ commands:
   "Mark read" [u] (disabled)
   "Show the pull request" [shift+g]
   "Open the pull request on GitHub" [shift+cmd+o] (disabled)
+  "Show the project's issues" [shift+i] (disabled)
   "Scroll the issue down" [space]
   "Scroll the issue up" [shift+space]
   "Work on the issue" [w]

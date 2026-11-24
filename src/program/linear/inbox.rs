@@ -253,6 +253,7 @@ pub fn fetch(transport: &dyn Transport, key: &Key) -> Result<Fetched, Error> {
             issues,
             truncated: more,
             notes,
+            projects: Vec::new(),
         },
     })
 }

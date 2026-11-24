@@ -14,6 +14,7 @@ use crate::linear::inbox::Note;
 use crate::linear::{Entry, Filters, Issue, Listing, Scope, plain};
 use crate::model::filter::Filter;
 use crate::model::groups::{Group, group};
+use crate::model::projects;
 use crate::model::time::short_date;
 use crate::session::{Session, State};
 
@@ -114,6 +115,153 @@ pub struct GroupMessage {
     pub closed: bool,
     /// The rows of the group; none where it is folded.
     pub rows: Vec<RowMessage>,
+    /// In the list of projects, the projects of the group (in the place of `rows`); none where it is
+    /// folded.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub projects: Vec<ProjectMessage>,
+}
+
+/// A project as its line in the list of projects has it.
+#[derive(Debug, Serialize)]
+pub struct ProjectMessage {
+    pub id: String,
+    pub name: String,
+    pub url: String,
+    pub health: Option<&'static str>,
+    pub stale: bool,
+    pub progress: u8,
+    pub lead: Option<String>,
+    pub start: Option<String>,
+    pub target: Option<String>,
+    pub late: bool,
+    pub update: Option<ProjectUpdateMessage>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ProjectUpdateMessage {
+    pub who: Option<String>,
+    pub at: String,
+    pub summary: Option<String>,
+}
+
+/// A word of Linear's as a line tells it: no control character, cut at 300 characters.
+fn told(text: &str) -> String {
+    let plain = plain(text);
+    match plain.char_indices().nth(300) {
+        Some((end, _)) => plain[..end].to_owned(),
+        None => plain,
+    }
+}
+
+/// A whole percent of a part from 0 to 1.
+fn percent(part: f64) -> u8 {
+    // (Within 0 and 100 after the clamp: the cast keeps it.)
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let whole = (part.clamp(0.0, 1.0) * 100.0).round() as u8;
+    whole
+}
+
+/// The line of `project`, as of `today` (`2026-11-24`).
+fn project_line(project: &crate::linear::projects::Project, today: &str) -> ProjectMessage {
+    let this_year = today
+        .get(..4)
+        .and_then(|year| year.parse().ok())
+        .unwrap_or(0);
+    let day = |date: &Option<String>, resolution: &Option<String>| {
+        date.as_deref()
+            .map(|date| projects::when(date, resolution.as_deref(), this_year))
+    };
+    ProjectMessage {
+        id: project.id.clone(),
+        name: told(&project.name),
+        url: plain(&project.url),
+        health: match project.health.as_deref() {
+            Some("onTrack") => Some("onTrack"),
+            Some("atRisk") => Some("atRisk"),
+            Some("offTrack") => Some("offTrack"),
+            _ => None,
+        },
+        stale: project
+            .last_update
+            .as_ref()
+            .is_some_and(|update| update.is_stale),
+        progress: percent(project.progress),
+        lead: project.lead.as_ref().map(|lead| {
+            if lead.is_me {
+                "you".to_owned()
+            } else {
+                told(&lead.display_name)
+            }
+        }),
+        start: day(&project.start_date, &project.start_date_resolution),
+        target: day(&project.target_date, &project.target_date_resolution),
+        late: projects::late(project, today),
+        update: project
+            .last_update
+            .as_ref()
+            .map(|update| ProjectUpdateMessage {
+                who: update.who().map(told),
+                at: short_date(&update.created_at),
+                summary: update
+                    .short_summary
+                    .as_deref()
+                    .map(told)
+                    .filter(|words| !words.is_empty()),
+            }),
+    }
+}
+
+/// The groups of the list of projects, as of `today`; how many the filter let through.
+fn project_groups(
+    listing: &Listing,
+    words: &str,
+    closed: &HashMap<String, bool>,
+    today: &str,
+) -> (Vec<GroupMessage>, usize) {
+    let mut matched = 0;
+    let groups = projects::group(&listing.projects, words)
+        .into_iter()
+        .map(|found| {
+            let key = found.id.to_owned();
+            let folded = words.trim().is_empty()
+                && closed
+                    .get(&key)
+                    .copied()
+                    .unwrap_or_else(|| found.folded_at_first());
+            matched += found.projects.len();
+            GroupMessage {
+                key,
+                name: told(found.name),
+                kind: match found.kind {
+                    "started" => "started",
+                    "planned" => "planned",
+                    "paused" => "paused",
+                    "backlog" => "backlog",
+                    "completed" => "completed",
+                    "canceled" => "canceled",
+                    _ => "other",
+                },
+                count: found.projects.len(),
+                closed: folded,
+                rows: Vec::new(),
+                projects: if folded {
+                    Vec::new()
+                } else {
+                    found
+                        .projects
+                        .iter()
+                        .map(|project| project_line(project, today))
+                        .collect()
+                },
+            }
+        })
+        .collect();
+    (groups, matched)
+}
+
+/// Today, as the dates of Linear are written: `2026-11-24`.
+fn today() -> String {
+    crate::linear::inbox::moment(crate::session::now_seconds())[..10].to_owned()
 }
 
 #[derive(Debug, Serialize)]
@@ -352,6 +500,7 @@ fn inbox_groups(
                     .map(|(issue, note)| row_noted(issue, &Scope::Inbox, Some(note)))
                     .collect()
             },
+            projects: Vec::new(),
         });
     }
     (groups, matched)
@@ -377,7 +526,10 @@ pub fn snapshot(state: &State) -> Snapshot {
         .lists
         .as_ref()
         .and_then(|lists| lists.of(scope, &state.view.filters));
-    if let Some(listing) = held.filter(|_| *scope == Scope::Inbox) {
+    if let Some(listing) = held.filter(|_| *scope == Scope::Projects) {
+        (groups, matched) =
+            project_groups(listing, &state.view.filter, &state.view.closed, &today());
+    } else if let Some(listing) = held.filter(|_| *scope == Scope::Inbox) {
         (groups, matched) = inbox_groups(listing, &filter, &state.view.closed);
     } else if let Some(listing) = held {
         for found in group(&listing.issues, &filter) {
@@ -402,6 +554,7 @@ pub fn snapshot(state: &State) -> Snapshot {
                 } else {
                     found.issues.iter().map(|issue| row(issue, scope)).collect()
                 },
+                projects: Vec::new(),
             });
         }
     }
@@ -416,15 +569,23 @@ pub fn snapshot(state: &State) -> Snapshot {
         |lists| Counts {
             mine: lists.mine.issues.len(),
             mine_cut: lists.mine.truncated,
-            shown: held.map_or(0, |listing| listing.issues.len()),
+            shown: held.map_or(0, |listing| {
+                if *scope == Scope::Projects {
+                    listing.projects.len()
+                } else {
+                    listing.issues.len()
+                }
+            }),
             shown_cut: held.is_some_and(|listing| listing.truncated),
             // (For the inbox, the unread ones.)
-            shown_open: held.map_or(0, |listing| {
-                if *scope == Scope::Inbox {
-                    listing.notes.values().filter(|note| note.unread).count()
-                } else {
-                    listing.open()
-                }
+            shown_open: held.map_or(0, |listing| match scope {
+                Scope::Inbox => listing.notes.values().filter(|note| note.unread).count(),
+                Scope::Projects => listing
+                    .projects
+                    .iter()
+                    .filter(|project| !projects::closed(&project.status.kind))
+                    .count(),
+                _ => listing.open(),
             }),
         },
     );

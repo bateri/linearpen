@@ -1036,6 +1036,17 @@ impl Session {
     /// is shown is what Linear holds; nothing is sent again, and the failure is told. An answer that is
     /// an error (Linear said no, or the key is not taken) says the change was not made, and nothing is
     /// asked about.
+    /// What the project `id` carries that its line does not: its milestones and the words of its last
+    /// update. Asked of Linear each time (a project's page is opened seldom, and is read as it is now).
+    ///
+    /// # Errors
+    ///
+    /// As every question to Linear.
+    pub fn project(&self, id: &str) -> Result<linear::projects::Detail, Error> {
+        let key = self.key()?;
+        linear::projects::detail(self.transport(), &key, id)
+    }
+
     /// Marks every notification of the issue `id` (Linear's id) read in the person's inbox: the
     /// program's sixth write, sent once. Where Linear says it did, the inbox held has the issue among
     /// the read ones; where it did not, or no answer came, nothing held changes (the next asking says
@@ -1707,6 +1718,7 @@ mod tests {
             issues,
             truncated: false,
             notes: Default::default(),
+            projects: Default::default(),
         };
         session.shared.lock().lists = Some(Lists {
             viewer: Viewer {
@@ -2511,6 +2523,7 @@ mod tests {
                     issues: vec![held],
                     truncated: false,
                     notes: Default::default(),
+                    projects: Default::default(),
                 },
             ));
             state.view.scope = Scope::Search("add".to_owned());
@@ -2546,6 +2559,7 @@ mod tests {
                     issues: vec![held],
                     truncated: false,
                     notes: Default::default(),
+                    projects: Default::default(),
                 },
             ));
             state.view.scope = team("t-acm");

@@ -47,14 +47,20 @@ local function canvas(paths)
 end
 
 -- The circle of a state. `kind` is the kind of the state (`started`, `unstarted`, `backlog`, `triage`,
--- `completed`, `canceled`, `other`); `late` is a started state after the first of its kind (a review
--- is further along than the work), which fills three quarters in the colour of what is done well.
+-- `completed`, `canceled`, `other`; of a project's, `planned` and `paused` too); `late` is a started
+-- state after the first of its kind (a review is further along than the work), which fills three
+-- quarters in the colour of what is done well.
 function icons.state(kind, late)
 	local paths = {}
 	if kind == "backlog" or kind == "triage" then
 		paths = dashed("dim")
-	elseif kind == "unstarted" then
+	elseif kind == "unstarted" or kind == "planned" then
 		paths[1] = b.path():circle(7, 7, 5.25):stroke(1.5, b.alpha("foreground", 0.75))
+	elseif kind == "paused" then
+		-- (A project waits: the ring, and the two bars of a pause in it.)
+		paths[1] = b.path():circle(7, 7, 5.25):stroke(1.5, b.alpha("foreground", 0.75))
+		paths[2] = b.path():rect(5.1, 4.9, 1.4, 4.2):fill(b.alpha("foreground", 0.75))
+		paths[3] = b.path():rect(7.5, 4.9, 1.4, 4.2):fill(b.alpha("foreground", 0.75))
 	elseif kind == "started" then
 		local color = late and "success" or "warning"
 		paths[1] = b.path():circle(7, 7, 5.25):stroke(1.5, color)
@@ -150,6 +156,60 @@ end
 -- A review that asks for changes, or a review waited for: a ring.
 function icons.ring(color)
 	return canvas({ b.path():circle(7, 7, 3.6):stroke(1.5, color or "dim") }):no_shrink()
+end
+
+-- The health of a project, by its shape as much as by its colour: on track a round with a tick in it,
+-- at risk a triangle with a mark, off track a diamond with a cross; none (no update said it) a ring of
+-- dashes. `faded` is a health Linear holds outdated: the same shape, quieter.
+icons.HEALTH = {
+	onTrack = { word = "On track", color = "success" },
+	atRisk = { word = "At risk", color = "warning" },
+	offTrack = { word = "Off track", color = "error" },
+}
+
+function icons.health(health, faded)
+	local said = icons.HEALTH[health]
+	if said == nil then
+		return canvas(dashed(b.alpha("foreground", 0.45))):no_shrink()
+	end
+	local color = faded and b.alpha(said.color, 0.5) or said.color
+	local paths = {}
+	if health == "onTrack" then
+		paths[1] = b.path():circle(7, 7, 6):fill(color)
+		paths[2] = b.path():move_to(4.4, 7.2):line_to(6.2, 9):line_to(9.6, 5.2):stroke(1.5, "background")
+	elseif health == "atRisk" then
+		paths[1] = b.path():move_to(7, 1.2):line_to(13, 12.2):line_to(1, 12.2):close():fill(color)
+		paths[2] = b.path():rect(6.3, 5, 1.4, 3.6):fill("background")
+		paths[3] = b.path():rect(6.3, 9.4, 1.4, 1.4):fill("background")
+	else
+		paths[1] = b.path():move_to(7, 0.6):line_to(13.4, 7):line_to(7, 13.4):line_to(0.6, 7):close():fill(color)
+		paths[2] = b.path():move_to(5.2, 5.2):line_to(8.8, 8.8):move_to(8.8, 5.2):line_to(5.2, 8.8):stroke(1.4, "background")
+	end
+	return canvas(paths):no_shrink()
+end
+
+-- How far a project is: a ring, and over it the part done, from the top round to the right; whole in
+-- the colour of what is done.
+function icons.progress(percent)
+	local part = math.min(math.max(percent or 0, 0), 100) / 100
+	local paths = { b.path():circle(7, 7, 5.25):stroke(1.5, b.alpha("foreground", 0.2)) }
+	if part >= 1 then
+		paths[2] = b.path():circle(7, 7, 5.25):stroke(1.5, "success")
+	elseif part > 0 then
+		local path = b.path()
+		local steps = math.max(math.ceil(360 * part / 10), 1)
+		for step = 0, steps do
+			local angle = math.rad(360 * part * step / steps)
+			local x, y = 7 + 5.25 * math.sin(angle), 7 - 5.25 * math.cos(angle)
+			if step == 0 then
+				path:move_to(x, y)
+			else
+				path:line_to(x, y)
+			end
+		end
+		paths[2] = path:stroke(1.5, "accent")
+	end
+	return canvas(paths):no_shrink()
 end
 
 -- The head of a group of the inbox: a dot for the unread, a ring for the read.

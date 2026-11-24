@@ -190,10 +190,12 @@ local function filter_box(width)
 	elseif not head.typing() then
 		trail[#trail + 1] = u:kbd(commands.first("filter"), { quiet = true })
 	end
+	-- (The list of projects is filtered by the names of its projects.)
+	local what = S.scope == "projects" and "Filter projects" or "Filter issues"
 	local field = u:input("filter", {
 		state = F,
-		label = "Filter issues",
-		hint = "Filter issues",
+		label = what,
+		hint = what,
 		trail = trail,
 		escape = true,
 	})

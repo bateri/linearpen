@@ -23,6 +23,7 @@ pub mod limits;
 mod names;
 mod new_issue;
 pub mod pdf;
+pub mod projects;
 pub mod query;
 pub mod staged;
 pub mod transport;
@@ -61,6 +62,8 @@ pub enum Scope {
     Subscribed,
     /// The person's inbox: the issues of their notifications.
     Inbox,
+    /// The projects of the workspace (a list of projects, not of issues).
+    Projects,
     Team(String),
     Cycle(String),
     View(String),
@@ -81,6 +84,7 @@ impl Scope {
             Self::Created => "created",
             Self::Subscribed => "subscribed",
             Self::Inbox => "inbox",
+            Self::Projects => "projects",
             Self::Team(_) => "team",
             Self::Cycle(_) => "cycle",
             Self::View(_) => "view",
@@ -94,7 +98,12 @@ impl Scope {
     #[must_use]
     pub fn id(&self) -> Option<&str> {
         match self {
-            Self::Mine | Self::All | Self::Created | Self::Subscribed | Self::Inbox => None,
+            Self::Mine
+            | Self::All
+            | Self::Created
+            | Self::Subscribed
+            | Self::Inbox
+            | Self::Projects => None,
             Self::Team(id)
             | Self::Cycle(id)
             | Self::View(id)
@@ -115,6 +124,7 @@ impl Scope {
             ("created", None) => Some(Self::Created),
             ("subscribed", None) => Some(Self::Subscribed),
             ("inbox", None) => Some(Self::Inbox),
+            ("projects", None) => Some(Self::Projects),
             ("team", Some(id)) if !id.is_empty() => Some(Self::Team(id)),
             ("cycle", Some(id)) if !id.is_empty() => Some(Self::Cycle(id)),
             ("view", Some(id)) if !id.is_empty() => Some(Self::View(id)),
@@ -158,6 +168,8 @@ pub struct Listing {
     pub truncated: bool,
     /// For the inbox, what each issue (by its id) carries beside it; empty for any other list.
     pub notes: HashMap<String, inbox::Note>,
+    /// For the list of projects, the projects (it holds no issue); empty for any other list.
+    pub projects: Vec<projects::Project>,
 }
 
 impl Listing {
@@ -354,12 +366,17 @@ pub fn fetch(
         // (Linear's inbox takes no filter: what the other lists are narrowed by is left to them.)
         return inbox::fetch(transport, key);
     }
+    if *scope == Scope::Projects {
+        // (Nor do the projects: the filters are of issues.)
+        return projects::fetch(transport, key);
+    }
     let fetched = |viewer, issues, truncated| Fetched {
         viewer,
         listing: Listing {
             issues,
             truncated,
             notes: HashMap::new(),
+            projects: Vec::new(),
         },
     };
     if matches!(scope, Scope::Search(_)) {
@@ -431,9 +448,9 @@ fn pages(
                 (data.viewer, data.issues)
             }
             // (The inbox is asked for apart, by `inbox::fetch`: it is not pages of issues.)
-            Scope::Inbox => {
+            Scope::Inbox | Scope::Projects => {
                 return Err(Error::Failed(
-                    "the inbox is not asked for by pages of issues".to_owned(),
+                    "the inbox and the projects are not asked for by pages of issues".to_owned(),
                 ));
             }
             Scope::Created | Scope::Subscribed => {

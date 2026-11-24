@@ -34,7 +34,7 @@ local TABLE = {
 	-- The identifier, the title and the link on one line, to paste where the issue is shared.
 	{ id = "share", title = "Share", group = "Copy", keys = { "mod+shift+s" }, when = "single" },
 	{ id = "open", title = "Open beside the list", group = "Issue", keys = { "enter", "o" }, native = true },
-	{ id = "link", title = "Open in Linear", group = "Issue", keys = { "shift+o" }, when = "single_idle" },
+	{ id = "link", title = "Open in Linear", group = "Issue", keys = { "shift+o" }, when = "linkable" },
 	{ id = "parent", title = "Open the parent issue", group = "Issue", keys = { "mod+shift+up" }, when = "parented" },
 	{
 		id = "near",
@@ -52,6 +52,8 @@ local TABLE = {
 	-- a menu of them); and the one shown, in the browser.
 	{ id = "pull_request", title = "Show the pull request", group = "Issue", keys = { "shift+g" }, when = "pulled" },
 	{ id = "pull_github", title = "Open the pull request on GitHub", group = "Issue", keys = { "mod+shift+o" }, when = "pull_shown" },
+	-- The issues of the project the keys are for (in the list of projects), as a list; Esc comes back.
+	{ id = "show_issues", title = "Show the project's issues", group = "Project", keys = { "shift+i" }, when = "projected" },
 	{ id = "read_down", title = "Scroll the issue down", group = "Issue", keys = { "space" }, when = "reading" },
 	{ id = "read_up", title = "Scroll the issue up", group = "Issue", keys = { "shift+space" }, when = "reading" },
 	{ id = "work", title = "Work on the issue", group = "Issue", keys = { "w" }, when = "workable" },

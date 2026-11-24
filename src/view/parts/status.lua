@@ -11,6 +11,7 @@ local change = require("./change")
 local filters = require("./filters")
 local head = require("./head")
 local list = require("./list")
+local project = require("./project")
 local new = require("./new")
 local picker = require("./picker")
 local pictures = require("./pictures")
@@ -334,13 +335,14 @@ function status.view()
 		if list.count() > 1 then
 			start[#start + 1] = {
 				key = "next",
-				words = keyed({ "j", "k" }, "next issue"),
+				words = keyed({ "j", "k" }, S.scope == "projects" and "next project" or "next issue"),
 				priority = 7,
 			}
 		end
 	elseif list.count() > 0 then
 		start[#start + 1] = { key = "move", words = hint({ "up", "down" }, "move"), priority = 8 }
-		if not typing and not alone then
+		-- (A project is not selected: nothing changes projects here.)
+		if not typing and not alone and S.scope ~= "projects" then
 			start[#start + 1] = { key = "select", words = hint({ "select" }, "select"), priority = 6 }
 		end
 		if not alone then
@@ -371,6 +373,8 @@ function status.view()
 		start[#start + 1] = { key = "clear", words = hint({ "back" }, "back"), priority = 5 }
 	elseif not alone and head.field.value ~= "" then
 		start[#start + 1] = { key = "clear", words = hint({ "back" }, "clear the filter"), priority = 5 }
+	elseif not alone and not S.panel_open and project.can_go_back() then
+		start[#start + 1] = { key = "clear", words = hint({ "back" }, "back to projects"), priority = 5 }
 	end
 	-- A key that has a button is on the button; where the head has none (the list has too little room:
 	-- the pane is narrow, or an issue stands beside it) the key is here, which is the only place it is

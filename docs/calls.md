@@ -109,7 +109,8 @@ optional (`{}` asks for the list as it is). Params:
   to the person, the default), `"all"` (the issues of the workspace; asked for when it is shown),
   `"created"` (the issues the person made, by hand or through an integration, as Linear's My issues
   tab Created) and `"subscribed"` (the issues the person is subscribed to), each asked for when it is
-  shown; `"inbox"` (the issues of the person's inbox in Linear, below); or one of `"team"` (the issues of a team), `"cycle"` (the issues of a cycle: the `id` of any
+  shown; `"inbox"` (the issues of the person's inbox in Linear, below); `"projects"` (the projects of
+  the workspace, below); or one of `"team"` (the issues of a team), `"cycle"` (the issues of a cycle: the `id` of any
   cycle, the running one of a team is in the `catalog`),
   `"view"` (a saved view of issues), `"project"` (a project's issues) and `"label"` (the
   issues with a label), which take the `id` of what they are of (the ids the topic's `catalog` tells);
@@ -117,8 +118,18 @@ optional (`{}` asks for the list as it is). Params:
   and is what Linear finds for them in the whole workspace, up to 500. A list holds up to 500
   issues: every open one first, then the 100 done and canceled ones that changed last (where
   `filters` name states, as many of those as there is room for; a search, every state as Linear ranks
-  them); the groups of the closed ones begin folded. `mine`, `all`, `created`, `subscribed` and
-  `inbox` take no `id`.
+  them); the groups of the closed ones begin folded. `mine`, `all`, `created`, `subscribed`, `inbox` and
+  `projects` take no `id`.
+
+  The **projects** are those of the workspace, as Linear's Projects page has them: the first 100 that
+  changed last (archived ones left out), asked for when the list is shown and at each refresh while it
+  is. A group is a state of projects (`key` its id, `name` its name, `kind` its type: `started`,
+  `planned`, `paused`, `backlog`, `completed` or `canceled`, in that order, and by the state's position
+  within a type; `completed` and `canceled` folded at first), and holds `projects` in the place of
+  `rows` (below). In a group the project whose target comes first is first, those with none last, then
+  by name. `filters` do not narrow it; the words of `filter` do, by the project's name.
+  `counts.shown` is how many projects it holds, `shownOpen` those not done nor canceled, `shownCut`
+  whether Linear has more than 100.
 
   The **inbox** is what Linear's Inbox shows the person (`inboxNotifications`: one notification for each
   thing that had activity, archived and snoozed ones left out), the first 50, asked for when it is shown
@@ -786,6 +797,23 @@ Asks Linear for My issues and the list shown again, for the names of the lists t
 for the teams and choices of a new issue and each issue opened (`issue`) the next time they are needed. It answers at once with `{}`; the topic tells the lists when they come. Params: none. Errors:
 `no-key`.
 
+### `project`
+
+What a project of the list of projects (`view`'s `projects`) carries that its line does not: its
+milestones and the words of its last update, asked when the person opens it beside the list. Read only.
+Params: `{ "id": "p-1" }`, Linear's id of the project. Answer:
+
+```json
+{ "id": "p-1", "update": "Invoices ship behind a flag this week.\n\n- PDF next",
+  "milestones": [{ "name": "Data model", "progress": 100, "target": "Nov 10" },
+                 { "name": "Invoice PDF", "progress": 40, "target": null }] }
+```
+
+`update` is the whole text of its last update (markdown written by others, cut at 4 000 characters;
+null where there is none); `milestones` the first 20, in Linear's order, each with its progress (a whole
+percent) and the day it is due (null where there is none). Errors: `no-key`, `refused`, `unreachable`,
+`failed`, `bad-params`.
+
 ### `pull`
 
 What GitHub says of a pull request linked to the issue open: asked of GitHub with `gh`, GitHub's own
@@ -878,7 +906,7 @@ the lists came, asking failed). The same value `view` answers with.
   (`{ "kind", "message" }`, the kinds of the errors above). With `loaded` the lists are the last that
   came, and an `error` says that the last asking failed.
 - `refreshing`: Linear is being asked now.
-- `scope` is the kind of the list shown (`mine`, `all`, `created`, `subscribed`, `inbox`, `team`,
+- `scope` is the kind of the list shown (`mine`, `all`, `created`, `subscribed`, `inbox`, `projects`, `team`,
   `cycle`, `view`, `project`, `label` or `search`) and `listId` its id (null for the person's lists, the
   workspace's and the inbox; the words, for a `search`).
 - `filters`: what the lists are narrowed by in Linear, as `view` set it.
@@ -892,6 +920,15 @@ the lists came, asking failed). The same value `view` answers with.
   states; the 100 closed ones that changed last are not a cut), and for a search the first 500 Linear
   finds (it has no order of its own).
 - A row tells at most 10 labels of its issue (the first Linear gives); the 11th is not marked.
+- A project of the list of projects is `{ "id", "name", "url", "health", "stale", "progress", "lead",
+  "start", "target", "late", "update" }`: `health` is `onTrack`, `atRisk`, `offTrack` or null (no update
+  said it) and `stale` whether Linear holds that update outdated (by its age and the project's schedule
+  of updates); `progress` a whole percent; `lead` `"you"`, a name or null; `start` and `target` the days
+  as Linear shows them, by their resolution (`Dec 12`, `Dec`, `Q4`, `H2`, `2027`, with the year where it
+  is not this one; null where there is none); `late` whether the target has passed (the end of its
+  month, quarter, half or year) and the project is not done nor canceled; `update`, where it has one,
+  `{ "who", "at", "summary" }`: who posted the last update, the day, and Linear's summary of it (null
+  where Linear made none). Every word is Linear's, cut at 300 characters, with no control character.
 - A row of the inbox has `note`: `{ "who": "Deniz", "what": "Mention", "unread": true }`. `who` is the
   name of whoever caused it (a person, a bot or someone of an integration; null where Linear says no
   one). `what` names what it is about, in words true of the whole of what Linear tells: by its type

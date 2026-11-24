@@ -22,11 +22,17 @@ local palette = require("./parts/palette")
 local picker = require("./parts/picker")
 local panel = require("./parts/panel")
 local pictures = require("./parts/pictures")
+local project = require("./parts/project")
 local screens = require("./parts/screens")
 local status = require("./parts/status")
 local work = require("./parts/work")
 
 local b, u, S, SIZE, act, lib = kit.b, kit.u, kit.S, kit.SIZE, kit.act, kit.lib
+
+-- What the reading keys scroll: the project beside the list, else the issue.
+local function reader()
+	return project.is_open() and project or panel
+end
 
 -- --- The commands -----------------------------------------------------------------------------------
 
@@ -181,10 +187,20 @@ end
 commands.when.single_idle = function()
 	return commands.when.idle() and context.single() ~= nil
 end
+-- Open in Linear: the one issue, or in the list of projects the project the keys are for.
+commands.when.linkable = function()
+	return commands.when.single_idle() or (commands.when.idle() and project.targeted())
+end
+-- The issues of the project the keys are for, in the list of projects.
+commands.when.projected = function()
+	return commands.when.idle() and project.targeted()
+end
 -- Space scrolls the open issue, but where a button has the keyboard it presses the button.
 commands.when.reading = function()
 	local target = u:target()
-	return commands.when.idle() and panel.is_open() and not (target ~= nil and kit.buttons[target] ~= nil)
+	return commands.when.idle()
+		and (panel.is_open() or project.is_open())
+		and not (target ~= nil and kit.buttons[target] ~= nil)
 end
 -- The keys that change the issues the cursor is on, or those selected: there is one to change, and no
 -- change of it is on its way.
@@ -325,9 +341,9 @@ commands.when.postable = function()
 end
 -- The filters can be let go of where some are set and their row is on the page. (Shift and F is a
 -- letter of the words of a field.)
--- The list takes the filters of Linear: every list but the inbox.
+-- The list takes the filters of Linear: every list of issues but the inbox.
 commands.when.filterable = function()
-	return commands.when.headed_idle() and S.scope ~= "inbox"
+	return commands.when.headed_idle() and S.scope ~= "inbox" and S.scope ~= "projects"
 end
 commands.when.narrowed = function()
 	return commands.when.filterable() and filters.any()
@@ -373,6 +389,9 @@ local cmds = lib.commands(commands.for_library())
 act.open_issue = function(item)
 	if form_open() then
 		return true
+	end
+	if item ~= nil and item.kind == "project" then
+		return project.show(item)
 	end
 	return panel.show(item)
 end
@@ -428,8 +447,9 @@ local function body()
 			words = head.field.value,
 			search = S.scope == "search",
 			inbox = S.scope == "inbox",
-			-- (The inbox takes no filter: what is set is the other lists'.)
-			narrowed = S.scope ~= "inbox" and filters.any(),
+			projects = S.scope == "projects",
+			-- (The inbox and the projects take no filter: what is set is the other lists'.)
+			narrowed = S.scope ~= "inbox" and S.scope ~= "projects" and filters.any(),
 		})
 	end
 	return list.view(S.room, S.panel_open)
@@ -499,6 +519,9 @@ local function side(width)
 	end
 	if work.is_open() then
 		return work.view(width)
+	end
+	if project.is_open() then
+		return project.view(width)
 	end
 	return panel.view(width)
 end
@@ -602,13 +625,13 @@ local function render(size, now, reduce_motion)
 	S.form_open = S.work_open or S.new_open
 	S.editing = S.screen == "list" and change.editing()
 	S.writing = S.screen == "list" and (comment.typing() or edit.typing())
-	S.panel_open = S.screen == "list" and (panel.is_open() or S.form_open)
+	S.panel_open = S.screen == "list" and (panel.is_open() or project.is_open() or S.form_open)
 	-- The issue or a form has the whole pane (it is too narrow for the list beside it): the list and its
 	-- head are not on the page, and no key is theirs.
 	S.covered = S.panel_open and S.width < SIZE.beside
 	-- The list's room, and its head's: the page's, less what stands beside it and the edge between them.
 	S.room = (S.panel_open and not S.covered) and S.width - panel.width(S.width) - SIZE.edge or S.width
-	S.alone = S.covered and panel.is_open() and not S.form_open
+	S.alone = S.covered and (panel.is_open() or project.is_open()) and not S.form_open
 	local root = b.div():size_full():col():bg("background"):color("foreground"):family("terminal")
 	if S.screen == "boot" then
 		root:child(booting())
@@ -693,7 +716,12 @@ local function command(id)
 	elseif id == "narrow" then
 		return size_side(-SIZE.side_step)
 	elseif id == "link" then
+		if S.scope == "projects" then
+			return project.link()
+		end
 		return context.link(context.single())
+	elseif id == "show_issues" then
+		return project.show_issues()
 	elseif id == "comment" then
 		return panel.write_comment()
 	elseif id == "comment_send" then
@@ -741,9 +769,9 @@ local function command(id)
 	elseif id == "lists" then
 		lists.show()
 	elseif id == "read_down" then
-		panel.scroll(1)
+		reader().scroll(1)
 	elseif id == "read_up" then
-		panel.scroll(-1)
+		reader().scroll(-1)
 	elseif id == "scope_mine" then
 		act.view({ list = { kind = "mine" } })
 	elseif id == "scope_all" then
@@ -811,6 +839,14 @@ local function press(id)
 		return context.copy("share", context.single())
 	elseif id == "panel-close" then
 		panel.close()
+	elseif id == "project-close" then
+		project.close()
+	elseif id == "project-issues" then
+		return project.show_issues()
+	elseif id == "project-linear" then
+		return project.link()
+	elseif id == "project-retry" then
+		return project.retry()
 	elseif id == "panel-title-edit" then
 		return panel.rename()
 	elseif id == "picture-close" then
@@ -977,12 +1013,17 @@ local function back()
 		return true
 	elseif panel.is_open() then
 		panel.close()
+	elseif project.is_open() then
+		project.close()
 	elseif list.marked() > 0 then
 		list.clear_marks()
 	elseif S.scope == "search" then
 		return head.leave_search()
 	elseif head.field.value ~= "" then
 		head.set("")
+	elseif project.can_go_back() then
+		-- (The issues of a project gone to from the list of projects: back to it.)
+		return project.go_back()
 	else
 		return nil
 	end
@@ -1002,12 +1043,12 @@ local function reading_key(event)
 	local name = event.key
 	if name == "up" or name == "down" then
 		if not mods.shift then
-			panel.scroll_by(name == "down" and LINES or -LINES)
+			reader().scroll_by(name == "down" and LINES or -LINES)
 		end
 	elseif name == "page_down" or name == "page_up" then
-		panel.scroll(name == "page_down" and 1 or -1)
+		reader().scroll(name == "page_down" and 1 or -1)
 	elseif name == "home" or name == "end" then
-		panel.scroll_by(nil, name == "home" and "top" or "end")
+		reader().scroll_by(nil, name == "home" and "top" or "end")
 	elseif (name == "j" or name == "k") and not mods.shift then
 		list.step_issue(name == "j" and 1 or -1)
 	elseif name ~= "enter" then
@@ -1099,16 +1140,34 @@ local function shape(event)
 	return { cursor = wanted or "arrow" }
 end
 
+-- What stands beside the list is of the list's kind: a project beside the projects, an issue beside the
+-- issues. Going from one to the other leaves it (as the lists are told, and after each event).
+act.lists_shown = function()
+	project.listed()
+	if S.scope ~= "projects" and project.is_open() then
+		project.close()
+	elseif S.scope == "projects" and panel.is_open() then
+		panel.close()
+	end
+end
+
 -- The issue open follows the cursor where the cursor is on an issue.
 local function follow()
 	work.sync()
 	change.sync()
 	-- The pictures held are the open issue's: they go with it, and come with the one that opens.
 	pictures.track(panel.id(), panel.detail())
+	act.lists_shown()
+	local item = list.current()
+	if project.is_open() then
+		if item ~= nil and item.kind == "project" and item.row.id ~= project.id() then
+			project.show(item)
+		end
+		return
+	end
 	if not panel.is_open() then
 		return
 	end
-	local item = list.current()
 	-- (The issue the person changed stays open, though the change took it out of the list and the
 	-- cursor with it, until the cursor is moved.)
 	if item ~= nil and item.kind == "issue" and item.row.id ~= panel.id() and not panel.held() then

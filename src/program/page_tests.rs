@@ -38,6 +38,8 @@ pub(crate) type Page = Headless<InProcess>;
 const MY_ISSUES: &str = include_str!("../../test/stand-in/my-issues.json");
 const MY_ISSUES_EMPTY: &str = include_str!("../../test/stand-in/my-issues-empty.json");
 const INBOX: &str = include_str!("../../test/stand-in/inbox.json");
+const PROJECTS: &str = include_str!("../../test/stand-in/projects.json");
+const PROJECT: &str = include_str!("../../test/stand-in/project.json");
 const GH_PR_VIEW: &str = include_str!("../../test/stand-in/gh-pr-view.json");
 
 /// `gh` as a test has it: there and signed in (the answer of test/stand-in/gh-pr-view.json), not there,
@@ -267,6 +269,8 @@ pub(crate) struct Canned {
     filter_options_refused: Mutex<bool>,
     /// What the inbox answers, where a test made it other than the fixture's.
     inbox: Mutex<Option<String>>,
+    /// What the projects answer (a status and a body), where a test made it other than the fixture's.
+    projects: Mutex<Option<(u16, String)>>,
     /// Linear answers that it did not mark the notifications read.
     marking_refused: Mutex<bool>,
     /// Whether `Issue` is held (after it is written down) until a test lets it go.
@@ -343,6 +347,7 @@ impl Canned {
             filter_options_hold: Mutex::new(false),
             filter_options_refused: Mutex::new(false),
             inbox: Mutex::new(None),
+            projects: Mutex::new(None),
             marking_refused: Mutex::new(false),
             issue_holds: Mutex::new(false),
         })
@@ -401,6 +406,21 @@ impl Canned {
     /// From now on Linear answers that it did not mark the notifications read.
     pub(crate) fn refuse_marking(&self) {
         *self.marking_refused.lock().unwrap() = true;
+    }
+
+    /// From now on the workspace has no project.
+    pub(crate) fn no_projects(&self) {
+        let mut value: serde_json::Value = serde_json::from_str(PROJECTS).expect("the fixture");
+        value["data"]["projects"]["nodes"] = serde_json::json!([]);
+        *self.projects.lock().unwrap() = Some((200, value.to_string()));
+    }
+
+    /// From now on Linear refuses the question of the projects, in its own words.
+    pub(crate) fn refuse_projects(&self) {
+        *self.projects.lock().unwrap() = Some((
+            400,
+            r#"{"errors":[{"message":"Projects are not available to this key"}]}"#.to_owned(),
+        ));
     }
 
     /// From now on Linear refuses the question of the inbox, in its own words.
@@ -1154,6 +1174,8 @@ impl Transport for Canned {
             "FileUpload",
             "NotificationMarkReadAll",
             "Inbox",
+            "Projects",
+            "Project",
             "Issue",
         ]
         .into_iter()
@@ -1259,6 +1281,11 @@ impl Transport for Canned {
                         r#"{"data":{"notificationMarkReadAll":{"success":true}}}"#,
                     )
                 }
+                "Projects" => match self.projects.lock().unwrap().clone() {
+                    Some((status, text)) => reply(status, &text),
+                    None => reply(200, PROJECTS),
+                },
+                "Project" => reply(200, PROJECT),
                 "Inbox" => match self.inbox.lock().unwrap().clone() {
                     Some(text) => reply(200, &text),
                     None => reply(200, INBOX),
@@ -7745,9 +7772,9 @@ fn in_an_80_by_24_pane_the_card_of_lists_and_the_palette_stay_inside_it_with_the
     for words in ["Enter", "Close", "Assigned to you", "Agent-ready"] {
         assert!(page.says(words), "{words}: {}", said(&page));
     }
-    // The last list is reached by the arrows, and Enter goes to it (five lists of the person's, the
-    // workspace's and the inbox are among them).
-    for _ in 0..19 {
+    // The last list is reached by the arrows, and Enter goes to it (six lists of the person's, the
+    // workspace's, the inbox and the projects are among them).
+    for _ in 0..20 {
         page.press("down").expect("down");
     }
     page.press("enter").expect("enter");
@@ -10231,4 +10258,262 @@ fn the_edge_with_the_keyboard_on_it_is_moved_by_the_arrows_and_elsewhere_they_fo
         page.bounds("side")
     );
     rig.hands.end();
+}
+
+// --- Projects -------------------------------------------------------------------------------------------
+
+/// Goes to the list of projects by the card of lists, and waits for its lines.
+pub(crate) fn go_to_projects(page: &mut Page) {
+    open_card_of_lists(page);
+    page.type_text("projects").expect("the words");
+    page.press("enter").expect("enter");
+    list_button_says(page, "Projects");
+    page.wait_for(WITHIN, |page| page.says("Billing v2"))
+        .unwrap_or_else(|why| panic!("the projects come: {why:?}: {}", said(page)));
+    page.advance(0.3).expect("a moment");
+}
+
+/// The mutations of Linear asked for so far.
+fn written(linear: &Canned) -> usize {
+    [
+        "IssueCreate",
+        "IssueBatchUpdate",
+        "CommentCreate",
+        "CommentUpdate",
+        "FileUpload",
+        "NotificationMarkReadAll",
+    ]
+    .iter()
+    .map(|name| linear.times(name))
+    .sum()
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_projects_are_grouped_by_their_state_each_with_its_health_and_how_far_it_is() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    go_to_projects(&mut page);
+    assert_eq!(linear.times("Projects"), 1);
+    for words in [
+        "In Progress",
+        "Planned",
+        "Paused",
+        "Backlog",
+        "Completed",
+        "Canceled",
+    ] {
+        assert!(page.says(words), "{words}: {}", said(&page));
+    }
+    for words in [
+        "Public API limits",
+        "Mobile offline mode",
+        "Search v2",
+        "Audit log",
+        "On track",
+        "64%",
+    ] {
+        assert!(page.says(words), "{words}: {}", said(&page));
+    }
+    // What is done begins folded; a project in a shape not a project's is not a line.
+    assert!(!page.says("Invoices v1"), "{}", said(&page));
+    assert!(!page.says("A project with no state"), "{}", said(&page));
+    // The first line is the started project whose target came first: the cursor is on it.
+    assert!(page.bounds("row:p:p-limits").is_some(), "{}", said(&page));
+    // No filter of issues is offered: `f` does not open their row, and the field filters projects.
+    page.press("f").expect("f");
+    page.advance(0.3).expect("a moment");
+    assert!(page.bounds("filters").is_none(), "{}", said(&page));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn in_the_projects_the_keys_of_issues_change_nothing_and_no_issue_stands_beside_them() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    open_the_issue_under_the_cursor(&mut page);
+    go_to_projects(&mut page);
+    // The issue that was open is not beside the projects.
+    assert!(page.bounds("panel-close").is_none(), "{}", said(&page));
+    for key in [
+        "i", "s", "x", "u", "w", "r", "a", "l", "shift+p", "mod+a", "c", "e",
+    ] {
+        page.press(key).expect("a key");
+        page.advance(0.2).expect("a moment");
+        page.press("escape").expect("escape");
+        page.advance(0.1).expect("a moment");
+    }
+    page.advance(0.5).expect("a moment");
+    assert_eq!(written(&linear), 0, "{:?}", linear.asked.lock().unwrap());
+    assert!(page.bounds("panel-close").is_none(), "{}", said(&page));
+    assert!(!page.says("selected"), "{}", said(&page));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_project_opens_beside_the_list_with_its_update_and_milestones_and_follows_the_cursor() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    go_to_projects(&mut page);
+    page.press("enter").expect("enter");
+    page.wait_for(WITHIN, |page| page.bounds("project-close").is_some())
+        .unwrap_or_else(|why| panic!("the project opens: {why:?}: {}", said(&page)));
+    page.advance(0.4).expect("it comes in");
+    for words in [
+        "Show issues",
+        "Open in Linear",
+        "Health",
+        "At risk",
+        "Outdated",
+        "Lead",
+        "you",
+    ] {
+        assert!(page.says(words), "{words}: {}", said(&page));
+    }
+    // Its update, whole and as markdown, and its milestones, asked for it.
+    page.wait_for(WITHIN, |page| page.says("Invoice PDF"))
+        .unwrap_or_else(|why| panic!("the milestones come: {why:?}: {}", said(&page)));
+    for words in [
+        "This week",
+        "Then the emails",
+        "MILESTONES",
+        "Data model",
+        "Image",
+    ] {
+        assert!(page.says(words), "{words}: {}", said(&page));
+    }
+    assert_eq!(
+        linear.variables_of("Project")[0]["id"],
+        serde_json::json!("p-limits")
+    );
+    // The cursor moved, the project beside it is the next one, and Linear is asked for it.
+    page.press("down").expect("down");
+    page.wait_for(WITHIN, |_| linear.times("Project") == 2)
+        .unwrap_or_else(|why| panic!("the next is asked for: {why:?}"));
+    assert_eq!(
+        linear.variables_of("Project")[1]["id"],
+        serde_json::json!("p-billing")
+    );
+    page.wait_for(WITHIN, |page| page.says("On track"))
+        .unwrap_or_else(|why| panic!("its health: {why:?}: {}", said(&page)));
+    // Esc puts it away.
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| page.bounds("project-close").is_none())
+        .unwrap_or_else(|why| panic!("it goes: {why:?}: {}", said(&page)));
+    assert_eq!(written(&linear), 0);
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn show_issues_goes_to_the_issues_of_the_project_and_esc_comes_back_to_it() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    go_to_projects(&mut page);
+    page.press("down").expect("down");
+    page.press("enter").expect("enter");
+    page.wait_for(WITHIN, |page| page.bounds("project-close").is_some())
+        .unwrap_or_else(|why| panic!("the project opens: {why:?}: {}", said(&page)));
+    page.press("shift+i").expect("shift+i");
+    list_button_says(&mut page, "Billing v2");
+    assert!(
+        linear
+            .variables_of("ProjectIssues")
+            .iter()
+            .any(|variables| variables.to_string().contains("p-billing")),
+        "{:?}",
+        linear.variables_of("ProjectIssues")
+    );
+    page.wait_for(WITHIN, |page| page.says("back to projects"))
+        .unwrap_or_else(|why| panic!("the line of keys says Esc: {why:?}: {}", said(&page)));
+    // Esc: the projects again, the project beside them.
+    page.press("escape").expect("escape");
+    list_button_says(&mut page, "Projects");
+    page.wait_for(WITHIN, |page| page.bounds("project-close").is_some())
+        .unwrap_or_else(|why| panic!("the project is beside them: {why:?}: {}", said(&page)));
+    assert!(
+        page.words_in("side")
+            .iter()
+            .any(|word| word == "Billing v2"),
+        "{:?}",
+        page.words_in("side")
+    );
+    // Gone elsewhere from its issues, Esc no longer comes back.
+    page.press("shift+i").expect("shift+i");
+    list_button_says(&mut page, "Billing v2");
+    page.press("2").expect("2");
+    list_button_says(&mut page, "All issues");
+    page.press("escape").expect("escape");
+    page.advance(0.5).expect("a moment");
+    list_button_says(&mut page, "All issues");
+    assert_eq!(written(&linear), 0);
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_words_of_the_field_narrow_the_projects_by_their_names() {
+    let (_linear, _session, mut page) = open_lists(WIDE);
+    go_to_projects(&mut page);
+    page.press("/").expect("/");
+    page.type_text("BILL").expect("the words");
+    page.wait_for(WITHIN, |page| !page.says("Public API limits"))
+        .unwrap_or_else(|why| panic!("the others go: {why:?}: {}", said(&page)));
+    assert!(page.says("Billing v2"), "{}", said(&page));
+    page.type_text("zzz").expect("the words");
+    page.wait_for(WITHIN, |page| {
+        page.says("No project's name has these words")
+    })
+    .unwrap_or_else(|why| panic!("it says so: {why:?}: {}", said(&page)));
+    assert!(!page.says("Search all of Linear"), "{}", said(&page));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_workspace_with_no_projects_says_so_and_one_linear_refuses_says_why() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    linear.no_projects();
+    open_card_of_lists(&mut page);
+    page.type_text("projects").expect("the words");
+    page.press("enter").expect("enter");
+    page.wait_for(WITHIN, |page| page.says("No projects"))
+        .unwrap_or_else(|why| panic!("it says so: {why:?}: {}", said(&page)));
+    linear.refuse_projects();
+    page.press("mod+r").expect("refresh");
+    page.wait_for(WITHIN, |page| page.says("Projects are not available"))
+        .unwrap_or_else(|why| panic!("it says why: {why:?}: {}", said(&page)));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_edge_beside_a_project_is_moved_by_its_arrows_and_the_groups_stay() {
+    let (_linear, _session, mut page) = open_lists((1600.0, 800.0));
+    go_to_projects(&mut page);
+    page.press("enter").expect("enter");
+    page.wait_for(WITHIN, |page| page.bounds("project-close").is_some())
+        .unwrap_or_else(|why| panic!("the project opens: {why:?}: {}", said(&page)));
+    page.advance(0.4).expect("a moment");
+    let before = page.bounds("side").expect("the project").w;
+    // Tab goes to the list's button, the filter, Refresh, New issue, and then the edge.
+    for _ in 0..5 {
+        page.press("tab").expect("tab");
+        page.advance(0.1).expect("a moment");
+    }
+    page.press("left").expect("left");
+    page.advance(0.3).expect("a moment");
+    let after = page.bounds("side").expect("the project").w;
+    assert!((after - before - 16.0).abs() < 1.0, "{before} {after}");
+    assert!(page.says("Public API limits"), "{}", said(&page));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn in_an_80_by_24_pane_a_project_has_the_pane_and_j_goes_to_the_next() {
+    let (linear, _session, mut page) = open_lists(PANE);
+    go_to_projects(&mut page);
+    page.press("enter").expect("enter");
+    page.wait_for(WITHIN, |page| page.bounds("project-close").is_some())
+        .unwrap_or_else(|why| panic!("the project opens: {why:?}: {}", said(&page)));
+    // The head is the list's, and is not on the page.
+    assert!(page.bounds("lists").is_none(), "{}", said(&page));
+    page.press("j").expect("j");
+    page.wait_for(WITHIN, |_| linear.times("Project") == 2)
+        .unwrap_or_else(|why| panic!("the next is asked for: {why:?}"));
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| page.bounds("lists").is_some())
+        .unwrap_or_else(|why| panic!("the list again: {why:?}: {}", said(&page)));
 }

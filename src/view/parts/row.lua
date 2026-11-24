@@ -1,4 +1,4 @@
--- The two kinds of line in the list: the head of a group and an issue. They are only drawn here;
+-- The kinds of line in the list: the head of a group, an issue and a project. They are only drawn here;
 -- what a press on one does is in list.lua.
 
 local kit = require("../lib/kit")
@@ -280,6 +280,59 @@ function row.issue(item, look, o)
 	el:child(
 		b.div():w(SIZE.date):no_shrink():row():justify_end():child(
 			b.text(issue.updated):text_size(SIZE.small):color("dim"):no_shrink()
+		)
+	)
+	return b.div():h(SIZE.row):px(9):no_shrink():child(el)
+end
+
+-- What a line of the list of projects says aloud: its name, its health, how far it is, and its target.
+local function project_words(project)
+	local said = icons.HEALTH[project.health]
+	local words = project.name .. ", " .. (said ~= nil and said.word or "No update")
+	if said ~= nil and project.stale then
+		words = words .. ", outdated"
+	end
+	words = words .. string.format(", %d%%", project.progress)
+	if project.target ~= nil then
+		words = words .. ", target " .. project.target .. (project.late and ", late" or "")
+	end
+	return words
+end
+
+-- A project: its health (by shape and colour), its name that gives way, the word of its health and its
+-- lead where the list has room, the day it is for (in the colour of an error where that has passed) and
+-- how far it is. Every column keeps its width, so the lines are a table and nothing moves as they change.
+function row.project(item, look, o)
+	local project = item.row
+	local el = line(row.name(item.key), look):gap(10):label(project_words(project)):selected(look.selected)
+	el:child(icons.health(project.health, project.stale))
+	el:child(b.text(project.name):grow(1):min_w(0):truncate())
+	if o.labels then
+		local said = icons.HEALTH[project.health]
+		el:child(
+			b.div():w(SIZE.health):no_shrink():child(
+				b.text(said ~= nil and said.word or "No update")
+					:text_size(SIZE.small)
+					:color((said ~= nil and not project.stale) and said.color or "dim")
+					:truncate()
+			)
+		)
+	end
+	if o.who then
+		el:child(
+			b.div():w(SIZE.who):no_shrink():row():justify_end():child(
+				b.text(project.lead or ""):text_size(SIZE.tiny):color("dim"):truncate()
+			)
+		)
+	end
+	el:child(
+		b.div():w(SIZE.target):no_shrink():row():justify_end():child(
+			b.text(project.target or ""):text_size(SIZE.small):color(project.late and "error" or "dim"):truncate()
+		)
+	)
+	el:child(
+		b.div():w(SIZE.progress):no_shrink():row():items_center():justify_end():gap(5):child(icons.progress(project.progress)):child(
+			b.text(tostring(project.progress) .. "%"):text_size(SIZE.small):color("dim"):no_shrink()
 		)
 	)
 	return b.div():h(SIZE.row):px(9):no_shrink():child(el)

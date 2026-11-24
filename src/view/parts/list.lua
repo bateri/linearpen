@@ -90,6 +90,14 @@ function list.load(snapshot)
 			tops[#items + 1] = tops[#items] + SIZE.row
 			first_issue = first_issue or issue_key
 		end
+		-- (The list of projects holds projects in the place of issues: a line of each, the same height.)
+		for _, project in group.projects or {} do
+			local project_key = "p:" .. project.id
+			items[#items + 1] = { kind = "project", key = project_key, row = project, group = group }
+			at[project_key] = #items
+			tops[#items + 1] = tops[#items] + SIZE.row
+			first_issue = first_issue or project_key
+		end
 	end
 	local old_items, old_at = L.items, L.at
 	L.items, L.tops, L.at, L.late = items, tops, at, late
@@ -229,6 +237,11 @@ local function put(key)
 	return true
 end
 
+-- Puts the cursor on the line of `key`, where the list holds it. Whether it does.
+function list.go_to(key)
+	return put(key)
+end
+
 -- The line of `key` (`{ kind, key, group, row }`), or nil.
 function list.item_of(key)
 	return L.items[L.at[key] or 0]
@@ -291,7 +304,7 @@ function list.step_issue(way)
 	local to = at + way
 	while to >= 1 and to <= #L.items do
 		local item = L.items[to]
-		if item.kind == "issue" then
+		if item.kind == "issue" or item.kind == "project" then
 			return put(item.key)
 		end
 		to += way
@@ -420,6 +433,8 @@ function list.note(shown)
 	local words = string.format("The %d issues changed last. Filter them, or go to a list, for the others.", shown)
 	if S.scope == "inbox" then
 		words = "The latest of your inbox. The rest of it is in Linear."
+	elseif S.scope == "projects" then
+		words = string.format("The %d projects changed last. The others are in Linear.", shown)
 	end
 	return b.div():id("list-cut"):h(NOTE):no_shrink():row():items_center():px(19):child(
 		b.text(words):text_size(SIZE.small):color("dim"):wrap():min_w(0):grow(1)
@@ -461,6 +476,8 @@ function list.view(room, panel_open)
 		}
 		if item.kind == "group" then
 			return row.group(item, look, L.late[item.group.key] == true)
+		elseif item.kind == "project" then
+			return row.project(item, look, o)
 		end
 		return row.issue(item, look, o)
 	end, { tops = tops, px = 0, trail = TRAIL })

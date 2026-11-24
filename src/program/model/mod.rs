@@ -4,4 +4,5 @@
 
 pub mod filter;
 pub mod groups;
+pub mod projects;
 pub mod time;

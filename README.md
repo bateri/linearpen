@@ -109,7 +109,8 @@ on one row beside it (under 967 points), the issue has the pane and the head goe
 you go to: **All issues** (the issues of the workspace, each saying whose it is), **Created by me**
 and **Subscribed** (the issues you made, and those you follow, as Linear's My issues has them), your
 **Inbox** (the issues of your notifications in Linear, the unread first, each saying who and what it is
-about; reading it here marks nothing read in Linear, and the filters are the other lists'), what you
+about; reading it here marks nothing read in Linear, and the filters are the other lists'), the
+**Projects** of the workspace (below), what you
 starred in Linear, the issues or the running cycle of a team you are in (in the order of your own
 list of teams), a saved view, a project. Each holds its open issues and the 100 done and canceled
 ones that changed last, grouped by state with the backlog, Done and Canceled folded, and is asked of
@@ -120,6 +121,17 @@ its name, and each line says what it is (`View`, `Project`, `Team`, `Cycle 24, e
 the list you look at is asked for (with My issues), so the others cost nothing until you go to
 them. Linear is asked for no more than 500 issues of a list, the open ones first. Where there are
 more open ones, the button says `500+` and a line at the end of the list says so.
+
+**Projects** is the list of the workspace's projects, as Linear's Projects page has them: grouped by their
+state (In Progress, Planned, Paused, Backlog, then Completed and Canceled folded), the one whose target
+comes first at the top. Each line says its health by a shape and a word (On track, At risk, Off track,
+or No update), its lead, its target (red where it has passed) and how far it is. Enter opens one beside
+the list: its health (and whether Linear holds it outdated), its progress, its lead and its dates, its
+last update as it was written, and its milestones. **Show issues** (`⇧I`) goes to its issues, and `Esc`
+comes back to the project. The filter narrows the projects by name; nothing of a project is changed
+here.
+
+![The projects, one open beside them](docs/project.png)
 
 <img src="docs/lists.png" width="720" alt="linearpen: the card of lists, over My issues">
 
@@ -440,6 +452,7 @@ or `Space` then presses.
 | `⇧G`                  | show its pull request (several: a menu; without `gh`, the browser)   |
 | `⌘⇧O`                 | open the pull request shown on GitHub                                |
 | `u`                   | in the inbox, mark the notifications of the issue read in Linear     |
+| `⇧I`                  | in the projects, go to the issues of the project (`Esc` comes back)  |
 | `Space`, `⇧ Space`    | scroll the open issue down, up                                       |
 | `⌘⇧←` `⌘⇧→`            | make the issue beside the list wider, narrower                       |
 | `x`, `Shift ↑↓`, `⌘A` | select the issue, select more, select all                            |
