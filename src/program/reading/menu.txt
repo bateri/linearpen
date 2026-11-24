@@ -93,13 +93,13 @@ commands:
   "Go to a list" [g]
   "Show my issues" [1]
   "Show all issues" [2]
-  "Go to the first favorite" [3]
-  "Go to the second favorite" [4]
-  "Go to the third favorite" [5]
-  "Go to the fourth favorite" [6] (disabled)
-  "Go to the fifth favorite" [7] (disabled)
-  "Go to the sixth favorite" [8] (disabled)
-  "Go to the seventh favorite" [9] (disabled)
+  "Show the inbox" [3]
+  "Show the projects" [4]
+  "Go to the first favorite" [5]
+  "Go to the second favorite" [6]
+  "Go to the third favorite" [7]
+  "Go to the fourth favorite" [8] (disabled)
+  "Go to the fifth favorite" [9] (disabled)
   "Filter issues" [/]
   "Filter by status, label and more" [f]
   "Clear the filters" [shift+f] (disabled)

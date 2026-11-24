@@ -27,7 +27,10 @@ local SIZE = {
 	-- Where the room narrows the filter gives way first (260 to 200), then Refresh, then New issue.
 	wide = 820,
 	filter_room = 880,
-	stacked = 540,
+	-- The list's room from which the button has the whole of a list's name (26 letters), and from which
+	-- the head is one row at all (the name cut at 13 letters below `named`).
+	named = 540,
+	stacked = 440,
 	-- The filter's width: it is the same whatever it holds, and a little more where the head is wide.
 	filter = 200,
 	filter_wide = 260,
@@ -65,13 +68,30 @@ local SIZE = {
 	-- its arrow keys move it while it has the keyboard (the kit's `STEP`).
 	edge = 7,
 	edge_step = 16,
+	-- The tabs of a wide head (My issues, All issues, Inbox, Projects, and the button of every other
+	-- list): what they take more than the list's button does, which the head's widths grow by where it
+	-- has them. The page's width alone says whether it has them (`tabs_from`, below), so that an issue
+	-- opening does not change the head.
+	tabs_extra = 300,
+	-- The most of another list's name the button after the tabs shows, and where the list has less room
+	-- (`named` and the tabs' more), less of it and a narrower filter.
+	tab_name = 16,
+	tab_name_short = 8,
+	tab_filter = 160,
+	-- The least room of a list whose head has the tabs: the four, another list's name cut short, the
+	-- narrower filter.
+	tabbed_least = 720,
 	-- Of the 80 columns of a pane: a page this short drops what it can.
 	short = 440,
 }
 
 -- The page's width from which the issue (or a form) stands beside the list: the least of it, the edge
--- and a list whose head is one row. Below it, it has the pane (a head of two rows would move the list
+-- and a list whose head is one row (its name cut short). Below it, it has the pane (a head of two rows would move the list
 -- as the issue opens, and the edge could not move).
 SIZE.beside = SIZE.side_least + SIZE.edge + SIZE.stacked
+
+-- The page's width from which the head has the tabs: the issue at its least beside a list whose head has
+-- them and the filter on one row, at their narrowest.
+SIZE.tabs_from = SIZE.side_least + SIZE.edge + SIZE.tabbed_least
 
 return SIZE

@@ -21,8 +21,9 @@ use crate::state::Paths;
 
 /// A page as large as the docs' pictures, and an 80×24 pane.
 pub(crate) const WIDE: (f32, f32) = (1100.0, 720.0);
-/// A page wide enough for the list's head to keep all of it with an issue beside the list.
-pub(crate) const WHOLE: (f32, f32) = (1400.0, 720.0);
+/// A page wide enough for the list's head (its tabs, then the filter, Refresh and New issue) to keep all
+/// of it with an issue beside the list.
+pub(crate) const WHOLE: (f32, f32) = (1700.0, 720.0);
 pub(crate) const PANE: (f32, f32) = (600.0, 330.0);
 
 /// How long a test waits for what the program says on its own (a list, a call).
@@ -1684,10 +1685,11 @@ pub(crate) fn said(page: &Page) -> String {
 
 /// What the line the cursor is on says to a screen reader, or an empty string.
 pub(crate) fn cursor(page: &Page) -> String {
+    // (A tab of the head is selected too: it is the list shown, not the line the cursor is on.)
     page.outline()
         .accessible
         .iter()
-        .find(|node| node.state.selected)
+        .find(|node| node.state.selected && node.role != pencere_view::AccessibleRole::Tab)
         .map(|node| node.words.clone())
         .unwrap_or_default()
 }
@@ -2063,8 +2065,8 @@ fn in_an_80_by_24_pane_the_head_is_one_row_with_the_field_at_the_right_whatever_
 #[test]
 #[ignore = "opens the kit's interpreter: make test-page"]
 fn a_pane_too_narrow_for_the_list_and_the_field_in_one_row_keeps_two() {
-    // 480 points: the longest button and the field do not both fit in a row.
-    let (_linear, _session, mut page) = open_lists((480.0, 330.0));
+    // 430 points: the button, its name cut short, and the field do not both fit in a row.
+    let (_linear, _session, mut page) = open_lists((430.0, 330.0));
     open_card_of_lists(&mut page);
     page.type_text("mobile crash").expect("the words");
     page.press("enter").expect("enter");
@@ -2078,7 +2080,7 @@ fn a_pane_too_narrow_for_the_list_and_the_field_in_one_row_keeps_two() {
     let filter = page.bounds("filter-box").expect("the field");
     assert!(filter.y >= button.y + button.h, "{button:?} {filter:?}");
     assert!(
-        filter.x + filter.w <= 480.0 + 0.5 && button.x + button.w <= 480.0 + 0.5,
+        filter.x + filter.w <= 430.0 + 0.5 && button.x + button.w <= 430.0 + 0.5,
         "{button:?} {filter:?}"
     );
 }
@@ -4301,13 +4303,13 @@ fn with_a_form_open_beside_a_list_too_narrow_for_refresh_its_key_asks_again_and_
 #[test]
 #[ignore = "opens the kit's interpreter: make test-page"]
 fn a_pane_too_narrow_for_a_list_of_one_row_beside_the_issue_gives_the_issue_the_pane() {
-    // 966 points: the issue at its narrowest and the edge leave the list less than one row of head.
-    let (_linear, _session, mut page) = open_lists((966.0, 600.0));
+    // 866 points: the issue at its narrowest and the edge leave the list less than one row of head.
+    let (_linear, _session, mut page) = open_lists((866.0, 600.0));
     open_the_issue_under_the_cursor(&mut page);
     assert!(page.bounds("lists").is_none(), "{}", said(&page));
     assert!(page.bounds("side-edge/handle").is_none(), "{}", said(&page));
     let side = page.bounds("side").expect("the issue");
-    assert!((side.w - 966.0).abs() < 0.6, "{side:?}");
+    assert!((side.w - 866.0).abs() < 0.6, "{side:?}");
 }
 
 #[test]
@@ -6244,8 +6246,8 @@ fn in_a_narrow_pane_the_issue_read_has_the_work_button_in_its_first_line_and_the
 #[test]
 #[ignore = "opens the kit's interpreter: make test-page"]
 fn beside_the_narrowest_list_the_three_buttons_over_the_issue_are_whole() {
-    // (The narrowest page the issue stands beside the list in: 420 + 7 + 540.)
-    let size = (967.0, 600.0);
+    // (The narrowest page the issue stands beside the list in: 420 + 7 + 440.)
+    let size = (867.0, 600.0);
     let (_linear, _session, mut page) = open_lists(size);
     open_the_issue(&mut page);
     page.advance(0.4).expect("a moment");
@@ -6263,7 +6265,8 @@ fn beside_the_narrowest_list_the_three_buttons_over_the_issue_are_whole() {
 #[ignore = "opens the kit's interpreter: make test-page"]
 fn the_edge_and_its_keys_size_the_issue_up_to_what_leaves_the_list_its_head_and_the_width_is_kept()
 {
-    let size = (1600.0, 800.0);
+    // (A head with its tabs: 300 wider than the button's.)
+    let size = (1900.0, 800.0);
     let (_linear, rig, mut page) = open_machine_left(size, &["claude"], None, |_| {});
     open_the_issue_under_the_cursor(&mut page);
     // Until the person sizes it, a part of the page up to 520; the head is whole over the list.
@@ -6291,7 +6294,7 @@ fn the_edge_and_its_keys_size_the_issue_up_to_what_leaves_the_list_its_head_and_
     assert!((wider.w - 640.0).abs() < 1.0, "{wider:?}");
     page.wait_for(WITHIN, |_| kept_width(&rig) == Some(640))
         .unwrap_or_else(|why| panic!("the width is kept: {why:?}: {:?}", kept_width(&rig)));
-    // As far as it goes: the list keeps the room of its whole head (1600 - 7 - 820).
+    // As far as it goes: the list keeps the room of its whole head (1900 - 7 - 820 - 300).
     page.drag_between(
         pencere_view::Point {
             x: wider.x - 3.5,
@@ -6325,7 +6328,7 @@ fn the_edge_and_its_keys_size_the_issue_up_to_what_leaves_the_list_its_head_and_
     let side = again.bounds("side").expect("the issue");
     assert!((side.w - 733.0).abs() < 1.0, "{side:?}");
     // A narrower page holds it: the list keeps its head, and the issue at least 420.
-    again.resize(1300.0, 800.0).expect("the pane narrows");
+    again.resize(1600.0, 800.0).expect("the pane narrows");
     again.advance(0.3).expect("a moment");
     let held = again.bounds("side").expect("the issue");
     assert!((held.w - 473.0).abs() < 1.0, "{held:?}");
@@ -6640,8 +6643,8 @@ fn head_is_over_the_list(
 #[test]
 #[ignore = "opens the kit's interpreter: make test-page"]
 fn the_controls_of_the_head_stay_where_they_are_and_as_wide_whatever_the_page_is_doing() {
-    // (The pages the issue stands beside the list in: whole, and the narrowest, 420 + 7 + 540.)
-    for size in [WIDE, (1000.0, 600.0), (967.0, 600.0)] {
+    // (The pages the issue stands beside the list in: whole, and the narrowest, 420 + 7 + 440.)
+    for size in [WIDE, (1000.0, 600.0), (867.0, 600.0)] {
         let (_linear, _session, mut page) = open_lists(size);
         let before = head_places(&page);
         for (name, at) in &before {
@@ -7168,17 +7171,35 @@ fn an_empty_inbox_says_it_is_empty() {
         .unwrap_or_else(|why| panic!("it says so: {why:?}: {}", said(&page)));
 }
 
-/// Waits until the button of the lists says `name`.
+/// Whether the head says the list shown is `name`: its button says it, or, in a head with the tabs, the
+/// tab of that name is the one lit.
+fn shows_list(page: &Page, name: &str) -> bool {
+    if page.words_in("lists").iter().any(|word| word == name) {
+        return true;
+    }
+    let kind = match name {
+        "My issues" => "mine",
+        "All issues" => "all",
+        "Inbox" => "inbox",
+        "Projects" => "projects",
+        _ => return false,
+    };
+    let id = pencere_view::Id::named(&format!("tab:{kind}"));
+    page.outline()
+        .accessible
+        .iter()
+        .any(|node| node.id == Some(id) && node.state.selected)
+}
+
+/// Waits until the head says the list shown is `name`.
 fn list_button_says(page: &mut Page, name: &str) {
-    page.wait_for(WITHIN, |page| {
-        page.words_in("lists").iter().any(|word| word == name)
-    })
-    .unwrap_or_else(|why| {
-        panic!(
-            "the button of the lists says {name:?}: {why:?}: {:?}",
-            page.words_in("lists")
-        )
-    });
+    page.wait_for(WITHIN, |page| shows_list(page, name))
+        .unwrap_or_else(|why| {
+            panic!(
+                "the head says {name:?}: {why:?}: {:?}",
+                page.words_in("lists")
+            )
+        });
 }
 
 #[test]
@@ -7188,7 +7209,7 @@ fn the_card_of_lists_has_mine_all_the_favorites_the_teams_the_views_and_the_proj
     let (_linear, _session, mut page) = open_lists(WIDE);
     open_card_of_lists(&mut page);
     let says = said(&page);
-    // The first two, with their keys, then the favorites with theirs (3 to 5 of three), then the rest.
+    // The own four, with their keys, then the favorites with theirs (5 to 7 of three), then the rest.
     let at = |words: &str| {
         says.find(words)
             .unwrap_or_else(|| panic!("{words:?} is on the card: {says}"))
@@ -7196,9 +7217,11 @@ fn the_card_of_lists_has_mine_all_the_favorites_the_teams_the_views_and_the_proj
     let order = [
         "My issues|Assigned to you|1",
         "All issues|The workspace|2",
-        "Bugs to triage|View|3",
-        "Billing|Project|4",
-        "Agent-ready|View \u{b7} ACM|5",
+        "Inbox|Your notifications|3",
+        "Projects|The workspace's projects|4",
+        "Bugs to triage|View|5",
+        "Billing|Project|6",
+        "Agent-ready|View \u{b7} ACM|7",
         "ACM \u{b7} Current cycle|Cycle 24, ends Nov 15",
         "ACM \u{b7} Issues|Team",
         "WEB \u{b7} Current cycle|Cycle 11, ends Nov 18",
@@ -7251,21 +7274,21 @@ fn typing_in_the_card_of_lists_finds_a_list_and_enter_goes_to_it_with_its_name_a
 
 #[test]
 #[ignore = "opens the kit's interpreter: make test-page"]
-fn the_keys_three_to_nine_go_to_the_favorites_and_one_comes_back_to_my_issues() {
+fn the_keys_five_to_nine_go_to_the_favorites_and_one_comes_back_to_my_issues() {
     let (linear, _session, mut page) = open_lists(WIDE);
     // The names come after the first lists: the card is where they are known to have come.
     open_card_of_lists(&mut page);
     page.press("escape").expect("escape");
     page.wait_for(WITHIN, |page| !page.says("Assigned to you"))
         .unwrap_or_else(|why| panic!("the card closes: {why:?}: {}", said(&page)));
-    page.press("3").expect("3");
+    page.press("5").expect("5");
     list_button_says(&mut page, "Bugs to triage");
     page.wait_for(WITHIN, |page| page.says("ACM-398") && page.says("ACM-420"))
         .unwrap_or_else(|why| panic!("the view's issues: {why:?}: {}", said(&page)));
     assert!(!page.says("ACM-412"), "{}", said(&page));
-    page.press("5").expect("5");
+    page.press("7").expect("7");
     list_button_says(&mut page, "Agent-ready");
-    // The sixth favorite there is not: its key does nothing.
+    // The fifth favorite there is not: its key does nothing.
     page.press("9").expect("9");
     page.advance(0.3).expect("a moment");
     list_button_says(&mut page, "Agent-ready");
@@ -7638,7 +7661,7 @@ fn where_the_names_of_the_lists_cannot_be_asked_for_the_card_still_has_mine_and_
     assert!(!page.says("Billing"), "{}", said(&page));
     // The key of a favorite there is not does nothing, and the others are as they were.
     page.press("escape").expect("escape");
-    page.press("3").expect("3");
+    page.press("5").expect("5");
     page.advance(0.3).expect("a moment");
     assert!(page.says("ACM-412"), "{}", said(&page));
     page.press("2").expect("2");
@@ -7727,7 +7750,7 @@ fn a_long_name_of_a_list_is_cut_in_the_button_and_the_rest_of_the_head_stays_whe
 
 #[test]
 #[ignore = "opens the kit's interpreter: make test-page"]
-fn the_card_of_keys_has_one_line_for_the_favorites_and_the_palette_has_none_of_the_seven_keys() {
+fn the_card_of_keys_has_one_line_for_the_favorites_and_the_palette_has_none_of_the_five_keys() {
     let (_linear, _session, mut page) = open_lists(WIDE);
     open_card_of_lists(&mut page);
     page.press("escape").expect("escape");
@@ -7737,13 +7760,15 @@ fn the_card_of_keys_has_one_line_for_the_favorites_and_the_palette_has_none_of_t
         .unwrap_or_else(|why| panic!("the card opens: {why:?}: {}", said(&page)));
     for words in [
         "Go to a list",
-        "Go to a favorite (3 to 9)",
+        "Go to a favorite (5 to 9)",
         "Show my issues",
         "Show all issues",
+        "Show the inbox",
+        "Show the projects",
     ] {
         assert!(page.says(words), "{words}: {}", said(&page));
     }
-    // One line for the seven keys.
+    // One line for the five keys.
     assert!(!page.says("Go to the first favorite"), "{}", said(&page));
     page.press("escape").expect("escape");
     page.advance(0.6).expect("a moment");
@@ -7817,13 +7842,13 @@ fn a_list_linear_could_not_tell_says_so_in_its_place_and_try_again_and_my_issues
     assert!(!page.says("Linear did not answer"), "{}", said(&page));
     // Linear is back: the key of the list asks for it again.
     linear.set(Mode::Fine);
-    page.press("4").expect("4");
+    page.press("6").expect("6");
     page.wait_for(WITHIN, |page| page.says("ACM-418"))
         .unwrap_or_else(|why| panic!("the list comes: {why:?}: {}", said(&page)));
     // And a list that fails again is asked for again by its own button.
     linear.set(Mode::Down);
     page.press("1").expect("1");
-    page.press("5").expect("5");
+    page.press("7").expect("7");
     page.wait_for(WITHIN, |page| page.says("Try again"))
         .unwrap_or_else(|why| panic!("the list fails: {why:?}: {}", said(&page)));
     linear.set(Mode::Fine);
@@ -9204,9 +9229,9 @@ fn share_makes_anyones_title_one_line_and_without_a_link_copies_nothing() {
 #[test]
 #[ignore = "opens the kit's interpreter: make test-page"]
 fn share_is_whole_on_the_line_of_the_identifier_where_the_issue_is_narrowest() {
-    // An 80×24 pane, where the issue has the pane, and a pane of 967 points, where it is beside the list
+    // An 80×24 pane, where the issue has the pane, and a pane of 867 points, where it is beside the list
     // at its narrowest (420 points).
-    for size in [PANE, (967.0, 520.0)] {
+    for size in [PANE, (867.0, 520.0)] {
         let (_linear, _session, mut page) = open_lists(size);
         open_the_issue_under_the_cursor(&mut page);
         page.wait_for(WITHIN, |page| pressable(page, "panel-share"))
@@ -10221,10 +10246,10 @@ fn an_edit_that_holds_nothing_new_is_let_go_at_once_and_save_writes_nothing() {
 #[test]
 #[ignore = "opens the kit's interpreter: make test-page"]
 fn the_edge_with_the_keyboard_on_it_is_moved_by_the_arrows_and_elsewhere_they_fold() {
-    let (_linear, rig, mut page) = open_machine_left((1600.0, 800.0), &["claude"], None, |_| {});
+    let (_linear, rig, mut page) = open_machine_left((1900.0, 800.0), &["claude"], None, |_| {});
     open_the_issue_under_the_cursor(&mut page);
-    // Tab goes to the list's button, the filter, Refresh, New issue, and then the edge.
-    for _ in 0..5 {
+    // Tab goes to the four tabs, More, the filter, Refresh, New issue, and then the edge.
+    for _ in 0..9 {
         page.press("tab").expect("tab");
         page.advance(0.1).expect("a moment");
     }
@@ -10481,15 +10506,15 @@ fn a_workspace_with_no_projects_says_so_and_one_linear_refuses_says_why() {
 #[test]
 #[ignore = "opens the kit's interpreter: make test-page"]
 fn the_edge_beside_a_project_is_moved_by_its_arrows_and_the_groups_stay() {
-    let (_linear, _session, mut page) = open_lists((1600.0, 800.0));
+    let (_linear, _session, mut page) = open_lists((1900.0, 800.0));
     go_to_projects(&mut page);
     page.press("enter").expect("enter");
     page.wait_for(WITHIN, |page| page.bounds("project-close").is_some())
         .unwrap_or_else(|why| panic!("the project opens: {why:?}: {}", said(&page)));
     page.advance(0.4).expect("a moment");
     let before = page.bounds("side").expect("the project").w;
-    // Tab goes to the list's button, the filter, Refresh, New issue, and then the edge.
-    for _ in 0..5 {
+    // Tab goes to the four tabs, More, the filter, Refresh, New issue, and then the edge.
+    for _ in 0..9 {
         page.press("tab").expect("tab");
         page.advance(0.1).expect("a moment");
     }
@@ -10617,4 +10642,50 @@ fn with_the_read_ones_open_u_still_takes_the_cursor_to_the_next_unread_and_a_rea
     page.press("u").expect("u");
     page.advance(0.3).expect("a moment");
     assert_eq!(linear.times("NotificationMarkReadAll"), 1);
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_wide_head_has_the_four_lists_as_tabs_by_their_keys_and_a_narrow_one_its_button() {
+    let (_linear, _session, mut page) = open_lists(WHOLE);
+    for words in ["My issues", "All issues", "Inbox", "Projects", "More"] {
+        assert!(page.says(words), "{words}: {}", said(&page));
+    }
+    list_button_says(&mut page, "My issues");
+    // A press on a tab, and its key, go to its list; the tab of the list shown is the one lit.
+    page.click("tab:projects").expect("the tab of the projects");
+    list_button_says(&mut page, "Projects");
+    page.wait_for(WITHIN, |page| page.says("Billing v2"))
+        .unwrap_or_else(|why| panic!("the projects come: {why:?}: {}", said(&page)));
+    page.press("3").expect("3");
+    list_button_says(&mut page, "Inbox");
+    // A list that is none of the four is named in the place of More.
+    page.press("5").expect("5");
+    page.wait_for(WITHIN, |page| {
+        page.words_in("lists")
+            .iter()
+            .any(|word| word == "Bugs to triage")
+    })
+    .unwrap_or_else(|why| {
+        panic!(
+            "the favorite is named: {why:?}: {:?}",
+            page.words_in("lists")
+        )
+    });
+    // The tabs stay where they are when an issue opens beside the list.
+    page.press("1").expect("1");
+    list_button_says(&mut page, "My issues");
+    page.advance(0.3).expect("a moment");
+    let before = page.bounds("tabs").expect("the tabs");
+    open_the_issue_under_the_cursor(&mut page);
+    assert_eq!(page.bounds("tabs"), Some(before));
+    // A narrow pane has the button of before, which says the list shown.
+    let (_linear, _session, narrow) = open_lists(WIDE);
+    assert!(narrow.bounds("tabs").is_none(), "{}", said(&narrow));
+    assert!(
+        narrow
+            .words_in("lists")
+            .iter()
+            .any(|word| word == "My issues")
+    );
 }

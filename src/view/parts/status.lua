@@ -121,7 +121,7 @@ end
 -- Refresh's key, where the head has no button for it (the list beside the form has too little room, or
 -- the form has the pane).
 local function refresh_hint(start)
-	if head_room() < SIZE.wide then
+	if not head.holds_refresh(head_room()) then
 		start[#start + 1] = { key = "refresh", words = hint({ "refresh" }, "refresh"), priority = 3 }
 	end
 	return start
@@ -202,7 +202,7 @@ local function typing_hints()
 		start[#start + 1] = { key = "move", words = hint({ "up", "down" }, "move"), priority = 6 }
 		start[#start + 1] = { key = "open", words = hint({ "open" }, "open"), priority = 5 }
 	end
-	if not head.unmatched() then
+	if not head.unmatched() and S.scope ~= "projects" then
 		start[#start + 1] = { key = "search", words = hint({ "search" }, "search all of Linear"), priority = 8, press = true }
 	end
 	start[#start + 1] = {
@@ -388,10 +388,10 @@ function status.view()
 	-- A key that has a button is on the button; where the head has none (the list has too little room:
 	-- the pane is narrow, or an issue stands beside it) the key is here, which is the only place it is
 	-- written.
-	if head_room() < SIZE.wide then
+	if not head.holds_refresh(head_room()) then
 		start[#start + 1] = { key = "refresh", words = hint({ "refresh" }, "refresh"), priority = 3 }
 	end
-	if head_room() < SIZE.roomy and not typing then
+	if not head.holds_new(head_room()) and not typing then
 		start[#start + 1] = { key = "new", words = hint({ "new" }, "new issue"), priority = 4 }
 	end
 	-- The marks of the agents on the lines are pressed, and have no key: the key goes to the agent of the

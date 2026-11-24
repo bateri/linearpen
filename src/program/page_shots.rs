@@ -422,7 +422,7 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     save(&page, &fonts, Palette::Dark, "lists-typed.png");
     page.press("escape")?;
     page.advance(0.6)?;
-    page.press("3")?;
+    page.press("5")?;
     page.wait_for(Duration::from_secs(20), |page| {
         page.says("ACM-398") && !page.says("ACM-412")
     })?;
@@ -541,7 +541,8 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     let linear = Canned::new(Mode::Fine);
     linear.set_big_all();
     let session = session_over(&linear, Some("lin_api_test"), None);
-    let mut page = open(&session, BIG, Some(&fonts), "ACM-412")?;
+    // (Where the head has the list's button: a head with the tabs counts in none of them.)
+    let mut page = open(&session, (1100.0, 800.0), Some(&fonts), "ACM-412")?;
     page.press("2")?;
     page.wait_for(Duration::from_secs(20), |page| {
         page.words_in("lists").iter().any(|word| word == "500+")

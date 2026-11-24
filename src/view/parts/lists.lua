@@ -1,8 +1,8 @@
 -- The card of lists, which the button of the head and `g` open: the lists a person can go to, one a
 -- line with what it is and, where it has one, its key. It is the kit's palette (a field that finds,
--- the arrows, Enter, Esc). My issues and All issues come first (`1`, `2`), then the issues the person
--- made and those they are subscribed to (no key: 3 to 9 are the favorites'); then what Linear starred
--- (`3` to `9` for the first seven), the teams, the saved views and the projects, as the program
+-- the arrows, Enter, Esc). My issues, All issues, the inbox and the projects come first (`1` to `4`, the
+-- tabs of a wide head), then what Linear starred (`5` to `9` for the first five), the issues the person
+-- made and those they are subscribed to (no key), the teams, the saved views and the projects, as the program
 -- tells them (`S.catalog`). What each is is said at the end of its line, in words, because the card
 -- cannot draw the heads of its sections.
 
@@ -20,8 +20,8 @@ lists.state = L
 local OWN = {
 	{ key = "mine", title = "My issues", hint = "Assigned to you", keys = "1", list = { kind = "mine" } },
 	{ key = "all", title = "All issues", hint = "The workspace", keys = "2", list = { kind = "all" } },
-	{ key = "inbox", title = "Inbox", hint = "Your notifications", list = { kind = "inbox" } },
-	{ key = "projects", title = "Projects", hint = "The workspace's projects", list = { kind = "projects" } },
+	{ key = "inbox", title = "Inbox", hint = "Your notifications", keys = "3", list = { kind = "inbox" } },
+	{ key = "projects", title = "Projects", hint = "The workspace's projects", keys = "4", list = { kind = "projects" } },
 	{ key = "created", title = "Created by me", hint = "Made by you", list = { kind = "created" }, after = true },
 	{ key = "subscribed", title = "Subscribed", hint = "You follow them", list = { kind = "subscribed" }, after = true },
 }
@@ -48,7 +48,7 @@ function lists.current()
 	return S.scope
 end
 
--- The items of the card: the own two, then the program's, with the keys of the first seven favorites.
+-- The items of the card: the own four, then the program's, with the keys of the first five favorites.
 -- Made again only when what the program tells changed (the palette keeps its search while the items
 -- are the same, and a change of `S.catalog` is a new table with the same lists in it).
 local function items()
@@ -73,7 +73,7 @@ local function items()
 			end
 		end
 	end
-	local number = 3
+	local number = 5
 	if catalog ~= nil then
 		for _, item in catalog.items or {} do
 			if not placed and item.section ~= "favorite" then
@@ -121,7 +121,7 @@ local function items()
 	return L.items
 end
 
--- The list the person's `n`th favorite is (the key `n + 2` goes to it), or nil where there is none.
+-- The list the person's `n`th favorite is (the key `n + 4` goes to it), or nil where there is none.
 function lists.favorite(n)
 	local catalog = S.catalog
 	if catalog == nil then

@@ -6,6 +6,9 @@
 
 - **Size the issue.** Drag the edge between the list and the issue (or press `Cmd Shift Left` and
   `Cmd Shift Right`) to make the issue wider or narrower. linearpen opens it as wide the next time.
+- **Tabs on a wide pane.** The head has My issues, All issues, Inbox and Projects as tabs, `1` to `4`,
+  and More after them for every other list. A narrow pane keeps the list's button. The first five
+  favorites are now `5` to `9`.
 - **Projects.** The workspace's projects are a list of the card of lists (`g`), as Linear's Projects
   page has them: by their state, each with its health (a shape and a word), its lead, its target and
   how far it is. Enter opens one beside the list with its last update, whole, and its milestones;
@@ -26,7 +29,7 @@
 
 - **The issue opens from the top of the pane.** The list's head (the list button, the filter, Refresh
   and New issue) stays over the list, and no longer runs over the issue. Where the list has too little
-  room beside the issue, Refresh and New issue are in the line of keys; on a pane under 967 points the
+  room beside the issue, Refresh and New issue are in the line of keys; on a pane under 867 points the
   issue has the pane, as on a narrow one.
 - **Refresh with a form open.** `Cmd R` asks Linear again while the form of a new issue or of Work on
   is open, and the line of keys says so where the head has no room for the button.

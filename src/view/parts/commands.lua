@@ -115,17 +115,17 @@ local TABLE = {
 	{ id = "lists", title = "Go to a list", group = "Everywhere", keys = { "g" }, when = "headed" },
 	{ id = "scope_mine", title = "Show my issues", group = "Everywhere", keys = { "1" }, when = "headed" },
 	{ id = "scope_all", title = "Show all issues", group = "Everywhere", keys = { "2" }, when = "headed" },
-	-- The first seven favorites have the keys 3 to 9 (the card of lists says which is which). The card of
+	{ id = "scope_inbox", title = "Show the inbox", group = "Everywhere", keys = { "3" }, when = "headed" },
+	{ id = "scope_projects", title = "Show the projects", group = "Everywhere", keys = { "4" }, when = "headed" },
+	-- The first five favorites have the keys 5 to 9 (the card of lists says which is which). The card of
 	-- keys has one line for them (`favorites`, which no key of the library is given for); each key is a
 	-- command of its own, which neither the card nor the palette lists.
-	{ id = "favorites", title = "Go to a favorite (3 to 9)", group = "Everywhere", keys = { "3" }, native = true },
-	{ id = "favorite_3", title = "Go to the first favorite", keys = { "3" }, when = "favorite_3", hidden = true },
-	{ id = "favorite_4", title = "Go to the second favorite", keys = { "4" }, when = "favorite_4", hidden = true },
-	{ id = "favorite_5", title = "Go to the third favorite", keys = { "5" }, when = "favorite_5", hidden = true },
-	{ id = "favorite_6", title = "Go to the fourth favorite", keys = { "6" }, when = "favorite_6", hidden = true },
-	{ id = "favorite_7", title = "Go to the fifth favorite", keys = { "7" }, when = "favorite_7", hidden = true },
-	{ id = "favorite_8", title = "Go to the sixth favorite", keys = { "8" }, when = "favorite_8", hidden = true },
-	{ id = "favorite_9", title = "Go to the seventh favorite", keys = { "9" }, when = "favorite_9", hidden = true },
+	{ id = "favorites", title = "Go to a favorite (5 to 9)", group = "Everywhere", keys = { "5" }, native = true },
+	{ id = "favorite_5", title = "Go to the first favorite", keys = { "5" }, when = "favorite_5", hidden = true },
+	{ id = "favorite_6", title = "Go to the second favorite", keys = { "6" }, when = "favorite_6", hidden = true },
+	{ id = "favorite_7", title = "Go to the third favorite", keys = { "7" }, when = "favorite_7", hidden = true },
+	{ id = "favorite_8", title = "Go to the fourth favorite", keys = { "8" }, when = "favorite_8", hidden = true },
+	{ id = "favorite_9", title = "Go to the fifth favorite", keys = { "9" }, when = "favorite_9", hidden = true },
 	{ id = "filter", title = "Filter issues", group = "Everywhere", keys = { "/" }, when = "headed" },
 	{
 		id = "filters",

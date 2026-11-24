@@ -105,7 +105,7 @@ narrower, as far as leaves the list room for its whole head, and linearpen opens
 time. On a pane where the issue at its narrowest leaves the list less room, the filter narrows first and
 then Refresh and New issue leave for the line of keys, as they do on a narrow pane, and the issue does not
 grow past what keeps the rest of the head; in a pane too narrow for the issue and a list with its head
-on one row beside it (under 967 points), the issue has the pane and the head goes with the list. The list is **My issues** (what is assigned to you) or any other list
+on one row beside it (under 867 points; between 867 and 967 the list's name is cut short to keep that row), the issue has the pane and the head goes with the list. The list is **My issues** (what is assigned to you) or any other list
 you go to: **All issues** (the issues of the workspace, each saying whose it is), **Created by me**
 and **Subscribed** (the issues you made, and those you follow, as Linear's My issues has them), your
 **Inbox** (the issues of your notifications in Linear, the unread first, each saying who and what it is
@@ -116,7 +116,9 @@ list of teams), a saved view, a project. Each holds its open issues and the 100 
 ones that changed last, grouped by state with the backlog, Done and Canceled folded, and is asked of
 Linear again every five minutes; the Status filter finds older ones. The list
 button says which it is and how many open issues it has, and opens the card of lists (`g`): My issues is `1`, All
-issues `2`, your first seven favorites `3` to `9`; the card is the palette, so typing finds a list by
+issues `2`, the Inbox `3`, Projects `4`, your first five favorites `5` to `9`. On a pane wide enough (1147
+points), the head has those four as tabs in the place of the button, the one shown lit, and More after
+them for the card (or the name of the list shown, where it is another); the card is the palette, so typing finds a list by
 its name, and each line says what it is (`View`, `Project`, `Team`, `Cycle 24, ends Nov 15`). Only
 the list you look at is asked for (with My issues), so the others cost nothing until you go to
 them. Linear is asked for no more than 500 issues of a list, the open ones first. Where there are
@@ -467,7 +469,7 @@ or `Space` then presses.
 | `c`                   | write a new issue                                                    |
 | `⇧M`                  | write a comment on the issue open (`⌘Enter` posts it, `Esc` leaves)  |
 | `⌘Enter`              | start the agent, or create the issue, in the form that is open       |
-| `g`                   | go to a list (`1` `2`: My issues, All issues; `3`-`9`: favorites)    |
+| `g`                   | go to a list (`1`-`4`: My issues, All issues, Inbox, Projects; `5`-`9`: favorites) |
 | `/`                   | filter by words (`⌘Enter`: search all of Linear)                     |
 | `f`, `⇧F`             | filter by status, priority, assignee, labels or project; clear them  |
 | `⌘S` `⇧⌘R`            | save the file of the card that has the keyboard, read a PDF          |

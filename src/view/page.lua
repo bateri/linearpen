@@ -361,11 +361,13 @@ commands.when.searchable = function()
 		and not comment.typing()
 		and head.words() ~= ""
 		and (head.typing() or head.unmatched())
+		-- (A search of Linear finds issues: the words of the projects are their names.)
+		and S.scope ~= "projects"
 end
--- The key 3 to 9 goes to the first to the seventh favorite, where the person has that many.
-for number = 3, 9 do
+-- The key 5 to 9 goes to the first to the fifth favorite, where the person has that many.
+for number = 5, 9 do
 	commands.when["favorite_" .. number] = function()
-		return commands.when.headed() and lists.favorite(number - 2) ~= nil
+		return commands.when.headed() and lists.favorite(number - 4) ~= nil
 	end
 end
 -- The agent of the one issue the keys are for, where one works on it.
@@ -781,8 +783,12 @@ local function command(id)
 		act.view({ list = { kind = "mine" } })
 	elseif id == "scope_all" then
 		act.view({ list = { kind = "all" } })
+	elseif id == "scope_inbox" then
+		act.view({ list = { kind = "inbox" } })
+	elseif id == "scope_projects" then
+		act.view({ list = { kind = "projects" } })
 	elseif string.sub(id, 1, 9) == "favorite_" then
-		local go = lists.favorite(tonumber(string.sub(id, 10)) - 2)
+		local go = lists.favorite(tonumber(string.sub(id, 10)) - 4)
 		if go ~= nil then
 			act.view({ list = go })
 		end
@@ -844,6 +850,9 @@ local function press(id)
 		return context.copy("share", context.single())
 	elseif id == "panel-close" then
 		panel.close()
+	elseif string.sub(id, 1, 4) == "tab:" then
+		-- (A tab of the head: the list of its kind.)
+		act.view({ list = { kind = string.sub(id, 5) } })
 	elseif id == "project-close" then
 		project.close()
 	elseif id == "project-issues" then

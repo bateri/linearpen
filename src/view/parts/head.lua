@@ -153,26 +153,119 @@ local function count_words(snapshot)
 	return tostring(count) .. ((counts.shownCut and S.scope ~= "inbox") and "+" or "")
 end
 
--- The most of a list's name the button shows; a longer one is cut with the kit's mark.
+-- The most of a list's name the button shows; a longer one is cut with the kit's mark. Where the list
+-- has less room (an issue beside it on a narrower page), less of it, so that the head stays one row.
 local NAME_MOST = 26
+local NAME_SHORT = 13
 
--- The name of the list shown, cut where it is longer than the button has room for.
-local function name_words()
+-- The name of the list shown, cut where it is longer than `most` letters.
+local function name_words(most)
 	local name = lists.name()
-	if utf8.len(name) > NAME_MOST then
-		return string.sub(name, 1, utf8.offset(name, NAME_MOST) - 1) .. "\u{2026}"
+	if utf8.len(name) > most then
+		return string.sub(name, 1, utf8.offset(name, most) - 1) .. "\u{2026}"
 	end
 	return name
 end
 
--- The list that is shown: its name and its count, and the mark of the card it opens.
-local function lists_button()
-	return kit.button("lists", name_words(), {
+-- The list that is shown: its name and its count, and the mark of the card it opens; `width` the
+-- list's room.
+local function lists_button(width)
+	return kit.button("lists", name_words(width >= SIZE.named and NAME_MOST or NAME_SHORT), {
 		bold = true,
 		count = count_words(S.issues),
 		chevron = true,
 		tip = "Go to another list, key " .. (commands.label("lists") or "g"),
 	})
+end
+
+-- The tabs of a wide head: the four lists every workspace has, by their keys.
+local TABS = {
+	{ kind = "mine", words = "My issues", command = "scope_mine" },
+	{ kind = "all", words = "All issues", command = "scope_all" },
+	{ kind = "inbox", words = "Inbox", command = "scope_inbox" },
+	{ kind = "projects", words = "Projects", command = "scope_projects" },
+}
+
+-- Whether the head has the tabs: the page is wide enough (its width alone says it).
+function head.tabbed()
+	return S.width >= SIZE.tabs_from
+end
+
+-- A tab: its key and its name, the one of the list shown lit as the list's button is.
+local function tab(one)
+	local t = u.theme
+	local id = "tab:" .. one.kind
+	kit.buttons[id] = true
+	local current = S.scope == one.kind
+	local over = u:hovered(id)
+	local held = over and u:pressed(id)
+	local key = commands.label(one.command) or ""
+	return b.div()
+		:press(id)
+		:focusable()
+		:role("tab")
+		:label(one.words)
+		:selected(current)
+		:tip("Go to " .. one.words .. ", key " .. key)
+		:row()
+		:items_center()
+		:gap(6)
+		:h(t.size.control)
+		:px(9)
+		:no_shrink()
+		:rounded(t.radius.control)
+		:bg(current and t.control or held and t.control_press or over and t.control_hover or t.clear)
+		:border(1, u:focus_visible(id) and t.ring or t.clear)
+		:motion({ seconds = t.motion, color = true })
+		:child(b.text(key):text_size(SIZE.tiny):color("dim"):no_shrink())
+		:child(
+			b.text(one.words)
+				:weight(current and 700 or 500)
+				:color(current and t.ink or b.alpha("foreground", 0.72))
+				:no_shrink()
+		)
+end
+
+-- The room the head's buttons need, the list's room this wide: more where it has the tabs.
+local function extra()
+	return head.tabbed() and SIZE.tabs_extra or 0
+end
+
+-- Whether a head with the tabs is at its narrowest: another list's name cut short, the filter narrower.
+local function tight(width)
+	return head.tabbed() and width < SIZE.named + SIZE.tabs_extra
+end
+
+-- The tabs, then the button of every other list: More, or the name (and the count) of the list shown
+-- where it is none of the four; `width` the list's room.
+local function tabs(width)
+	local row = b.div():id("tabs"):row():items_center():gap(2):no_shrink()
+	local own = false
+	for _, one in TABS do
+		row:child(tab(one))
+		own = own or S.scope == one.kind
+	end
+	local tip = "Go to another list, key " .. (commands.label("lists") or "g")
+	if own then
+		row:child(kit.button("lists", "More", { chevron = true, tip = tip }))
+	else
+		row:child(kit.button("lists", name_words(tight(width) and SIZE.tab_name_short or SIZE.tab_name), {
+			bold = true,
+			count = count_words(S.issues),
+			chevron = true,
+			tip = tip,
+		}))
+	end
+	return row
+end
+
+-- Whether the head has Refresh, and New issue, in `width` points of the list's room (else their keys
+-- are on the line of keys).
+function head.holds_refresh(width)
+	return width >= SIZE.wide + extra()
+end
+function head.holds_new(width)
+	return width >= SIZE.roomy + extra()
 end
 
 -- "4 of 39" while the filter has words, what it lets through of what the list holds.
@@ -198,8 +291,8 @@ local function filter_box(width)
 	elseif not head.typing() then
 		trail[#trail + 1] = u:kbd(commands.first("filter"), { quiet = true })
 	end
-	-- (The list of projects is filtered by the names of its projects.)
-	local what = S.scope == "projects" and "Filter projects" or "Filter issues"
+	-- (The list of projects is filtered by the names of its projects; the inbox, by its issues' words.)
+	local what = S.scope == "projects" and "Filter projects" or S.scope == "inbox" and "Filter inbox" or "Filter issues"
 	local field = u:input("filter", {
 		state = F,
 		label = what,
@@ -242,15 +335,18 @@ end
 function head.view(width)
 	local stacked = width < SIZE.stacked
 	local bar = b.div():row():items_center():gap(10):pt(SIZE.head_top):pb(SIZE.head_bottom):px(SIZE.pad):no_shrink()
-	bar:child(lists_button())
+	bar:child(head.tabbed() and tabs(width) or lists_button(width))
 	bar:child(b.spacer())
 	if not stacked then
-		bar:child(filter_box(width >= SIZE.filter_room and SIZE.filter_wide or SIZE.filter))
+		local field = width >= SIZE.filter_room + extra() and SIZE.filter_wide
+			or tight(width) and SIZE.tab_filter
+			or SIZE.filter
+		bar:child(filter_box(field))
 	end
-	if width >= SIZE.wide then
+	if head.holds_refresh(width) then
 		bar:child(refresh_button())
 	end
-	if width >= SIZE.roomy then
+	if head.holds_new(width) then
 		bar:child(new_button())
 	end
 	local box = b.div():col():no_shrink():child(bar)

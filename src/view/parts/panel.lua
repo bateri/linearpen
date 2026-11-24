@@ -51,9 +51,16 @@ local SCROLL = "panel-scroll"
 -- room of the fullest head it can have beside the least of it (past the edge between them): the whole
 -- head, else the head with New issue, else the head in one row; and never less than the least. (Where
 -- the head cannot be whole the issue is not made narrower for it: it would not be whole either way.)
-local HEADS = { SIZE.wide, SIZE.roomy, SIZE.stacked }
+local HEADS = { SIZE.wide, SIZE.roomy, SIZE.named, SIZE.stacked }
+-- (A head with the tabs needs the tabs' more for each, and at its narrowest `tabbed_least`.)
+local TABBED = {
+	SIZE.wide + SIZE.tabs_extra,
+	SIZE.roomy + SIZE.tabs_extra,
+	SIZE.named + SIZE.tabs_extra,
+	SIZE.tabbed_least,
+}
 function panel.most(page)
-	for _, head in HEADS do
+	for _, head in page >= SIZE.tabs_from and TABBED or HEADS do
 		local most = page - SIZE.edge - head
 		if most >= SIZE.side_least then
 			return most
