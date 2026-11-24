@@ -438,6 +438,7 @@ or `Space` then presses.
 | `⇧O`                  | open it in Linear                                                    |
 | `⌘⇧↑` `⌘⇧↓`            | open its parent, open a sub-issue or a related issue (a menu)        |
 | `⇧G`                  | open its pull request in your browser (several: a menu)              |
+| `u`                   | in the inbox, mark the notifications of the issue read in Linear     |
 | `Space`, `⇧ Space`    | scroll the open issue down, up                                       |
 | `⌘⇧←` `⌘⇧→`            | make the issue beside the list wider, narrower                       |
 | `x`, `Shift ↑↓`, `⌘A` | select the issue, select more, select all                            |
@@ -461,18 +462,20 @@ or `Space` then presses.
 | `⌘K`, `?`             | find a command, the card of keys                                     |
 | `Esc`                 | close what is on top: the form, the issue, the selection, the search |
 
-## It writes four things
+## What it writes
 
 linearpen tells Linear a new issue, a change to the issues you have, a comment you wrote and the
-files you add, and nothing else, from the interface and from the command line (`create`, `update`,
-`comment`). It has four mutations, `IssueCreate` (sent when you press Create in the form),
+files you add, from the interface and from the command line (`create`, `update`, `comment`), and, in
+the inbox, that you read the notifications of an issue; nothing else. Its mutations are `IssueCreate`
+(sent when you press Create in the form),
 `IssueBatchUpdate` (sent when you choose a status, a priority, an assignee, a label, a project, a
 cycle, an estimate, a due date or a title, for one issue or for those you selected; sent once more,
 only for the status, when you start an agent with `Status` set to move the issue that has not begun;
 and sent with a description when you add files to one, which is all it can change a description
 to), `CommentCreate` (sent when you press Comment, `⌘Enter`, under the comments of the issue open,
-with the words you wrote and the lines of the files) and `FileUpload` (sent for each file, to
-be given a place in Linear's storage). The list of mutations it may send is one place in the program
+with the words you wrote and the lines of the files), `FileUpload` (sent for each file, to
+be given a place in Linear's storage) and `NotificationMarkReadAll` (sent when you press `u` on an issue
+of the inbox, or Mark read in its menu, and never when you only open it). The list of mutations it may send is one place in the program
 that a test checks every query against, refusing any other before it is sent. What a change can be is
 a type of its own with those fields in it: it carries neither a description nor a team, and a test
 looks for them in what is sent; the only description linearpen writes is the one it read whole from

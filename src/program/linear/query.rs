@@ -1,9 +1,10 @@
 //! What is asked of Linear: every operation of the program, as constant text. The pen reads, and
-//! writes four things: the issue the person makes, the change the person makes to issues (the words of
-//! a description among them, as the person edits them), the comment the person writes and the edit of
-//! a comment of theirs; and for the pictures the person adds it asks Linear where to put one
-//! (`FileUpload`). Every operation is a plain `query` except `IssueCreate`, `IssueBatchUpdate`,
-//! `CommentCreate`, `CommentUpdate` and `FileUpload`, and `ALLOWED_MUTATIONS`
+//! writes five things: the issue the person makes, the change the person makes to issues (the words of
+//! a description among them, as the person edits them), the comment the person writes, the edit of a
+//! comment of theirs, and the notifications of an issue the person marks read in their inbox; and for
+//! the pictures the person adds it asks Linear where to put one (`FileUpload`). Every operation is a
+//! plain `query` except `IssueCreate`, `IssueBatchUpdate`, `CommentCreate`, `CommentUpdate`,
+//! `FileUpload` and `NotificationMarkReadAll`, and `ALLOWED_MUTATIONS`
 //! is the one list of what may be a `mutation`: the client refuses to send any other (`mod.rs`), and
 //! the tests scan `ALL` for one. Nothing from outside is put into the text: what varies goes in the
 //! `variables` of the request.
@@ -12,12 +13,13 @@ use serde::Serialize;
 
 /// The mutations the program may send, by name: the one list of what it may write. Anything else
 /// that is a `mutation` is refused before it is sent, however it is named.
-pub const ALLOWED_MUTATIONS: [&str; 5] = [
+pub const ALLOWED_MUTATIONS: [&str; 6] = [
     "IssueCreate",
     "IssueBatchUpdate",
     "CommentCreate",
     "CommentUpdate",
     "FileUpload",
+    "NotificationMarkReadAll",
 ];
 
 /// One operation: its name (which the stand-in `curl` of the tests tells them apart by) and its text.
@@ -258,6 +260,15 @@ pub const INBOX: Operation = Operation {
     ),
 };
 
+/// Marks every notification of one issue read in the person's inbox (`input: { issueId }`), at
+/// `readAt`: what Linear's Inbox does when the person reads them there. Nothing else of a
+/// notification is written (no archive, no snooze).
+pub const MARK_READ: Operation = Operation {
+    name: "NotificationMarkReadAll",
+    text: "mutation NotificationMarkReadAll($input: NotificationEntityInput!, $readAt: DateTime!) { \
+           notificationMarkReadAll(input: $input, readAt: $readAt) { success } }",
+};
+
 /// The teams an issue can be made in.
 pub const NEW_ISSUE_TEAMS: Operation = Operation {
     name: "NewIssueTeams",
@@ -351,7 +362,7 @@ pub const FILE_UPLOAD: Operation = Operation {
 
 /// Every operation there is, for the test that scans for a `mutation`.
 #[cfg(test)]
-pub const ALL: [Operation; 24] = [
+pub const ALL: [Operation; 25] = [
     VERIFY,
     MY_ISSUES,
     ALL_ISSUES,
@@ -376,6 +387,7 @@ pub const ALL: [Operation; 24] = [
     COMMENT,
     COMMENT_UPDATE,
     FILE_UPLOAD,
+    MARK_READ,
 ];
 
 /// The variables of the question for one issue: Linear's id of it, or its identifier.
@@ -488,13 +500,14 @@ mod tests {
                 writes.push(operation.name);
             }
         }
-        // The pen writes four things and asks where to put a picture, and the list says which.
+        // The pen writes five things and asks where to put a picture, and the list says which.
         let listed = [
             "IssueCreate",
             "IssueBatchUpdate",
             "CommentCreate",
             "CommentUpdate",
             "FileUpload",
+            "NotificationMarkReadAll",
         ];
         assert_eq!(ALLOWED_MUTATIONS, listed);
         assert_eq!(writes, listed);

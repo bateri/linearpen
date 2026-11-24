@@ -975,6 +975,27 @@ impl Session {
     /// is shown is what Linear holds; nothing is sent again, and the failure is told. An answer that is
     /// an error (Linear said no, or the key is not taken) says the change was not made, and nothing is
     /// asked about.
+    /// Marks every notification of the issue `id` (Linear's id) read in the person's inbox: the
+    /// program's sixth write, sent once. Where Linear says it did, the inbox held has the issue among
+    /// the read ones; where it did not, or no answer came, nothing held changes (the next asking says
+    /// what Linear holds).
+    pub fn mark_read(&self, id: &str) -> Result<(), Error> {
+        let key = self.key()?;
+        let read_at = linear::inbox::moment(now_seconds());
+        linear::inbox::mark_read(self.transport(), &key, id, &read_at)?;
+        // The inbox held says so at once: its row goes to the read ones, as Linear has it now.
+        let mut state = self.shared.lock();
+        if let Some(lists) = &mut state.lists
+            && let Some((Scope::Inbox, listing)) = &mut lists.shown
+            && let Some(note) = listing.notes.get_mut(id)
+        {
+            note.unread = false;
+        }
+        state.note_change();
+        self.shared.changed(&mut state);
+        Ok(())
+    }
+
     pub fn change(&self, ids: &[String], change: &Change) -> Result<Vec<Changed>, Error> {
         if ids.is_empty() || ids.len() > linear::BATCH_MOST {
             return Err(Error::Failed(format!(

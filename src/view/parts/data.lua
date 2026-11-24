@@ -65,6 +65,50 @@ function act.view(params, after)
 end
 
 -- Asks Linear for the lists again.
+-- The ids of the issues whose notifications are being marked read, while Linear is asked.
+local marking = {}
+
+-- Whether the notifications of the issue `id` are being marked read now.
+function act.marking(id)
+	return marking[id] == true
+end
+
+-- Whether the issue `id` is a line of the inbox that is unread, and is not being marked read.
+function act.unread(id)
+	if id == nil or marking[id] or S.scope ~= "inbox" or S.issues == nil then
+		return false
+	end
+	for _, group in S.issues.groups or {} do
+		if group.key == "inbox:unread" then
+			for _, row in group.rows or {} do
+				if row.id == id then
+					return true
+				end
+			end
+			-- (A folded group draws no lines: what is not drawn is not marked from here.)
+			return false
+		end
+	end
+	return false
+end
+
+-- Marks the notifications of the issue `id` read in Linear's inbox (`mark_read`): once, when the person
+-- asks; where Linear did not, it says so and the line stays as it was. The reply.
+function act.mark_read(id)
+	if id == nil or marking[id] then
+		return true
+	end
+	marking[id] = true
+	kit.call("mark_read", { id = id }, function(_, err)
+		marking[id] = nil
+		if err then
+			kit.toast(err.message or "Linear did not mark it read", "warn")
+		end
+		return true
+	end)
+	return true
+end
+
 -- Keeps how wide what stands beside the list was left (`panel_width`); nothing is waited for.
 function act.panel_width(width)
 	kit.call("panel_width", { width = width })

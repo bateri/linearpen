@@ -162,6 +162,74 @@ fn issues_of(nodes: Vec<Node>) -> (Vec<Issue>, HashMap<String, Note>) {
     (issues, notes)
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MarkRead<'a> {
+    input: Entity<'a>,
+    read_at: &'a str,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Entity<'a> {
+    issue_id: &'a str,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Marked {
+    notification_mark_read_all: Success,
+}
+
+#[derive(Deserialize)]
+struct Success {
+    success: bool,
+}
+
+/// Marks every notification of the issue `issue_id` (Linear's id of it) read in the person's inbox, at
+/// `read_at` (`2026-11-24T20:00:00.000Z`). Sent once.
+///
+/// # Errors
+///
+/// As every question to Linear; `Error::Failed` where Linear answered that it did not.
+pub fn mark_read(
+    transport: &dyn Transport,
+    key: &Key,
+    issue_id: &str,
+    read_at: &str,
+) -> Result<(), Error> {
+    let marked: Marked = run(
+        transport,
+        key,
+        &query::MARK_READ,
+        Some(MarkRead {
+            input: Entity { issue_id },
+            read_at,
+        }),
+    )?;
+    if marked.notification_mark_read_all.success {
+        Ok(())
+    } else {
+        Err(Error::Failed("Linear did not mark it read".to_owned()))
+    }
+}
+
+/// A moment as Linear writes one, `2026-11-24T20:00:00.000Z`, from seconds since the epoch.
+#[must_use]
+pub fn moment(seconds: u64) -> String {
+    // (`20261124T200000Z`, the work folder's stamp, in the parts Linear reads.)
+    let stamp = crate::work::handoff::stamp(seconds);
+    format!(
+        "{}-{}-{}T{}:{}:{}.000Z",
+        &stamp[0..4],
+        &stamp[4..6],
+        &stamp[6..8],
+        &stamp[9..11],
+        &stamp[11..13],
+        &stamp[13..15]
+    )
+}
+
 /// The person's inbox: its issues, each with its note.
 ///
 /// # Errors
@@ -204,6 +272,12 @@ mod tests {
         value["id"] = id.into();
         value["identifier"] = format!("ACM-{}", id.len()).into();
         value
+    }
+
+    #[test]
+    fn a_moment_is_written_as_linear_reads_one() {
+        assert_eq!(moment(0), "1970-01-01T00:00:00.000Z");
+        assert_eq!(moment(1_795_550_400), "2026-11-24T20:00:00.000Z");
     }
 
     #[test]

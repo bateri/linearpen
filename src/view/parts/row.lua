@@ -4,7 +4,7 @@
 local kit = require("../lib/kit")
 local icons = require("./icons")
 
-local b, u, SIZE = kit.b, kit.u, kit.SIZE
+local b, u, SIZE, act = kit.b, kit.u, kit.SIZE, kit.act
 
 local row = {}
 
@@ -233,6 +233,11 @@ function row.issue(item, look, o)
 		spoken = spoken .. ", " .. note_words(note)
 	end
 	local el = line(row.name(item.key), look):gap(10):label(spoken):selected(look.selected)
+	if note ~= nil and act.marking(issue.id) then
+		-- The line being marked read leaves the unread fading (only its opacity changes): no other line
+		-- that leaves the list (a fold, the filter, another list) does.
+		el:motion({ seconds = u.theme.motion, color = true, exit = { opacity = 0, seconds = 0.24 } })
+	end
 	carries(el, issue)
 	el:child(check(item.key, look))
 	el:child(icons.priority(issue.priority))

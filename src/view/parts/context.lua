@@ -139,6 +139,10 @@ local function entries(ids)
 	list_[#list_ + 1] = "-"
 	list_[#list_ + 1] = entry("link", "Open in Linear", "link")
 	list_[#list_ + 1] = entry("go_to_agent", "Go to the agent", "go_to_agent", act.agent_of(ids[1]) ~= nil)
+	-- (A line of the inbox: its notifications, read in Linear.)
+	if S.scope == "inbox" then
+		list_[#list_ + 1] = entry("mark_read", "Mark read", "mark_read", act.unread(ids[1]))
+	end
 	return list_
 end
 
@@ -205,6 +209,8 @@ function context.action(action)
 		return context.link(id) or true
 	elseif key == "go_to_agent" and #ids == 1 then
 		return act.go_to_agent(id)
+	elseif key == "mark_read" and #ids == 1 then
+		return act.mark_read(id)
 	end
 	return true
 end

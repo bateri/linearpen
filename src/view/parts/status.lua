@@ -361,6 +361,11 @@ function status.view()
 	if not typing and not alone and commands.enabled(commands.get("filters")) then
 		start[#start + 1] = { key = "filters", words = hint({ "filters" }, "filter"), priority = 3, press = true }
 	end
+	-- The inbox's own verb, in the place of the filter it has not: said for the whole of it, not for the
+	-- line the cursor is on, so that nothing moves as the cursor goes.
+	if not typing and not alone and S.scope == "inbox" then
+		start[#start + 1] = { key = "mark_read", words = hint({ "mark_read" }, "mark read"), priority = 3, press = true }
+	end
 	-- (Where the issue has the pane, Esc closes it: the search and the filter are the list's.)
 	if not alone and S.scope == "search" then
 		start[#start + 1] = { key = "clear", words = hint({ "back" }, "back"), priority = 5 }
@@ -401,6 +406,7 @@ function status.action(action)
 		action.key == "palette"
 		or action.key == "help"
 		or action.key == "filters"
+		or action.key == "mark_read"
 		or action.key == "search"
 		or action.key == "go_to_agent"
 	then

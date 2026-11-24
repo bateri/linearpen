@@ -24,6 +24,7 @@ tgzj1r  menuitem "Read, 2" [collapsed]
         text "status"
         text "G"
         text "go to"
+3ef9ee  button "mark_read"
 b2gqrr  button "palette" [description "Find a command"]
 c9zsn1  button "help" [description "Show the keys"]
 fields:
@@ -52,6 +53,7 @@ commands:
   "Open a sub-issue or a related issue" [shift+cmd+down] (disabled)
   "Widen the panel" [shift+cmd+left] (disabled)
   "Narrow the panel" [shift+cmd+right] (disabled)
+  "Mark read" [u]
   "Open the pull request" [shift+g] (disabled)
   "Scroll the issue down" [space] (disabled)
   "Scroll the issue up" [shift+space] (disabled)

@@ -153,6 +153,8 @@ pub(crate) struct Canned {
     filter_options_refused: Mutex<bool>,
     /// What the inbox answers, where a test made it other than the fixture's.
     inbox: Mutex<Option<String>>,
+    /// Linear answers that it did not mark the notifications read.
+    marking_refused: Mutex<bool>,
     /// Whether `Issue` is held (after it is written down) until a test lets it go.
     issue_holds: Mutex<bool>,
 }
@@ -227,6 +229,7 @@ impl Canned {
             filter_options_hold: Mutex::new(false),
             filter_options_refused: Mutex::new(false),
             inbox: Mutex::new(None),
+            marking_refused: Mutex::new(false),
             issue_holds: Mutex::new(false),
         })
     }
@@ -279,6 +282,11 @@ impl Canned {
                 node["readAt"] = "2026-11-10T12:00:00.000Z".into();
             }
         });
+    }
+
+    /// From now on Linear answers that it did not mark the notifications read.
+    pub(crate) fn refuse_marking(&self) {
+        *self.marking_refused.lock().unwrap() = true;
     }
 
     /// From now on Linear refuses the question of the inbox, in its own words.
@@ -1030,6 +1038,7 @@ impl Transport for Canned {
             "SearchIssues",
             "FilterOptions",
             "FileUpload",
+            "NotificationMarkReadAll",
             "Inbox",
             "Issue",
         ]
@@ -1100,6 +1109,42 @@ impl Transport for Canned {
                     reply(200, &big_all_page(page))
                 }
                 "SearchIssues" => reply(200, SEARCH_ISSUES),
+                "NotificationMarkReadAll" if *self.marking_refused.lock().unwrap() => reply(
+                    200,
+                    r#"{"data":{"notificationMarkReadAll":{"success":false}}}"#,
+                ),
+                "NotificationMarkReadAll" => {
+                    // The inbox from now on has the notifications of the issue read.
+                    let asked: serde_json::Value = serde_json::from_str(body).unwrap();
+                    let id = asked["variables"]["input"]["issueId"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_owned();
+                    let at = asked["variables"]["readAt"].clone();
+                    let mut value: serde_json::Value = serde_json::from_str(
+                        &self
+                            .inbox
+                            .lock()
+                            .unwrap()
+                            .clone()
+                            .unwrap_or_else(|| INBOX.to_owned()),
+                    )
+                    .unwrap();
+                    for node in value["data"]["inboxNotifications"]["nodes"]
+                        .as_array_mut()
+                        .into_iter()
+                        .flatten()
+                    {
+                        if node["issue"]["id"] == id.as_str() {
+                            node["readAt"] = at.clone();
+                        }
+                    }
+                    *self.inbox.lock().unwrap() = Some(value.to_string());
+                    reply(
+                        200,
+                        r#"{"data":{"notificationMarkReadAll":{"success":true}}}"#,
+                    )
+                }
                 "Inbox" => match self.inbox.lock().unwrap().clone() {
                     Some(text) => reply(200, &text),
                     None => reply(200, INBOX),
@@ -6699,6 +6744,151 @@ fn an_inbox_linear_will_not_tell_says_so_in_its_place_and_my_issues_are_there() 
     list_button_says(&mut page, "My issues");
     page.wait_for(WITHIN, |page| page.says("ACM-412"))
         .unwrap_or_else(|why| panic!("my issues: {why:?}: {}", said(&page)));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn u_marks_the_notifications_of_an_issue_read_in_linear_and_its_line_goes_to_the_read() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    go_to_inbox(&mut page);
+    page.wait_for(WITHIN, |page| page.bounds("row:i:issue-412").is_some())
+        .unwrap_or_else(|why| panic!("the inbox comes: {why:?}: {}", said(&page)));
+    // Opening the issue marks nothing.
+    page.press("enter").expect("enter");
+    page.wait_for(WITHIN, |page| page.says("API key"))
+        .unwrap_or_else(|why| panic!("the issue opens: {why:?}: {}", said(&page)));
+    assert_eq!(linear.times("NotificationMarkReadAll"), 0);
+    // Its key marks the issue open read, once, by its id, at a moment Linear reads.
+    page.press("u").expect("u");
+    page.wait_for(WITHIN, |_| linear.times("NotificationMarkReadAll") == 1)
+        .unwrap_or_else(|why| panic!("asked: {why:?}"));
+    let sent = linear.variables_of("NotificationMarkReadAll");
+    assert_eq!(
+        sent[0]["input"],
+        serde_json::json!({ "issueId": "issue-412" })
+    );
+    let at = sent[0]["readAt"].as_str().unwrap_or_default().to_owned();
+    assert!(
+        at.len() == 24 && at.ends_with(".000Z") && at.contains('T'),
+        "{at}"
+    );
+    // Its line has gone to the read ones (folded), the unread are one fewer, and the key is no more.
+    page.wait_for(WITHIN, |page| {
+        page.words_in("lists").contains(&"3".to_owned())
+    })
+    .unwrap_or_else(|why| panic!("three unread: {why:?}: {:?}", page.words_in("lists")));
+    page.advance(0.4).expect("a moment");
+    assert!(page.bounds("row:i:issue-412").is_none(), "{}", said(&page));
+    page.press("u").expect("u");
+    page.advance(0.3).expect("a moment");
+    assert_eq!(linear.times("NotificationMarkReadAll"), 1);
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_mark_linear_did_not_make_is_said_and_the_line_stays_unread() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    linear.refuse_marking();
+    go_to_inbox(&mut page);
+    page.wait_for(WITHIN, |page| page.bounds("row:i:issue-412").is_some())
+        .unwrap_or_else(|why| panic!("the inbox comes: {why:?}: {}", said(&page)));
+    page.press("u").expect("u");
+    page.wait_for(WITHIN, |page| page.says("Linear did not mark it read"))
+        .unwrap_or_else(|why| panic!("it says so: {why:?}: {}", said(&page)));
+    assert!(page.bounds("row:i:issue-412").is_some(), "{}", said(&page));
+    assert_eq!(linear.times("NotificationMarkReadAll"), 1, "sent once");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn u_after_u_clears_the_unread_one_by_one_from_the_line_of_the_cursor() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    go_to_inbox(&mut page);
+    page.wait_for(WITHIN, |page| page.bounds("row:i:issue-412").is_some())
+        .unwrap_or_else(|why| panic!("the inbox comes: {why:?}: {}", said(&page)));
+    // The verb of the inbox is on the line of keys.
+    assert!(page.says("mark read"), "{}", said(&page));
+    // The cursor on the first unread line, no issue open: each `u` marks the line the cursor is on, and
+    // the cursor goes to the next unread.
+    let mut marked = Vec::new();
+    for round in 0..4 {
+        page.press("u").expect("u");
+        page.wait_for(WITHIN, |_| {
+            linear.times("NotificationMarkReadAll") == round + 1
+        })
+        .unwrap_or_else(|why| panic!("mark {round}: {why:?}: {}", said(&page)));
+        page.advance(0.4).expect("a moment");
+        let sent = linear.variables_of("NotificationMarkReadAll");
+        marked.push(
+            sent[round]["input"]["issueId"]
+                .as_str()
+                .unwrap_or_default()
+                .to_owned(),
+        );
+    }
+    assert_eq!(marked, ["issue-412", "issue-405", "issue-398", "issue-420"]);
+    // Nothing is unread: the read ones are open, the cursor is on a line, and `u` sends nothing more.
+    page.wait_for(WITHIN, |page| !page.says("Unread"))
+        .unwrap_or_else(|why| panic!("none unread: {why:?}: {}", said(&page)));
+    assert!(cursor(&page).contains("ACM-"), "{}", cursor(&page));
+    page.press("u").expect("u");
+    page.advance(0.3).expect("a moment");
+    assert_eq!(linear.times("NotificationMarkReadAll"), 4);
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_u_written_in_a_field_is_a_letter_and_marks_nothing() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    go_to_inbox(&mut page);
+    page.wait_for(WITHIN, |page| page.bounds("row:i:issue-412").is_some())
+        .unwrap_or_else(|why| panic!("the inbox comes: {why:?}: {}", said(&page)));
+    // The filter.
+    page.press("/").expect("slash");
+    page.type_text("u").expect("a u");
+    page.press("escape").expect("escape");
+    page.press("escape").expect("escape");
+    // The comment and the title of the issue open.
+    page.press("enter").expect("enter");
+    page.wait_for(WITHIN, |page| page.says("API key"))
+        .unwrap_or_else(|why| panic!("the issue opens: {why:?}: {}", said(&page)));
+    page.press("shift+m").expect("the comment");
+    page.advance(0.3).expect("a moment");
+    page.type_text("uu").expect("u");
+    page.press("escape").expect("escape");
+    page.press("r").expect("rename");
+    page.advance(0.3).expect("a moment");
+    page.type_text("u").expect("u");
+    page.advance(0.3).expect("a moment");
+    assert_eq!(linear.times("NotificationMarkReadAll"), 0);
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn mark_read_is_a_line_of_the_menu_of_an_unread_issue_of_the_inbox_and_of_no_other_list() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    page.right_click("row:i:issue-398").expect("a right press");
+    page.wait_for(WITHIN, |page| page.menu().is_some())
+        .expect("the menu");
+    assert!(
+        !menu_titles(&page)
+            .iter()
+            .any(|title| title.contains("Mark read"))
+    );
+    page.press("escape").expect("escape");
+    go_to_inbox(&mut page);
+    page.wait_for(WITHIN, |page| page.bounds("row:i:issue-405").is_some())
+        .unwrap_or_else(|why| panic!("the inbox comes: {why:?}: {}", said(&page)));
+    page.right_click("row:i:issue-405").expect("a right press");
+    page.wait_for(WITHIN, |page| page.menu().is_some())
+        .expect("the menu");
+    page.pick_titled("Mark read").expect("Mark read");
+    page.wait_for(WITHIN, |_| linear.times("NotificationMarkReadAll") == 1)
+        .unwrap_or_else(|why| panic!("asked: {why:?}"));
+    assert_eq!(
+        linear.variables_of("NotificationMarkReadAll")[0]["input"],
+        serde_json::json!({ "issueId": "issue-405" })
+    );
 }
 
 #[test]

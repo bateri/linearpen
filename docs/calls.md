@@ -28,17 +28,20 @@ begun, and were not, or it is not known whether they were: the words say why),
 words of an error are for the person and never hold the key, nor the address a file is sent to
 (Linear signs it).
 
-The pen writes four things: the issue the person makes (`create`), the change the person makes to
+The pen writes five things: the issue the person makes (`create`), the change the person makes to
 issues (`change`): one of their status, priority, assignee, labels, project, cycle, estimate, due date
-or title, the comment the person writes on an issue (`comment`), and the words the person edits: the
-description of an issue, or a comment of theirs (`edit-save`, after `edit-open`). The files the person
+or title, the comment the person writes on an issue (`comment`), the words the person edits: the
+description of an issue, or a comment of theirs (`edit-save`, after `edit-open`), and the notifications
+of an issue the person marks read in their inbox (`mark_read`). The files the person
 adds (any kind, at most 100 MiB each) go in Linear's storage first (`FileUpload`, and the file sent to
 the place Linear named) and are named in what is written: the end of a comment, of a new issue's
 description, or of the description of an issue that is there (`describe`, which writes the description
 only to put files at its end, and `edit-save`). A picture (PNG, JPEG, GIF or WebP, by its first bytes)
 is named as a picture, `![name](address)`, and any other file as a link, `[name](address)`.
 A description is written whole only by `edit-save`, and the team never; a comment that is not the
-person's is never written. One more call writes, and only as `change` does: `start`
+person's is never written. The notifications of an issue are marked read in the person's inbox by
+`mark_read` (`NotificationMarkReadAll`), and nothing else of a notification is written. One more call
+writes, and only as `change` does: `start`
 moves the issue, if it has not begun, to its team's first state of work in progress, where the
 person chose that (`progress`), once the agent's pane is made. Nothing else here changes anything in
 Linear.
@@ -777,6 +780,16 @@ look-before-again words where no answer came after it was sent.
 Asks Linear for My issues and the list shown again, for the names of the lists the page can go to, and
 for the teams and choices of a new issue and each issue opened (`issue`) the next time they are needed. It answers at once with `{}`; the topic tells the lists when they come. Params: none. Errors:
 `no-key`.
+
+### `mark_read`
+
+Marks every notification of one issue read in the person's inbox in Linear
+(`notificationMarkReadAll(input: { issueId }, readAt)`, the moment it is sent), as Linear's Inbox does
+when they are read there; sent once, and only when the person asks (opening an issue marks nothing).
+Params: `{ "id": "issue-412" }`, Linear's id of the issue. Answer: `{}`; the topic then tells the inbox
+with the issue among the read ones. Where Linear did not, or no answer came, nothing held changes.
+Errors: `bad-params`, `no-key`, `refused`, `unreachable`, `change-failed` (Linear answered that it did
+not mark them).
 
 ### `panel_width`
 

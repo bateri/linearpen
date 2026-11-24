@@ -211,6 +211,9 @@ end
 commands.when.parented = function()
 	return commands.when.idle() and panel.has_parent()
 end
+commands.when.readable = function()
+	return commands.when.idle() and act.unread(context.single())
+end
 commands.when.pulled = function()
 	return commands.when.idle() and panel.pulls() > 0
 end
@@ -723,6 +726,8 @@ local function command(id)
 		return panel.open_neighbours()
 	elseif id == "pull_request" then
 		return panel.open_pulls()
+	elseif id == "mark_read" then
+		return act.mark_read(context.single())
 	elseif id == "lists" then
 		lists.show()
 	elseif id == "read_down" then

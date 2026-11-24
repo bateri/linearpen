@@ -10,6 +10,7 @@ mod comment;
 mod create;
 mod edit;
 mod filters;
+mod inbox;
 mod issue;
 mod issues;
 mod params;
@@ -134,5 +135,6 @@ pub fn serve(options: Options, session: &Arc<Session>) -> Options {
     let options = edit::calls(options, session);
     let options = pictures::calls(options, session);
     let options = filters::calls(options, session);
+    let options = inbox::calls(options, session);
     issues::topic(options, session)
 }

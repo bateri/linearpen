@@ -58,6 +58,7 @@ commands:
   "Open a sub-issue or a related issue" [shift+cmd+down]
   "Widen the panel" [shift+cmd+left] (disabled)
   "Narrow the panel" [shift+cmd+right] (disabled)
+  "Mark read" [u] (disabled)
   "Open the pull request" [shift+g]
   "Scroll the issue down" [space]
   "Scroll the issue up" [shift+space]

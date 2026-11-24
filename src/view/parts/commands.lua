@@ -46,6 +46,8 @@ local TABLE = {
 	-- The edge between the list and the issue: the arrow says where the edge goes.
 	{ id = "widen", title = "Widen the panel", group = "Issue", keys = { "mod+shift+left" }, when = "sizable" },
 	{ id = "narrow", title = "Narrow the panel", group = "Issue", keys = { "mod+shift+right" }, when = "sizable" },
+	-- The notifications of the issue the keys are for, read in Linear's inbox (in the inbox only).
+	{ id = "mark_read", title = "Mark read", group = "Issue", keys = { "u" }, when = "readable" },
 	-- The pull request of the issue open, in the browser (several: a menu of them).
 	{ id = "pull_request", title = "Open the pull request", group = "Issue", keys = { "shift+g" }, when = "pulled" },
 	{ id = "read_down", title = "Scroll the issue down", group = "Issue", keys = { "space" }, when = "reading" },
