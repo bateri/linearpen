@@ -377,6 +377,7 @@ impl State {
                 kept.children = held.children;
                 kept.relations = held.relations;
                 kept.inverse_relations = held.inverse_relations;
+                kept.links = held.links;
             }
         }
         match self.view.scope {
@@ -2475,5 +2476,30 @@ mod tests {
             let shown = shown(state.lists.as_ref().unwrap());
             assert_eq!(kind_in(shown, "a"), Some(StateKind::Completed));
         }
+    }
+
+    #[test]
+    fn a_change_keeps_the_pull_requests_of_the_issue_kept_with_its_text() {
+        let session = session();
+        let mut kept = issue_of(&wire("a", "Add it", "started", true));
+        kept.comments = Some(crate::linear::types::Comments {
+            nodes: Vec::new(),
+            page_info: crate::linear::types::PageInfo {
+                has_next_page: false,
+                end_cursor: None,
+            },
+        });
+        kept.links = vec![crate::linear::types::Link {
+            title: "Add per-key limits".to_owned(),
+            subtitle: None,
+            url: "https://github.com/acme/api/pull/231".to_owned(),
+        }];
+        let mut state = session.state();
+        state.details.insert("a".to_owned(), kept);
+        // What a change answers is a row: no attachments, no comments.
+        state.put(&issue_of(&wire("a", "Renamed", "started", true)));
+        let now = state.details.get("a").unwrap();
+        assert_eq!(now.title, "Renamed");
+        assert_eq!(now.pull_requests().len(), 1);
     }
 }

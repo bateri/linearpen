@@ -366,9 +366,76 @@ pub struct Issue {
     pub relations: Vec<Relation>,
     #[serde(default, deserialize_with = "nodes")]
     pub inverse_relations: Vec<Relation>,
+    /// What is linked to it whose address is GitHub's (only the issue asked for alone has them), as
+    /// Linear tells them: `pull_requests` says which of them are pull requests.
+    #[serde(default, rename = "attachments", deserialize_with = "nodes")]
+    pub links: Vec<Link>,
+}
+
+/// A thing linked to an issue (Linear's attachment): Linear's words for it and its address.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct Link {
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub subtitle: Option<String>,
+    pub url: String,
+}
+
+/// A pull request of GitHub linked to an issue: its number, read from its address, Linear's words for
+/// it, and the address.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PullRequest {
+    pub number: u64,
+    pub title: String,
+    pub subtitle: Option<String>,
+    pub url: String,
+}
+
+/// The number of the pull request at `url`, where it is one of GitHub's and nothing more:
+/// `https://github.com/<owner>/<repo>/pull/<number>`, the owner and the repository of letters, digits,
+/// dashes, dots and underscores, and no other part (no user, port, path, query or fragment).
+#[must_use]
+pub fn pull_request_number(url: &str) -> Option<u64> {
+    let rest = url.strip_prefix("https://github.com/")?;
+    let parts: Vec<&str> = rest.split('/').collect();
+    let [owner, repository, "pull", number] = parts.as_slice() else {
+        return None;
+    };
+    let named = |part: &str| {
+        !part.is_empty()
+            && part.len() <= 100
+            && part
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '.' | '_'))
+    };
+    if !named(owner) || !named(repository) || *owner == "." || *owner == ".." {
+        return None;
+    }
+    if number.is_empty() || number.len() > 10 || !number.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    number.parse().ok().filter(|n| *n > 0)
 }
 
 impl Issue {
+    /// The pull requests linked to it, in the order Linear tells them: what is linked whose address
+    /// is a pull request of GitHub's, and nothing else.
+    #[must_use]
+    pub fn pull_requests(&self) -> Vec<PullRequest> {
+        self.links
+            .iter()
+            .filter_map(|link| {
+                Some(PullRequest {
+                    number: pull_request_number(&link.url)?,
+                    title: link.title.clone(),
+                    subtitle: link.subtitle.clone(),
+                    url: link.url.clone(),
+                })
+            })
+            .collect()
+    }
+
     /// What the issue is tied to, each with how, in the order the page tells them: blocks, blocked by,
     /// related, duplicate of, duplicated by. A type Linear has that is not one of these (`similar`,
     /// or one of the future) is left out.

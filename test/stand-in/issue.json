@@ -98,6 +98,20 @@
      "hasNextPage": false,
      "endCursor": null
     }
+   },
+   "attachments": {
+    "nodes": [
+     {
+      "title": "Add per-key rate limits to the public API",
+      "subtitle": "Open \u00b7 acme/api",
+      "url": "https://github.com/acme/api/pull/231"
+     },
+     {
+      "title": "Rate limits are not applied per key",
+      "subtitle": null,
+      "url": "https://github.com/acme/api/issues/198"
+     }
+    ]
    }
   }
  }

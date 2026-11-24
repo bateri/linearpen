@@ -114,6 +114,7 @@ pub mod tests {
             children: Vec::new(),
             relations: Vec::new(),
             inverse_relations: Vec::new(),
+            links: Vec::new(),
         }
     }
 

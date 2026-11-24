@@ -23,6 +23,10 @@ pub const COMMENT_MOST: usize = 2_000;
 /// The most characters of the title of a related issue, and the most issues told of each kind of
 /// surroundings (the sub-issues, and the ties together): Linear is asked for no more than this.
 pub const NEIGHBOR_TITLE_MOST: usize = 300;
+
+/// The most of the words of a pull request told: its title, and what Linear says under it.
+const PULL_TITLE_MOST: usize = 300;
+const PULL_SUBTITLE_MOST: usize = 200;
 pub const NEIGHBORS_MOST: usize = 50;
 
 #[derive(Debug, Deserialize)]
@@ -84,6 +88,16 @@ pub(super) fn comment_of(comment: &Comment) -> (CommentMessage, bool) {
     )
 }
 
+/// A pull request of GitHub linked to the issue: its number (read from its address), Linear's words
+/// for it, and the address, which the page only opens.
+#[derive(Debug, Serialize)]
+struct PullRequestMessage {
+    number: u64,
+    title: String,
+    subtitle: Option<String>,
+    url: String,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct IssueMessage {
@@ -110,6 +124,8 @@ pub(super) struct IssueMessage {
     children: Vec<NeighborMessage>,
     ties: Vec<TieMessage>,
     comments: Vec<CommentMessage>,
+    /// The pull requests of GitHub linked to it.
+    pull_requests: Vec<PullRequestMessage>,
     /// There is more in Linear than is told here: comments past the first fifty, or text cut.
     more: bool,
 }
@@ -182,6 +198,20 @@ pub(super) fn message(issue: &Issue) -> IssueMessage {
         .comments
         .as_ref()
         .is_some_and(|comments| comments.page_info.has_next_page);
+    let pull_requests = issue
+        .pull_requests()
+        .into_iter()
+        .map(|pull| PullRequestMessage {
+            number: pull.number,
+            title: cut(&plain(&pull.title), PULL_TITLE_MOST).0,
+            subtitle: pull
+                .subtitle
+                .as_deref()
+                .map(|words| cut(&plain(words), PULL_SUBTITLE_MOST).0)
+                .filter(|words| !words.is_empty()),
+            url: pull.url,
+        })
+        .collect();
     IssueMessage {
         id: issue.id.clone(),
         identifier: issue.identifier.clone(),
@@ -212,6 +242,7 @@ pub(super) fn message(issue: &Issue) -> IssueMessage {
         children,
         ties,
         comments,
+        pull_requests,
         more,
     }
 }
@@ -263,6 +294,45 @@ mod tests {
         assert!(value["projectId"].is_null());
         assert_eq!(value["labels"][0]["id"], "l-api");
         assert_eq!(value["assignee"], "you");
+    }
+
+    #[test]
+    fn the_pull_requests_are_what_is_linked_at_an_address_of_a_pull_request_of_githubs() {
+        let link = |title: &str, subtitle: Option<&str>, url: &str| crate::linear::types::Link {
+            title: title.to_owned(),
+            subtitle: subtitle.map(str::to_owned),
+            url: url.to_owned(),
+        };
+        let mut issue = fixture_issue();
+        issue.links = vec![
+            link(
+                "Add per-key limits\u{1b}[31m",
+                Some("  acme/api  "),
+                "https://github.com/acme/api/pull/231",
+            ),
+            link(
+                "The issue on GitHub",
+                None,
+                "https://github.com/acme/api/issues/9",
+            ),
+            link(
+                &"x".repeat(400),
+                Some(""),
+                "https://github.com/acme/web/pull/7",
+            ),
+        ];
+        let value = serde_json::to_value(message(&issue)).unwrap();
+        let pulls = value["pullRequests"].as_array().unwrap();
+        assert_eq!(pulls.len(), 2, "{pulls:?}");
+        assert_eq!(pulls[0]["number"], 231);
+        assert_eq!(pulls[0]["title"], "Add per-key limits [31m");
+        assert_eq!(pulls[0]["subtitle"], "acme/api");
+        assert_eq!(pulls[0]["url"], "https://github.com/acme/api/pull/231");
+        assert_eq!(pulls[1]["title"].as_str().unwrap().chars().count(), 300);
+        assert!(pulls[1]["subtitle"].is_null());
+        // None is an empty list.
+        let value = serde_json::to_value(message(&fixture_issue())).unwrap();
+        assert_eq!(value["pullRequests"], serde_json::json!([]));
     }
 
     fn neighbor(n: u32, title: &str) -> crate::linear::types::Neighbor {

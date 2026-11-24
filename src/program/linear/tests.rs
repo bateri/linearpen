@@ -2021,3 +2021,39 @@ fn an_edit_that_was_sent_and_not_answered_is_not_sent_again() {
     ));
     assert_eq!(transport.sent().len(), 1);
 }
+
+#[test]
+fn a_pull_request_is_known_by_an_address_of_githubs_and_nothing_more() {
+    use crate::linear::types::pull_request_number;
+    assert_eq!(
+        pull_request_number("https://github.com/acme/api/pull/231"),
+        Some(231)
+    );
+    assert_eq!(
+        pull_request_number("https://github.com/a-b/c.d_e/pull/1"),
+        Some(1)
+    );
+    for refused in [
+        "http://github.com/acme/api/pull/231",
+        "https://github.com.evil.com/acme/api/pull/231",
+        "https://user@github.com/acme/api/pull/231",
+        "https://github.com:443/acme/api/pull/231",
+        "https://github.com/acme/api/pull/231/files",
+        "https://github.com/acme/api/pull/231?tab=files",
+        "https://github.com/acme/api/pull/231#issuecomment-1",
+        "https://github.com/acme/api/pull/231/",
+        "https://github.com/acme/api/issues/231",
+        "https://github.com/acme/api/pull/",
+        "https://github.com/acme/api/pull/0",
+        "https://github.com/acme/api/pull/12345678901",
+        "https://github.com/acme/api/pull/-1",
+        "https://github.com//api/pull/231",
+        "https://github.com/../api/pull/231",
+        "https://github.com/ac me/api/pull/231",
+        "https://gitlab.com/acme/api/pull/231",
+        "https://GITHUB.com/acme/api/pull/231",
+        "",
+    ] {
+        assert_eq!(pull_request_number(refused), None, "{refused}");
+    }
+}

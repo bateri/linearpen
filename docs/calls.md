@@ -159,8 +159,8 @@ At most 250 of each are asked for.
 
 ### `issue`
 
-One issue with what a row of the list does not carry: its description, its comments, and the issues
-round it (its parent, its parts and what it is tied to). Asked of Linear when the issue is opened,
+One issue with what a row of the list does not carry: its description, its comments, the issues
+round it (its parent, its parts and what it is tied to) and its pull requests. Asked of Linear when the issue is opened,
 and kept until `refresh` (or the five minutes, or an issue made) asks for the lists again. Params: `{ "id": "issue-412" }`, Linear's id
 of the issue (a row's `id`) or its identifier: up to 64 letters, digits, dashes and underscores.
 
@@ -184,6 +184,8 @@ of the issue (a row's `id`) or its identifier: up to 64 letters, digits, dashes 
                         "state": { "name": "In Review", "kind": "started" } } }],
   "comments": [{ "id": "c-77", "author": "Deniz", "at": "Nov 6", "mine": false, "edited": false,
                  "body": "Redis is already there." }],
+  "pullRequests": [{ "number": 231, "title": "Add per-key rate limits", "subtitle": null,
+                     "url": "https://github.com/acme/api/pull/231" }],
   "more": false
 }
 ```
@@ -205,6 +207,15 @@ the points (a whole number, null where there are none) and `dueDate` the day it 
 or null): what a menu marks as the issue's own and what `change` names. They are the same as in a
 row of the list, and a `change` writes the new value into what is kept, so the next `issue` of the
 same issue tells it.
+
+`pullRequests` are the pull requests of GitHub linked to the issue: Linear is asked for the first twenty
+things linked to it (its attachments) whose address begins with `https://github.com/`, and of those
+the ones whose address is `https://github.com/<owner>/<repo>/pull/<number>` and nothing more are told,
+in the order Linear tells them; none is an empty list. `number` is read from the
+address; `title` and `subtitle` are Linear's words for it (cut at 300 and 200 characters, no control
+character; `subtitle` null where there is none), text to show; `url` the address, which the page only
+opens in the browser: the program never asks it for anything. Nothing else of an attachment is told
+(what Linear keeps of a pull request beside them is not written down, and is not read).
 
 The issues round it are read only: `parent` (null where it has none), `children` (its sub-issues) and
 `ties`, the issues it is tied to, each with its `label` as the open issue is seen: `Blocks`, `Blocked

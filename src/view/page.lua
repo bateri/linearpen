@@ -211,6 +211,9 @@ end
 commands.when.parented = function()
 	return commands.when.idle() and panel.has_parent()
 end
+commands.when.pulled = function()
+	return commands.when.idle() and panel.pulls() > 0
+end
 commands.when.neighboured = function()
 	return commands.when.idle() and panel.neighbours() > 0
 end
@@ -712,6 +715,8 @@ local function command(id)
 		return panel.open_parent()
 	elseif id == "near" then
 		return panel.open_neighbours()
+	elseif id == "pull_request" then
+		return panel.open_pulls()
 	elseif id == "lists" then
 		lists.show()
 	elseif id == "read_down" then
@@ -812,6 +817,8 @@ local function press(id)
 		return pictures.card_press(id)
 	elseif string.sub(id, 1, 5) == "near:" then
 		return panel.open_near(string.sub(id, 6))
+	elseif string.sub(id, 1, 5) == "pull:" then
+		return panel.open_pull(tonumber(string.sub(id, 6)))
 	elseif id == "issue-retry" then
 		panel.retry()
 	elseif id == "clear-selection" then

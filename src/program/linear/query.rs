@@ -237,7 +237,9 @@ pub const ISSUE: Operation = Operation {
         neighbor_fields!(),
         " } } } comments(first: 50) { nodes { ",
         comment_fields!(),
-        " } pageInfo { hasNextPage endCursor } } } }"
+        " } pageInfo { hasNextPage endCursor } } \
+         attachments(first: 20, filter: { url: { startsWith: \"https://github.com/\" } }) { \
+         nodes { title subtitle url } } } }"
     ),
 };
 

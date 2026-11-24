@@ -126,6 +126,20 @@ function icons.person()
 	}):no_shrink()
 end
 
+-- A pull request: two commits on a line, and the line of the branch that comes back to it, its arrow
+-- at the end (Tabler's git-pull-request, drawn at this size).
+function icons.pull_request(color)
+	color = color or b.alpha("foreground", 0.75)
+	return canvas({
+		b.path():circle(3.5, 3.5, 1.2):stroke(1.3, color),
+		b.path():circle(3.5, 10.5, 1.2):stroke(1.3, color),
+		b.path():circle(10.5, 10.5, 1.2):stroke(1.3, color),
+		b.path():move_to(3.5, 4.7):line_to(3.5, 9.3):stroke(1.3, color),
+		b.path():move_to(6.4, 3.5):line_to(9.3, 3.5):cubic_to(10, 3.5, 10.5, 4, 10.5, 4.7):line_to(10.5, 9.3):stroke(1.3, color),
+		b.path():move_to(8.2, 5.2):line_to(6.4, 3.5):line_to(8.2, 1.8):stroke(1.3, color),
+	}):no_shrink()
+end
+
 -- A box seen from a corner, for the project.
 function icons.cube()
 	local color = b.alpha("foreground", 0.75)

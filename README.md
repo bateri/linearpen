@@ -435,6 +435,7 @@ or `Space` then presses.
 | `Enter`, `o`          | open the issue beside the list                                       |
 | `⇧O`                  | open it in Linear                                                    |
 | `⌘⇧↑` `⌘⇧↓`            | open its parent, open a sub-issue or a related issue (a menu)        |
+| `⇧G`                  | open its pull request in your browser (several: a menu)              |
 | `Space`, `⇧ Space`    | scroll the open issue down, up                                       |
 | `⌘⇧←` `⌘⇧→`            | make the issue beside the list wider, narrower                       |
 | `x`, `Shift ↑↓`, `⌘A` | select the issue, select more, select all                            |

@@ -46,6 +46,8 @@ local TABLE = {
 	-- The edge between the list and the issue: the arrow says where the edge goes.
 	{ id = "widen", title = "Widen the panel", group = "Issue", keys = { "mod+shift+left" }, when = "sizable" },
 	{ id = "narrow", title = "Narrow the panel", group = "Issue", keys = { "mod+shift+right" }, when = "sizable" },
+	-- The pull request of the issue open, in the browser (several: a menu of them).
+	{ id = "pull_request", title = "Open the pull request", group = "Issue", keys = { "shift+g" }, when = "pulled" },
 	{ id = "read_down", title = "Scroll the issue down", group = "Issue", keys = { "space" }, when = "reading" },
 	{ id = "read_up", title = "Scroll the issue up", group = "Issue", keys = { "shift+space" }, when = "reading" },
 	{ id = "work", title = "Work on the issue", group = "Issue", keys = { "w" }, when = "workable" },

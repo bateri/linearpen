@@ -73,6 +73,9 @@ kh1dpj    button "Close"
           text "⌘"
           text "→"
           text "Narrow the panel"
+          text "⇧"
+          text "G"
+          text "Open the pull request"
           text "Space"
           text "Scroll the issue down"
           text "⇧"
@@ -109,10 +112,6 @@ kh1dpj    button "Close"
           text "⌘"
           text "R"
           text "Read the PDF"
-          text "⇧"
-          text "⌘"
-          text "E"
-          text "Open the link"
 scrolls:
 1v22rg  scroll 0% (at the top)
 commands:
@@ -139,6 +138,7 @@ commands:
   "Open a sub-issue or a related issue" [shift+cmd+down] (disabled)
   "Widen the panel" [shift+cmd+left] (disabled)
   "Narrow the panel" [shift+cmd+right] (disabled)
+  "Open the pull request" [shift+g] (disabled)
   "Scroll the issue down" [space] (disabled)
   "Scroll the issue up" [shift+space] (disabled)
   "Work on the issue" [w] (disabled)

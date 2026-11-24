@@ -646,7 +646,7 @@ end
 -- One of them: its way, its identifier and its title, which a press opens. A part of the issue has the
 -- picture of its state before its identifier; where there are parts, every line has the place for it, so
 -- that the identifiers stand under one another.
-local function near_row(entry, slot)
+local function near_row(entry, slot, ids)
 	local t = u.theme
 	local issue = entry.issue
 	local name = "near:" .. issue.id
@@ -670,8 +670,81 @@ local function near_row(entry, slot)
 		row:child(b.div():w(14):no_shrink():child(entry.part and icons.state(issue.state.kind) or b.div()))
 	end
 	return row
-		:child(b.text(issue.identifier):text_size(SIZE.small):color("dim"):no_shrink())
+		:child(b.text(issue.identifier):text_size(SIZE.small):color("dim"):no_shrink():min_w(ids or 0))
 		:child(b.text(issue.title):text_size(13):grow(1):min_w(0):truncate())
+end
+
+-- The room the identifiers and the numbers of the lines round an issue take, the widest of them (the
+-- page's letters are of one width), so that the titles stand under one another.
+local ADVANCE = 0.62
+local function ids_width(near, pulls)
+	local most = 0
+	for _, entry in near do
+		most = math.max(most, utf8.len(entry.issue.identifier) or 0)
+	end
+	for _, pull in pulls do
+		most = math.max(most, #tostring(pull.number) + 1)
+	end
+	return math.ceil(most * SIZE.small * ADVANCE)
+end
+
+-- A pull request of the issue open, the `index`th: its picture in the place of the state of a part,
+-- its number (read from its address) where an identifier is, and its title. A press opens it in the
+-- browser; what Linear says under it, and where it is, are in the tip.
+local function pull_row(pull, index, first, several, ids)
+	local t = u.theme
+	local name = "pull:" .. index
+	kit.buttons[name] = true
+	local over = u:hovered(name)
+	local repository = string.match(pull.url, "^https://github%.com/([^/]+/[^/]+)/pull/") or "GitHub"
+	local where = repository .. "#" .. tostring(pull.number)
+	local tip = "Open " .. where .. " in your browser"
+	if pull.subtitle ~= nil and pull.subtitle ~= "" then
+		tip = pull.subtitle .. ". " .. tip
+	end
+	return b.div()
+		:row()
+		:items_center()
+		:gap(10)
+		:h(24)
+		:no_shrink()
+		:rounded(t.radius.control)
+		:bg(over and t.control_hover or t.clear)
+		:border(1, u:focus_visible(name) and t.ring or t.clear)
+		:motion({ seconds = t.motion, color = true })
+		:press(name)
+		:focusable()
+		:role("link")
+		:label("Pull request " .. where .. ", " .. pull.title)
+		-- (With several, the key opens the menu of them, not this one: the tip does not say it.)
+		:tip(tip, not several and commands.label("pull_request") or nil)
+		:child(b.div():w(84):no_shrink():child(
+			-- ("Pull request" is wider than the column the ways of the issues round it share.)
+			b.text(first and "PR" or ""):text_size(SIZE.small):color("dim"):truncate()
+		))
+		:child(b.div():w(14):no_shrink():child(icons.pull_request()))
+		:child(b.text("#" .. tostring(pull.number)):text_size(SIZE.small):color("dim"):no_shrink():min_w(ids or 0))
+		:child(b.text(pull.title ~= "" and pull.title or where):text_size(13):grow(1):min_w(0):truncate())
+end
+
+-- The pull requests of the issue open.
+local function pulls_of(detail)
+	return detail ~= nil and detail.pullRequests or {}
+end
+
+function panel.pulls()
+	return #pulls_of(panel.detail())
+end
+
+local PULLS = "pulls-menu"
+
+-- Opens the `index`th pull request of the issue open in the browser. The reply.
+function panel.open_pull(index)
+	local pull = pulls_of(panel.detail())[index]
+	if pull == nil then
+		return true
+	end
+	return { link = pull.url }
 end
 
 -- The issue `id` that the open one is tied to, or nil.
@@ -757,6 +830,27 @@ local function short(title)
 	return string.gsub(cut, "%s+$", "") .. "\u{2026}"
 end
 
+-- Opens the pull request of the issue open, where it has one; where it has several, the host's menu of
+-- them. The reply.
+function panel.open_pulls()
+	local pulls = pulls_of(panel.detail())
+	if #pulls == 0 then
+		return true
+	elseif #pulls == 1 then
+		return panel.open_pull(1)
+	end
+	P.serial += 1
+	local items = {}
+	for index, pull in pulls do
+		items[#items + 1] = { key = P.serial .. "|" .. index, title = "#" .. tostring(pull.number) .. "  " .. short(pull.title) }
+	end
+	local where = { at = { x = S.width / 2 - 100, y = S.height / 3 } }
+	if b.layout.bounds("pull:1") ~= nil then
+		where = { near = "pull:1" }
+	end
+	return u:menu(PULLS, items, where) or true
+end
+
 -- Opens the neighbours of the issue open, but the parent: the one there is where there is one, else
 -- the host's menu of them, each with its way (`ACM-389  Cache the pricing table  · Blocked by`). The
 -- reply.
@@ -786,6 +880,13 @@ end
 
 -- What a pick of that menu chose. The reply, or nil where it was not the menu's.
 function panel.action(action)
+	if action.from == PULLS and action.kind == "menu" then
+		local serial, index = string.match(action.entry, "^(%d+)|(%d+)$")
+		if serial == nil or tonumber(serial) ~= P.serial then
+			return true
+		end
+		return panel.open_pull(tonumber(index))
+	end
 	if action.from ~= NEIGHBOURS or action.kind ~= "menu" then
 		return nil
 	end
@@ -809,12 +910,18 @@ local function body(entry)
 	end
 	local detail = entry.issue
 	local box = b.div():col():text_size(13.5)
+	-- The issues round it, then its pull requests, their identifiers and numbers under one another.
 	local near = near_of(detail)
-	if #near > 0 then
+	local pulls = pulls_of(detail)
+	if #near > 0 or #pulls > 0 then
 		local rows = b.div():col():gap(2):mb(16)
-		local slot = detail.children ~= nil and #detail.children > 0
+		local slot = (detail.children ~= nil and #detail.children > 0) or #pulls > 0
+		local ids = ids_width(near, pulls)
 		for _, one in near do
-			rows:child(near_row(one, slot))
+			rows:child(near_row(one, slot, ids))
+		end
+		for index, pull in pulls do
+			rows:child(pull_row(pull, index, index == 1, #pulls > 1, ids))
 		end
 		box:child(rows)
 	end

@@ -6119,6 +6119,105 @@ fn a_menu_opened_as_the_issue_comes_in_stands_by_its_value() {
     assert!((at.x - value.x).abs() < 0.6, "{at:?} {value:?}");
 }
 
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_pull_request_of_the_issue_open_is_a_line_of_it_opened_in_the_browser_and_stays_through_a_change()
+ {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    open_the_controls(&mut page);
+    // The pull request, by its number and its title; what is linked that is not one is not there.
+    page.wait_for(WITHIN, |page| page.bounds("pull:1").is_some())
+        .unwrap_or_else(|why| panic!("the line: {why:?}: {}", said(&page)));
+    let words = page.words_in("pull:1");
+    assert!(words.contains(&"#231".to_owned()), "{words:?}");
+    assert!(
+        words.contains(&"Add per-key rate limits to the public API".to_owned()),
+        "{words:?}"
+    );
+    assert!(page.bounds("pull:2").is_none(), "{}", said(&page));
+    assert!(
+        !page.says("Rate limits are not applied per key"),
+        "{}",
+        said(&page)
+    );
+    // A press opens it in the browser, and so does its key.
+    let url = "https://github.com/acme/api/pull/231".to_owned();
+    page.click("pull:1").expect("the line is pressed");
+    page.wait_for(WITHIN, |page| page.links().len() == 1)
+        .unwrap_or_else(|why| panic!("opened: {why:?}: {:?}", page.links()));
+    assert_eq!(page.links(), std::slice::from_ref(&url));
+    page.press("shift+g").expect("the key");
+    page.wait_for(WITHIN, |page| page.links().len() == 2)
+        .unwrap_or_else(|why| panic!("opened by its key: {why:?}: {:?}", page.links()));
+    assert_eq!(page.links()[1], url);
+    // A change of the issue answers a line of the list, which has no pull requests: it stays.
+    page.click("panel-value:priority").expect("priority");
+    page.pick_titled("Urgent").expect("Urgent");
+    changed(&linear, &mut page, 1);
+    page.advance(0.5).expect("a moment");
+    assert!(page.bounds("pull:1").is_some(), "{}", said(&page));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn several_pull_requests_are_lines_of_their_own_and_their_key_opens_a_menu_of_them() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    linear.set_detail(
+        "issue-412",
+        serde_json::json!({ "attachments": { "nodes": [
+            { "title": "Add per-key rate limits", "subtitle": null,
+              "url": "https://github.com/acme/api/pull/231" },
+            { "title": "Show the limit on the usage page", "subtitle": null,
+              "url": "https://github.com/acme/web/pull/88" },
+        ] } }),
+    );
+    open_the_controls(&mut page);
+    page.wait_for(WITHIN, |page| page.bounds("pull:2").is_some())
+        .unwrap_or_else(|why| panic!("two lines: {why:?}: {}", said(&page)));
+    assert!(page.words_in("pull:2").contains(&"#88".to_owned()));
+    page.press("shift+g").expect("the key");
+    page.wait_for(WITHIN, |page| page.menu().is_some())
+        .unwrap_or_else(|why| panic!("the menu: {why:?}: {}", said(&page)));
+    assert_eq!(
+        menu_titles(&page),
+        [
+            "#231  Add per-key rate limits",
+            "#88  Show the limit on the usage page"
+        ]
+    );
+    page.pick_titled("#88  Show the limit on the usage page")
+        .expect("the second");
+    page.wait_for(WITHIN, |page| page.links().len() == 1)
+        .unwrap_or_else(|why| panic!("opened: {why:?}: {:?}", page.links()));
+    assert_eq!(page.links(), ["https://github.com/acme/web/pull/88"]);
+    // A press on a line opens that one.
+    page.click("pull:1").expect("the first line");
+    page.wait_for(WITHIN, |page| page.links().len() == 2)
+        .unwrap_or_else(|why| panic!("opened: {why:?}: {:?}", page.links()));
+    assert_eq!(page.links()[1], "https://github.com/acme/api/pull/231");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_capital_g_written_in_a_comment_or_the_title_is_a_letter_and_opens_nothing() {
+    let (_linear, _session, mut page) = open_lists(WIDE);
+    open_the_controls(&mut page);
+    page.wait_for(WITHIN, |page| page.bounds("pull:1").is_some())
+        .unwrap_or_else(|why| panic!("the line: {why:?}: {}", said(&page)));
+    page.press("shift+m").expect("the comment");
+    page.advance(0.3).expect("a moment");
+    page.type_text("Go").expect("a capital G");
+    page.press("shift+g").expect("shift and g");
+    page.advance(0.3).expect("a moment");
+    assert!(page.links().is_empty(), "{:?}", page.links());
+    page.press("escape").expect("escape");
+    page.press("r").expect("rename");
+    page.advance(0.3).expect("a moment");
+    page.press("shift+g").expect("shift and g");
+    page.advance(0.3).expect("a moment");
+    assert!(page.links().is_empty(), "{:?}", page.links());
+}
+
 /// The width `prefs.json` keeps for what stands beside the list.
 fn kept_width(rig: &Rig) -> Option<u64> {
     let text = std::fs::read_to_string(rig.state_dir().join("prefs.json")).ok()?;
