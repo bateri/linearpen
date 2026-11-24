@@ -6,7 +6,6 @@ use pencere::Options;
 use serde::{Deserialize, Serialize};
 
 use super::{Failure, call};
-use crate::linear::plain;
 use crate::session::Session;
 
 /// The most of the words of an update told.
@@ -46,10 +45,7 @@ fn check(id: &str) -> Result<(), Failure> {
 fn project(session: &Session, asked: Asked) -> Result<ProjectMessage, Failure> {
     check(&asked.id)?;
     let detail = session.project(&asked.id).map_err(Failure::Linear)?;
-    let this_year = crate::linear::inbox::moment(crate::session::now_seconds())
-        .get(..4)
-        .and_then(|year| year.parse().ok())
-        .unwrap_or(0);
+    let this_year = crate::model::projects::year_of(&super::issues::today(&session.state()));
     Ok(ProjectMessage {
         id: asked.id,
         update: detail.update.map(|body| {
@@ -65,14 +61,13 @@ fn project(session: &Session, asked: Asked) -> Result<ProjectMessage, Failure> {
             .into_iter()
             .take(crate::linear::projects::MILESTONES_MOST as usize)
             .map(|milestone| MilestoneMessage {
-                name: plain(&milestone.name),
+                name: super::issues::told(&milestone.name),
                 // (Within 0 and 100 after the clamp.)
                 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
                 progress: (milestone.progress.clamp(0.0, 1.0) * 100.0).round() as u8,
-                target: milestone
-                    .target_date
-                    .as_deref()
-                    .map(|date| crate::model::projects::when(date, None, this_year)),
+                target: milestone.target_date.as_deref().map(|date| {
+                    super::issues::told(&crate::model::projects::when(date, None, this_year))
+                }),
             })
             .collect(),
     })

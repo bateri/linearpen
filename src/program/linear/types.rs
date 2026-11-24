@@ -409,13 +409,34 @@ pub fn pull_request_number(url: &str) -> Option<u64> {
                 .chars()
                 .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '.' | '_'))
     };
-    if !named(owner) || !named(repository) || *owner == "." || *owner == ".." {
+    // (A part that is only dots names no owner nor repository: `.` and `..` walk the path.)
+    let walks = |part: &str| part.chars().all(|c| c == '.');
+    if !named(owner) || !named(repository) || walks(owner) || walks(repository) {
         return None;
     }
-    if number.is_empty() || number.len() > 10 || !number.chars().all(|c| c.is_ascii_digit()) {
+    // (A number as GitHub writes it: no 0 before it.)
+    if number.is_empty()
+        || number.len() > 10
+        || number.starts_with('0')
+        || !number.chars().all(|c| c.is_ascii_digit())
+    {
         return None;
     }
     number.parse().ok().filter(|n| *n > 0)
+}
+
+/// The address of the pull request `url` is, made again of its parts where it is one
+/// (`https://github.com/<owner>/<repository>/pull/<number>`): what `gh` is given, and not the words
+/// Linear told.
+#[must_use]
+pub fn pull_request_address(url: &str) -> Option<String> {
+    let number = pull_request_number(url)?;
+    let rest = url.strip_prefix("https://github.com/")?;
+    let mut parts = rest.split('/');
+    let (owner, repository) = (parts.next()?, parts.next()?);
+    Some(format!(
+        "https://github.com/{owner}/{repository}/pull/{number}"
+    ))
 }
 
 impl Issue {

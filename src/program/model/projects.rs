@@ -66,6 +66,29 @@ fn parts(date: &str) -> Option<(i32, u32, u32)> {
     Some((year, month, day))
 }
 
+/// Whether `text` is a day written as Linear writes one, `2026-11-24`, and nothing more.
+#[must_use]
+pub fn is_day(text: &str) -> bool {
+    text.len() == 10
+        && text.bytes().enumerate().all(|(at, byte)| {
+            if at == 4 || at == 7 {
+                byte == b'-'
+            } else {
+                byte.is_ascii_digit()
+            }
+        })
+        && parts(text).is_some()
+}
+
+/// The year of the day `today` (`2026-11-24`), or 0.
+#[must_use]
+pub fn year_of(today: &str) -> i32 {
+    today
+        .get(..4)
+        .and_then(|year| year.parse().ok())
+        .unwrap_or(0)
+}
+
 /// The day `date` is shown as, by its `resolution`: `Dec 12`, `Dec`, `Q4`, `H2` or `2027`, with the year
 /// after it where it is not `this_year` (`Dec 2027`, `Q1 2027`). What is not a day is left as it came.
 #[must_use]

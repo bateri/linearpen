@@ -783,6 +783,11 @@ local function ask_pull()
 	end)
 end
 
+-- Whether the pull request shown is one GitHub did not tell.
+function panel.pull_failed()
+	return P.pull ~= nil and P.pull.status == "failed"
+end
+
 -- Asks again for the pull request shown, where GitHub did not tell it. The reply.
 function panel.retry_pull()
 	if panel.pull_open() then

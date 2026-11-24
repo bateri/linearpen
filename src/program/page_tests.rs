@@ -10592,3 +10592,29 @@ fn going_to_the_projects_while_the_description_is_edited_leaves_the_keys_to_the_
     });
     assert_eq!(written(&linear), 0);
 }
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn with_the_read_ones_open_u_still_takes_the_cursor_to_the_next_unread_and_a_read_line_sends_nothing()
+ {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    go_to_inbox(&mut page);
+    page.wait_for(WITHIN, |page| page.bounds("row:g:inbox:read").is_some())
+        .unwrap_or_else(|why| panic!("the inbox comes: {why:?}: {}", said(&page)));
+    // The read ones opened by the person: the line marked would stay in view among them.
+    page.click("row:g:inbox:read")
+        .expect("the head of the read");
+    page.advance(0.4).expect("a moment");
+    page.click("row:i:issue-412").expect("the first unread");
+    cursor_on(&mut page, "ACM-412");
+    page.press("u").expect("u");
+    page.wait_for(WITHIN, |_| linear.times("NotificationMarkReadAll") == 1)
+        .unwrap_or_else(|why| panic!("asked: {why:?}"));
+    cursor_on(&mut page, "ACM-405");
+    // A read line: Mark read sends nothing, by the key or by the line of keys.
+    page.click("row:i:issue-412").expect("the line read now");
+    cursor_on(&mut page, "ACM-412");
+    page.press("u").expect("u");
+    page.advance(0.3).expect("a moment");
+    assert_eq!(linear.times("NotificationMarkReadAll"), 1);
+}

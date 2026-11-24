@@ -2049,11 +2049,25 @@ fn a_pull_request_is_known_by_an_address_of_githubs_and_nothing_more() {
         "https://github.com/acme/api/pull/-1",
         "https://github.com//api/pull/231",
         "https://github.com/../api/pull/231",
+        "https://github.com/acme/../pull/231",
+        "https://github.com/acme/./pull/231",
+        "https://github.com/acme/.../pull/231",
+        "https://github.com/acme/api/pull/0231",
         "https://github.com/ac me/api/pull/231",
         "https://gitlab.com/acme/api/pull/231",
         "https://GITHUB.com/acme/api/pull/231",
         "",
     ] {
         assert_eq!(pull_request_number(refused), None, "{refused}");
+        assert_eq!(
+            crate::linear::types::pull_request_address(refused),
+            None,
+            "{refused}"
+        );
     }
+    assert_eq!(
+        crate::linear::types::pull_request_address("https://github.com/a-b/c.d_e/pull/7")
+            .as_deref(),
+        Some("https://github.com/a-b/c.d_e/pull/7")
+    );
 }

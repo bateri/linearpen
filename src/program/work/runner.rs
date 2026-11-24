@@ -64,7 +64,7 @@ pub struct System;
 
 /// The child to run: no shell, nothing on its stdin, and without the key that may be in this
 /// program's environment (`bateri` and the agent it starts are not its readers).
-pub(super) fn command_of(program: &str, args: &[String], cwd: Option<&Path>) -> Command {
+pub(crate) fn command_of(program: &str, args: &[String], cwd: Option<&Path>) -> Command {
     let mut command = Command::new(program);
     command
         .args(args)

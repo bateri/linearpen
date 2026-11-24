@@ -105,6 +105,9 @@ Errors: `bad-params` (the text is not a key: `Empty`, too long, or a character n
 What the page is looking at; the answer is the list for it, as the topic tells it. Every member is
 optional (`{}` asks for the list as it is). Params:
 
+- `today`: the person's day by their own clock, `"2026-11-24"`: what the lateness of a project and the
+  years of its days are said by, kept until another is told (before any, the day of the program's
+  clock in UTC). Not a day so written: `bad-params`.
 - `list`: `{ "kind", "id"? }`, the list the page shows. `kind` is `"mine"` (the issues assigned
   to the person, the default), `"all"` (the issues of the workspace; asked for when it is shown),
   `"created"` (the issues the person made, by hand or through an integration, as Linear's My issues
@@ -125,7 +128,8 @@ optional (`{}` asks for the list as it is). Params:
   changed last (archived ones left out), asked for when the list is shown and at each refresh while it
   is. A group is a state of projects (`key` its id, `name` its name, `kind` its type: `started`,
   `planned`, `paused`, `backlog`, `completed` or `canceled`, in that order, and by the state's position
-  within a type; `completed` and `canceled` folded at first), and holds `projects` in the place of
+  within a type, then `other` for a type Linear tells that is none of these; `completed` and
+  `canceled` folded at first), and holds `projects` in the place of
   `rows` (below). In a group the project whose target comes first is first, those with none last, then
   by name. `filters` do not narrow it; the words of `filter` do, by the project's name.
   `counts.shown` is how many projects it holds, `shownOpen` those not done nor canceled, `shownCut`
@@ -137,8 +141,8 @@ optional (`{}` asks for the list as it is). Params:
   of the same issue is one with the first: unread where either is, of the later day; one not about an
   issue, a pull request's or a project's, is not told). Where Linear has more than 50, `counts.shownCut`
   says so. Each row carries a `note` (below); the groups are `inbox:unread`
-  (`Unread`) and `inbox:read` (`Read`, folded at first where there are unread ones), in each the latest
-  first. `filters` do not
+  (`Unread`, its `kind` `unread`) and `inbox:read` (`Read`, `kind` `read`, folded at first where there
+  are unread ones), in each the latest first. `filters` do not
   narrow it (Linear's inbox takes none: `view` keeps them for the other lists), the words of `filter`
   do. Reading it changes nothing in Linear: an issue opened here is not marked read there. Only the list shown and My issues are asked for: going to another
   list lets go of the one left and asks Linear for the new one, and the topic tells it as `listing`
@@ -841,8 +845,9 @@ ones that failed and those still running (at most 50 each). `review.decision` is
 (`approved`, `changesRequested`, `commented`, `dismissed`), `waiting` those asked who have not. Every
 word of it is GitHub's, cut at 300 characters, with no control character: text to show.
 Errors: `bad-params`; `unavailable` where `gh` is not there or not signed in to GitHub (the words say
-which: the page then opens the address in the browser, as it does where it never asked); `pull-failed`
-where `gh` ran and GitHub did not tell it (the words are `gh`'s).
+which, and the page shows them in the place of the pull request, with Open on GitHub; where `boot`
+said `gh` is not there it never asks, and opens the address in the browser); `pull-failed` where `gh`
+ran and GitHub did not tell it, or did not answer in 20 seconds (the words are `gh`'s, or say so).
 
 ### `mark_read`
 

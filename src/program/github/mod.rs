@@ -3,13 +3,15 @@
 //! and only reads. Where `gh` is not there, nothing here is run (`here`), and the page opens the
 //! address in the browser.
 
-use std::io;
+use std::io::{self, Read};
+use std::path::Path;
+use std::time::{Duration, Instant};
 
 use serde::Deserialize;
 
 use crate::linear::plain;
-use crate::linear::types::pull_request_number;
-use crate::work::runner::Runner;
+use crate::linear::types::pull_request_address;
+use crate::work::runner::{Ran, Runner, command_of};
 
 /// What is asked of `gh pr view --json`.
 pub const FIELDS: &str = "number,title,state,isDraft,author,headRefName,baseRefName,additions,\
@@ -184,16 +186,16 @@ fn outcome(check: &RawCheck) -> &'static str {
 /// that stands).
 fn checks_of(raw: &[RawCheck]) -> Checks {
     let mut last: Vec<(String, &'static str)> = Vec::new();
-    for check in raw {
-        let name = check
-            .name
-            .as_deref()
-            .or(check.context.as_deref())
-            .unwrap_or("A check");
-        let key = format!(
-            "{}\u{1f}{name}",
-            check.workflow_name.as_deref().unwrap_or("")
-        );
+    for (index, check) in raw.iter().enumerate() {
+        let name = check.name.as_deref().or(check.context.as_deref());
+        // (A check with no name is one of its own: it is not the run again of another with none.)
+        let key = match name {
+            Some(name) => format!(
+                "{}\u{1f}{name}",
+                check.workflow_name.as_deref().unwrap_or("")
+            ),
+            None => format!("\u{1e}{index}\u{1f}A check"),
+        };
         let came = outcome(check);
         match last.iter_mut().find(|(held, _)| *held == key) {
             Some(held) => held.1 = came,
@@ -235,6 +237,7 @@ fn review_of(raw: &Raw) -> Review {
             let who = review.author.as_ref()?.login.as_deref()?;
             Some((words(who), state))
         })
+        .take(CHECKS_MOST)
         .collect();
     let waiting = raw
         .review_requests
@@ -242,6 +245,7 @@ fn review_of(raw: &Raw) -> Review {
         .filter_map(|asked| asked.login.as_deref().or(asked.name.as_deref()))
         .map(words)
         .filter(|who| !who.is_empty())
+        .take(CHECKS_MOST)
         .collect();
     Review {
         decision,
@@ -311,6 +315,96 @@ pub fn here(runner: &dyn Runner) -> bool {
         .is_ok_and(|ran| ran.ok)
 }
 
+/// How long `gh` is given to say its version, and to tell a pull request (it asks GitHub).
+// (A test build never runs the system's `gh`: what times it is the program's alone.)
+#[cfg_attr(test, allow(dead_code))]
+const VERSION_SECONDS: u64 = 3;
+const VIEW_SECONDS: u64 = 20;
+
+/// The system's `gh`, given a time: one that has not ended by then is stopped, and that is a failure.
+/// A `gh` that waits on a network that never answers does not leave the panel asking for ever, nor the
+/// page's first answer waiting for its version.
+#[cfg_attr(test, allow(dead_code))]
+pub struct Timed;
+
+impl Runner for Timed {
+    fn run_with(
+        &self,
+        program: &str,
+        args: &[String],
+        cwd: Option<&Path>,
+        env: &[(&str, &str)],
+    ) -> io::Result<Ran> {
+        let seconds = if args.first().map(String::as_str) == Some("--version") {
+            VERSION_SECONDS
+        } else {
+            VIEW_SECONDS
+        };
+        run_for(program, args, cwd, env, Duration::from_secs(seconds))
+    }
+}
+
+/// Runs `program` as the system's runner does (no shell, nothing on its stdin, without the key), and
+/// stops it where it has not ended in `limit`: `ErrorKind::TimedOut`.
+fn run_for(
+    program: &str,
+    args: &[String],
+    cwd: Option<&Path>,
+    env: &[(&str, &str)],
+    limit: Duration,
+) -> io::Result<Ran> {
+    let mut command = command_of(program, args, cwd);
+    for (name, value) in env {
+        command.env(name, value);
+    }
+    let mut child = command.spawn()?;
+    // (Each pipe is read as it fills, so that a child that writes much is not held on a full pipe.)
+    let read = |pipe: Option<Box<dyn Read + Send>>| {
+        std::thread::spawn(move || {
+            let mut bytes = Vec::new();
+            if let Some(mut pipe) = pipe {
+                let _ = pipe.read_to_end(&mut bytes);
+            }
+            bytes
+        })
+    };
+    let out = read(
+        child
+            .stdout
+            .take()
+            .map(|pipe| Box::new(pipe) as Box<dyn Read + Send>),
+    );
+    let err = read(
+        child
+            .stderr
+            .take()
+            .map(|pipe| Box::new(pipe) as Box<dyn Read + Send>),
+    );
+    let deadline = Instant::now() + limit;
+    loop {
+        if let Some(status) = child.try_wait()? {
+            let text = |reader: std::thread::JoinHandle<Vec<u8>>| {
+                String::from_utf8_lossy(&reader.join().unwrap_or_default()).into_owned()
+            };
+            return Ok(Ran {
+                ok: status.success(),
+                out: text(out),
+                err: text(err),
+            });
+        }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            // (The readers are let go: a child of its own that holds the pipes is not waited for.)
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                format!("{program} did not end in {} seconds", limit.as_secs()),
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
 /// What GitHub says of the pull request at `url`, which must be the address of one of GitHub's and
 /// nothing more (else `gh` is not run).
 ///
@@ -318,17 +412,20 @@ pub fn here(runner: &dyn Runner) -> bool {
 ///
 /// `gh` is not there, not signed in, or GitHub did not tell it.
 pub fn view(runner: &dyn Runner, url: &str) -> Result<Pull, Problem> {
-    if pull_request_number(url).is_none() {
+    let Some(address) = pull_request_address(url) else {
         return Err(Problem::Failed(
             "not the address of a pull request of GitHub's".to_owned(),
         ));
-    }
-    let args: Vec<String> = ["pr", "view", url, "--json", FIELDS]
+    };
+    let args: Vec<String> = ["pr", "view", address.as_str(), "--json", FIELDS]
         .into_iter()
         .map(str::to_owned)
         .collect();
     match runner.run_with("gh", &args, None, &QUIET) {
         Err(why) if why.kind() == io::ErrorKind::NotFound => Err(Problem::Missing),
+        Err(why) if why.kind() == io::ErrorKind::TimedOut => Err(Problem::Failed(format!(
+            "GitHub did not answer in {VIEW_SECONDS} seconds"
+        ))),
         Err(why) => Err(Problem::Failed(format!("gh could not be run: {why}"))),
         Ok(ran) if !ran.ok => {
             let why = words(&ran.reason("GitHub did not tell the pull request"));
@@ -345,6 +442,48 @@ pub fn view(runner: &dyn Runner, url: &str) -> Result<Pull, Problem> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_gh_that_does_not_end_in_its_time_is_stopped_and_that_is_said() {
+        let began = Instant::now();
+        let ran = run_for(
+            "sleep",
+            &["5".to_owned()],
+            None,
+            &[],
+            Duration::from_millis(300),
+        );
+        let why = ran.expect_err("stopped");
+        assert_eq!(why.kind(), io::ErrorKind::TimedOut);
+        assert!(
+            began.elapsed() < Duration::from_secs(3),
+            "{:?}",
+            began.elapsed()
+        );
+        // One that ends in its time is read as it ended.
+        let ran = run_for(
+            "sh",
+            &["-c".to_owned(), "echo out; echo err >&2".to_owned()],
+            None,
+            &[],
+            Duration::from_secs(5),
+        )
+        .expect("it ends");
+        assert!(ran.ok);
+        assert_eq!(ran.out, "out\n");
+        assert_eq!(ran.err, "err\n");
+    }
+
+    #[test]
+    fn checks_with_no_name_are_each_their_own() {
+        let raw: Vec<RawCheck> = serde_json::from_str(
+            r#"[{"status":"COMPLETED","conclusion":"FAILURE"},{"status":"COMPLETED","conclusion":"SUCCESS"}]"#,
+        )
+        .unwrap();
+        let checks = checks_of(&raw);
+        assert_eq!(checks.passed, 1);
+        assert_eq!(checks.failed.len(), 1);
+    }
     use crate::work::runner::Ran;
     use std::sync::Mutex;
 

@@ -145,6 +145,10 @@ pub struct State {
     /// When the lists were told, seconds since the epoch.
     pub updated: Option<u64>,
     pub view: View,
+    /// The person's day (`2026-11-24`) as the page last told it (`view`'s `today`): what the lateness of a
+    /// project and the years of its days are said by. None until the page tells it: then the day of the
+    /// system's clock in UTC.
+    pub today: Option<String>,
     /// The number of the last `view` call that set each member of `view` (scope, filters, filter, closed),
     /// which are made at the same time and may be told out of their order.
     view_seen: [u64; 4],
@@ -437,7 +441,7 @@ pub struct Session {
 /// pull request gives its own: nothing of a test reaches the person's GitHub).
 #[cfg(not(test))]
 fn github_runner() -> Arc<dyn Runner> {
-    Arc::new(System)
+    Arc::new(crate::github::Timed)
 }
 
 #[cfg(test)]
@@ -739,6 +743,7 @@ impl Session {
                 choices: HashMap::new(),
                 filter_options: None,
                 view_seen: [0; 4],
+                today: None,
                 generation: 0,
                 refresh_wanted: false,
                 everything: false,
@@ -1029,13 +1034,6 @@ impl Session {
         }
     }
 
-    /// Makes `change` in the issues with Linear's ids `ids`, from one to fifty: the program's other
-    /// write. It is sent once. What Linear answers is written into the lists and the issues kept as
-    /// it is, and the topic is told; no list is asked for again. Where it did not come back whole
-    /// (no answer), or came back without one of the issues, each of those is asked for, so that what
-    /// is shown is what Linear holds; nothing is sent again, and the failure is told. An answer that is
-    /// an error (Linear said no, or the key is not taken) says the change was not made, and nothing is
-    /// asked about.
     /// What the project `id` carries that its line does not: its milestones and the words of its last
     /// update. Asked of Linear each time (a project's page is opened seldom, and is read as it is now).
     ///
@@ -1068,6 +1066,13 @@ impl Session {
         Ok(())
     }
 
+    /// Makes `change` in the issues with Linear's ids `ids`, from one to fifty: the program's other
+    /// write. It is sent once. What Linear answers is written into the lists and the issues kept as
+    /// it is, and the topic is told; no list is asked for again. Where it did not come back whole
+    /// (no answer), or came back without one of the issues, each of those is asked for, so that what
+    /// is shown is what Linear holds; nothing is sent again, and the failure is told. An answer that is
+    /// an error (Linear said no, or the key is not taken) says the change was not made, and nothing is
+    /// asked about.
     pub fn change(&self, ids: &[String], change: &Change) -> Result<Vec<Changed>, Error> {
         if ids.is_empty() || ids.len() > linear::BATCH_MOST {
             return Err(Error::Failed(format!(
@@ -1319,6 +1324,11 @@ impl Session {
     /// Changes what the page is looking at, and wakes whoever shows it. The page numbers its calls
     /// (`seq`): a member that a call with a higher number has set is left as it is, for calls run at
     /// the same time and may come out of their order. A call with no number is the latest.
+    /// Keeps the person's day, `2026-11-24`, as the page tells it.
+    pub fn set_today(&self, today: String) {
+        self.shared.lock().today = Some(today);
+    }
+
     pub fn set_view(
         &self,
         seq: Option<u64>,

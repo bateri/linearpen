@@ -14,7 +14,7 @@ local H = { open = false }
 local SCROLL = "help/scroll"
 
 -- The groups of the card, in the order they stand in the table.
-local ORDER = { "Move", "Select", "Change", "Copy", "Issue", "PDF", "Work on, New issue", "Everywhere" }
+local ORDER = { "Move", "Select", "Change", "Copy", "Issue", "Project", "PDF", "Work on, New issue", "Everywhere" }
 
 function help.is_open()
 	return H.open

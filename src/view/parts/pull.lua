@@ -214,7 +214,7 @@ local function body(Pl)
 			b.div():row():items_start():gap(8):child(b.div():size(7, 7):rounded(4):bg("warning"):no_shrink():mt(6)):child(
 				b.text(Pl.error or "GitHub did not tell it"):text_size(SIZE.small):color("warning"):wrap():min_w(0)
 			)
-		):child(kit.button("pull-retry", "Try again"))
+		):child(kit.button("pull-retry", "Try again", { suffix = commands.label("refresh") }))
 	end
 	-- (It comes in as it comes, fading: what is over it stays where it was.)
 	return b.div()

@@ -86,6 +86,14 @@ act.field_clear = function()
 	before = nil
 end
 
+-- The words of the field, and words put back in it (the projects' words, as they were left).
+act.field_words = function()
+	return F.value
+end
+act.field_put = function(text)
+	F.value = text
+end
+
 -- Whether the field has words that nothing held matches (and it is not a search, whose words Linear
 -- matched): the page says so, with the way to search all of Linear.
 function head.unmatched()

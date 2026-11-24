@@ -112,9 +112,16 @@ end
 
 -- What the keyboard does in the form that hands issues to an agent: Tab goes on, and on a choice the
 -- arrows choose (in the words for the agent they move the caret).
--- Refresh's key, where the head has no button for it (the list beside the form has too little room).
+-- The room the head has for its buttons: none where the issue or a form has the pane (the head is not on
+-- the page), else the list's.
+local function head_room()
+	return S.covered and 0 or S.room
+end
+
+-- Refresh's key, where the head has no button for it (the list beside the form has too little room, or
+-- the form has the pane).
 local function refresh_hint(start)
-	if S.room < SIZE.wide then
+	if head_room() < SIZE.wide then
 		start[#start + 1] = { key = "refresh", words = hint({ "refresh" }, "refresh"), priority = 3 }
 	end
 	return start
@@ -368,21 +375,23 @@ function status.view()
 	if not typing and not alone and S.scope == "inbox" then
 		start[#start + 1] = { key = "mark_read", words = hint({ "mark_read" }, "mark read"), priority = 3, press = true }
 	end
-	-- (Where the issue has the pane, Esc closes it: the search and the filter are the list's.)
-	if not alone and S.scope == "search" then
+	-- (Where an issue, a project or a form stands beside the list, Esc puts it away, and its button says
+	-- so: the search and the filter are the list's once it is gone.)
+	local leaving = not alone and not S.panel_open
+	if leaving and S.scope == "search" then
 		start[#start + 1] = { key = "clear", words = hint({ "back" }, "back"), priority = 5 }
-	elseif not alone and head.field.value ~= "" then
+	elseif leaving and head.field.value ~= "" then
 		start[#start + 1] = { key = "clear", words = hint({ "back" }, "clear the filter"), priority = 5 }
-	elseif not alone and not S.panel_open and project.can_go_back() then
+	elseif leaving and project.can_go_back() then
 		start[#start + 1] = { key = "clear", words = hint({ "back" }, "back to projects"), priority = 5 }
 	end
 	-- A key that has a button is on the button; where the head has none (the list has too little room:
 	-- the pane is narrow, or an issue stands beside it) the key is here, which is the only place it is
 	-- written.
-	if S.room < SIZE.wide then
+	if head_room() < SIZE.wide then
 		start[#start + 1] = { key = "refresh", words = hint({ "refresh" }, "refresh"), priority = 3 }
 	end
-	if S.room < SIZE.roomy and not typing then
+	if head_room() < SIZE.roomy and not typing then
 		start[#start + 1] = { key = "new", words = hint({ "new" }, "new issue"), priority = 4 }
 	end
 	-- The marks of the agents on the lines are pressed, and have no key: the key goes to the agent of the

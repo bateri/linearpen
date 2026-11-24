@@ -2,10 +2,14 @@
 
 local kit = require("../lib/kit")
 local list = require("./list")
+local values = require("./values")
 
 local b, S, act = kit.b, kit.S, kit.act
 
 local data = {}
+
+-- (Below: the cursor of a line marked read goes to the next unread when the lines say it was.)
+local settle_moving
 
 -- Takes a list of the program's (the answer of `view` or a push of the topic).
 local function apply(snapshot)
@@ -17,6 +21,7 @@ local function apply(snapshot)
 	S.catalog = snapshot.catalog
 	S.refreshing = snapshot.refreshing == true
 	list.load(snapshot)
+	settle_moving()
 	-- What stands beside the list is of the list's kind (a project beside the projects).
 	if act.lists_shown ~= nil then
 		act.lists_shown()
@@ -55,6 +60,9 @@ function act.view(params, after)
 	-- undo a later one.
 	S.view_seq = (S.view_seq or 0) + 1
 	params.seq = S.view_seq
+	-- The person's day, by their own clock: what a project's lateness is said by (nil where the host tells
+	-- no time of day: the program takes the day of its own clock).
+	params.today = values.day_ahead(0)
 	kit.call("view", params, function(result, err)
 		-- The answer of a call that a later one has gone past is not what the program holds now.
 		if result and params.seq == S.view_seq then
@@ -71,7 +79,6 @@ function act.view(params, after)
 	end)
 end
 
--- Asks Linear for the lists again.
 -- The ids of the issues whose notifications are being marked read, while Linear is asked.
 local marking = {}
 
@@ -80,36 +87,82 @@ function act.marking(id)
 	return marking[id] == true
 end
 
--- Whether the issue `id` is a line of the inbox that is unread, and is not being marked read.
-function act.unread(id)
-	if id == nil or marking[id] or S.scope ~= "inbox" or S.issues == nil then
-		return false
+-- The lines of the unread in the inbox shown, or nil. (A folded group draws no lines: what is not drawn
+-- is not marked from here.)
+local function unread_rows()
+	if S.scope ~= "inbox" or S.issues == nil then
+		return nil
 	end
 	for _, group in S.issues.groups or {} do
 		if group.key == "inbox:unread" then
-			for _, row in group.rows or {} do
-				if row.id == id then
-					return true
-				end
-			end
-			-- (A folded group draws no lines: what is not drawn is not marked from here.)
-			return false
+			return group.rows or {}
 		end
 	end
-	return false
+	return nil
+end
+
+-- Where the issue `id` is among the unread lines, or nil.
+local function unread_at(id)
+	for index, row in unread_rows() or {} do
+		if row.id == id then
+			return index
+		end
+	end
+	return nil
+end
+
+-- Whether the issue `id` is a line of the inbox that is unread, and is not being marked read.
+function act.unread(id)
+	return id ~= nil and not marking[id] and unread_at(id) ~= nil
+end
+
+-- The line the cursor goes to once the issue it is on is read: `{ id, to }`, the unread line after it
+-- (or before it, where it was the last). Nil where nothing waits.
+local moving = nil
+
+-- The issue the cursor is on was marked read and has left the unread: the cursor goes to the next unread
+-- line, whether the read ones are folded or not. Not where the person moved it meanwhile.
+function settle_moving()
+	if moving == nil then
+		return
+	end
+	local item = list.current()
+	if item == nil or item.key ~= "i:" .. moving.id then
+		moving = nil
+		return
+	end
+	if unread_at(moving.id) ~= nil then
+		-- (Not yet: the lines that say it was read have not come.)
+		return
+	end
+	local to = moving.to
+	moving = nil
+	if to ~= nil then
+		list.go_to(to)
+	end
 end
 
 -- Marks the notifications of the issue `id` read in Linear's inbox (`mark_read`): once, when the person
 -- asks; where Linear did not, it says so and the line stays as it was. The reply.
 function act.mark_read(id)
-	if id == nil or marking[id] then
+	-- (Only an unread line of the inbox: a line already read, or one being marked, sends nothing.)
+	if not act.unread(id) then
 		return true
+	end
+	local rows, at = unread_rows(), unread_at(id)
+	local next_row = rows[at + 1] or rows[at - 1]
+	local item = list.current()
+	if item ~= nil and item.key == "i:" .. id then
+		moving = { id = id, to = next_row and ("i:" .. next_row.id) or nil }
 	end
 	marking[id] = true
 	kit.call("mark_read", { id = id }, function(_, err)
 		marking[id] = nil
 		if err then
+			moving = nil
 			kit.toast(err.message or "Linear did not mark it read", "warn")
+		else
+			settle_moving()
 		end
 		return true
 	end)
@@ -121,6 +174,7 @@ function act.panel_width(width)
 	kit.call("panel_width", { width = width })
 end
 
+-- Asks Linear for the lists again.
 function act.refresh()
 	if S.refreshing then
 		return

@@ -204,12 +204,17 @@ commands.when.reading = function()
 end
 -- The keys that change the issues the cursor is on, or those selected: there is one to change, and no
 -- change of it is on its way.
+-- (Where the issue has the pane and its pull request is shown in its place, the issue is drawn nowhere:
+-- nothing changes it.)
+local function drawn()
+	return not (S.alone and panel.pull_open())
+end
 commands.when.changeable = function()
-	return commands.when.idle() and change.can()
+	return commands.when.idle() and change.can() and drawn()
 end
 -- The priority and the due date need no choices of the team.
 commands.when.plain_change = function()
-	return commands.when.idle() and change.can(true)
+	return commands.when.idle() and change.can(true) and drawn()
 end
 -- The cycle and the estimate need the team to have them: not for the issues of one that has none.
 commands.when.cyclable = function()
@@ -1138,6 +1143,15 @@ local function shape(event)
 	end
 	S.cursor = wanted
 	return { cursor = wanted or "arrow" }
+end
+
+-- Linear is asked for the lists again (Refresh, and Try again with its key): what stands beside the list
+-- is asked for again too, the project shown, and the pull request GitHub did not tell.
+act.lists_asked = function()
+	project.forget()
+	if panel.pull_failed() then
+		panel.retry_pull()
+	end
 end
 
 -- What stands beside the list is of the list's kind: a project beside the projects, an issue beside the

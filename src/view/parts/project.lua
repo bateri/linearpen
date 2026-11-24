@@ -102,8 +102,6 @@ function project.forget()
 	end
 end
 
-act.lists_asked = project.forget
-
 -- Asks again for the project shown, where Linear did not tell it. The reply.
 function project.retry()
 	if J.open ~= nil then
@@ -143,7 +141,8 @@ function project.show_issues()
 		return true
 	end
 	lists.remember("project", row.id, row.name)
-	J.back = { id = row.id }
+	-- (The words the projects were filtered by are theirs: they come back with them.)
+	J.back = { id = row.id, words = act.field_words ~= nil and act.field_words() or "" }
 	J.open = nil
 	if act.field_clear ~= nil then
 		act.field_clear()
@@ -171,9 +170,13 @@ end
 -- Back to the list of projects, the cursor on the project whose issues were shown, and it beside the
 -- list again. The reply.
 function project.go_back()
+	local words = J.back.words or ""
 	J.returning = J.back.id
 	J.back = nil
-	act.view({ list = { kind = "projects" } })
+	if act.field_put ~= nil then
+		act.field_put(words)
+	end
+	act.view({ list = { kind = "projects" }, filter = words })
 	return true
 end
 
@@ -376,7 +379,7 @@ local function body(open)
 				b.div():row():items_start():gap(8):child(b.div():size(7, 7):rounded(4):bg("warning"):no_shrink():mt(6)):child(
 					b.text(kept.error or "Linear did not tell it"):text_size(SIZE.small):color("warning"):wrap():min_w(0)
 				)
-			):child(kit.button("project-retry", "Try again"))
+			):child(kit.button("project-retry", "Try again", { suffix = commands.label("refresh") }))
 		)
 	end
 	local data = kept.data

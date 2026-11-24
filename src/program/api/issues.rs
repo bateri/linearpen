@@ -145,7 +145,7 @@ pub struct ProjectUpdateMessage {
 }
 
 /// A word of Linear's as a line tells it: no control character, cut at 300 characters.
-fn told(text: &str) -> String {
+pub(super) fn told(text: &str) -> String {
     let plain = plain(text);
     match plain.char_indices().nth(300) {
         Some((end, _)) => plain[..end].to_owned(),
@@ -163,13 +163,10 @@ fn percent(part: f64) -> u8 {
 
 /// The line of `project`, as of `today` (`2026-11-24`).
 fn project_line(project: &crate::linear::projects::Project, today: &str) -> ProjectMessage {
-    let this_year = today
-        .get(..4)
-        .and_then(|year| year.parse().ok())
-        .unwrap_or(0);
+    let this_year = projects::year_of(today);
     let day = |date: &Option<String>, resolution: &Option<String>| {
         date.as_deref()
-            .map(|date| projects::when(date, resolution.as_deref(), this_year))
+            .map(|date| told(&projects::when(date, resolution.as_deref(), this_year)))
     };
     ProjectMessage {
         id: project.id.clone(),
@@ -259,9 +256,11 @@ fn project_groups(
     (groups, matched)
 }
 
-/// Today, as the dates of Linear are written: `2026-11-24`.
-fn today() -> String {
-    crate::linear::inbox::moment(crate::session::now_seconds())[..10].to_owned()
+/// The person's day as the page told it, else the day of the system's clock in UTC: `2026-11-24`.
+pub(super) fn today(state: &State) -> String {
+    state.today.clone().unwrap_or_else(|| {
+        crate::linear::inbox::moment(crate::session::now_seconds())[..10].to_owned()
+    })
 }
 
 #[derive(Debug, Serialize)]
@@ -444,7 +443,7 @@ fn row_noted(issue: &Issue, scope: &Scope, note: Option<&Note>) -> RowMessage {
         },
         ids: ids(issue),
         note: note.map(|note| NoteMessage {
-            who: note.who.clone(),
+            who: note.who.as_deref().map(told),
             what: note.what,
             unread: note.unread,
         }),
@@ -527,8 +526,12 @@ pub fn snapshot(state: &State) -> Snapshot {
         .as_ref()
         .and_then(|lists| lists.of(scope, &state.view.filters));
     if let Some(listing) = held.filter(|_| *scope == Scope::Projects) {
-        (groups, matched) =
-            project_groups(listing, &state.view.filter, &state.view.closed, &today());
+        (groups, matched) = project_groups(
+            listing,
+            &state.view.filter,
+            &state.view.closed,
+            &today(state),
+        );
     } else if let Some(listing) = held.filter(|_| *scope == Scope::Inbox) {
         (groups, matched) = inbox_groups(listing, &filter, &state.view.closed);
     } else if let Some(listing) = held {
@@ -689,6 +692,36 @@ pub fn topic(options: Options, session: &Arc<Session>) -> Options {
 mod tests {
     use super::*;
     use crate::linear::types::fixture_issue;
+
+    #[test]
+    fn a_projects_lateness_and_the_years_of_its_days_are_the_persons_day_s() {
+        let value: serde_json::Value =
+            serde_json::from_str(include_str!("../../../test/stand-in/projects.json")).unwrap();
+        let limits: crate::linear::projects::Project =
+            serde_json::from_value(value["data"]["projects"]["nodes"][1].clone()).unwrap();
+        assert_eq!(limits.name, "Public API limits");
+        // Its target is Nov 20: on that day it is not late, the day after it is.
+        let on = project_line(&limits, "2026-11-20");
+        assert!(!on.late);
+        assert_eq!(on.target.as_deref(), Some("Nov 20"));
+        let after = project_line(&limits, "2026-11-21");
+        assert!(after.late);
+        // A year later its days say their year.
+        assert_eq!(
+            project_line(&limits, "2027-01-02").target.as_deref(),
+            Some("Nov 20 2026")
+        );
+        assert!(crate::model::projects::is_day("2026-11-24"));
+        for not in [
+            "2026-11-24T00:00:00Z",
+            "2026-13-01",
+            "26-11-24",
+            "2026/11/24",
+            "",
+        ] {
+            assert!(!crate::model::projects::is_day(not), "{not}");
+        }
+    }
 
     #[test]
     fn a_row_tells_the_ids_of_what_the_issue_is_of_and_in() {

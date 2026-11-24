@@ -116,6 +116,8 @@ struct ViewParams {
     closed: Option<HashMap<String, bool>>,
     /// The number of this call among the page's `view` calls.
     seq: Option<u64>,
+    /// The person's day, `2026-11-24`, by their own clock.
+    today: Option<String>,
 }
 
 /// What the lists are narrowed by: each kind is a list of values (none: it does not narrow).
@@ -199,6 +201,14 @@ fn view(session: &Session, params: ViewParams) -> Result<Snapshot, Failure> {
         return Err(Failure::BadParams(format!(
             "closed names at most {CLOSED_MOST} groups"
         )));
+    }
+    if let Some(today) = params.today {
+        if !crate::model::projects::is_day(&today) {
+            return Err(Failure::BadParams(
+                "today is a day written 2026-11-24".to_owned(),
+            ));
+        }
+        session.set_today(today);
     }
     session.set_view(params.seq, scope, filters, params.filter, params.closed);
     Ok(snapshot(&session.state()))

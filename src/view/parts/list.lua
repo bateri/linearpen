@@ -37,8 +37,9 @@ local function index_of(key)
 	return key ~= nil and L.at[key] or nil
 end
 
--- The issue the cursor goes to where its line is gone from a list of the same view (the issue was
--- done, given to someone else): the next one that is still there, else the one before.
+-- The line the cursor goes to where its line is gone from a list of the same view (the issue was done,
+-- given to someone else; the project went to another state): the next one that is still there, else the
+-- one before.
 local function neighbour(old_items, old_at, key, at)
 	local index = old_at[key]
 	if index == nil then
@@ -46,13 +47,13 @@ local function neighbour(old_items, old_at, key, at)
 	end
 	for step = index + 1, #old_items do
 		local item = old_items[step]
-		if item.kind == "issue" and at[item.key] ~= nil then
+		if (item.kind == "issue" or item.kind == "project") and at[item.key] ~= nil then
 			return item.key
 		end
 	end
 	for step = index - 1, 1, -1 do
 		local item = old_items[step]
-		if item.kind == "issue" and at[item.key] ~= nil then
+		if (item.kind == "issue" or item.kind == "project") and at[item.key] ~= nil then
 			return item.key
 		end
 	end
@@ -111,7 +112,8 @@ function list.load(snapshot)
 		-- took the issue away) on the first issue.
 		local head = L.cursor_group ~= nil and items[at["g:" .. L.cursor_group] or 0] or nil
 		local near = nil
-		if same_view and was ~= nil and string.sub(was, 1, 2) == "i:" and not (head ~= nil and head.group.closed) then
+		local lined = was ~= nil and (string.sub(was, 1, 2) == "i:" or string.sub(was, 1, 2) == "p:")
+		if same_view and lined and not (head ~= nil and head.group.closed) then
 			near = neighbour(old_items, old_at, was, at)
 		end
 		L.cursor = head ~= nil and head.group.closed and head.key or near or first_issue or (head and head.key)
