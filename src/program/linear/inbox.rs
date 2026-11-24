@@ -192,6 +192,33 @@ struct Success {
 /// # Errors
 ///
 /// As every question to Linear; `Error::Failed` where Linear answered that it did not.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UnreadData {
+    inbox_notifications: UnreadNodes,
+}
+
+#[derive(Deserialize)]
+struct UnreadNodes {
+    #[serde(default)]
+    nodes: Vec<serde_json::Value>,
+}
+
+/// Whether the person's inbox has an unread notification of an issue (what the inbox of the page holds:
+/// one of a pull request or a project is not counted).
+///
+/// # Errors
+///
+/// As every question to Linear.
+pub fn unread(transport: &dyn Transport, key: &Key) -> Result<bool, Error> {
+    let data: UnreadData = run(transport, key, &query::INBOX_UNREAD, None::<Variables>)?;
+    Ok(data
+        .inbox_notifications
+        .nodes
+        .iter()
+        .any(|node| node["issue"]["id"].is_string()))
+}
+
 pub fn mark_read(
     transport: &dyn Transport,
     key: &Key,

@@ -137,9 +137,7 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     let inbox = |size: (f32, f32), fonts: &Fonts| -> Result<Page, Error> {
         let mut page = lists(size, fonts)?;
         page.press("g")?;
-        page.wait_for(Duration::from_secs(20), |page| {
-            page.says("Your notifications")
-        })?;
+        page.wait_for(Duration::from_secs(20), |page| page.says("Assigned to you"))?;
         page.advance(0.3)?;
         page.type_text("inbox")?;
         page.press("enter")?;
@@ -234,9 +232,7 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
         let session = session_over(&linear, Some("lin_api_test"), None);
         let mut page = open(&session, BIG, Some(&fonts), "ACM-412")?;
         page.press("g")?;
-        page.wait_for(Duration::from_secs(20), |page| {
-            page.says("Your notifications")
-        })?;
+        page.wait_for(Duration::from_secs(20), |page| page.says("Assigned to you"))?;
         page.advance(0.3)?;
         page.type_text("projects")?;
         page.press("enter")?;

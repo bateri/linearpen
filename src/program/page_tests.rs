@@ -1175,6 +1175,7 @@ impl Transport for Canned {
             "FileUpload",
             "NotificationMarkReadAll",
             "Inbox",
+            "InboxUnread",
             "Projects",
             "Project",
             "Issue",
@@ -1280,6 +1281,24 @@ impl Transport for Canned {
                     reply(
                         200,
                         r#"{"data":{"notificationMarkReadAll":{"success":true}}}"#,
+                    )
+                }
+                "InboxUnread" => {
+                    // (The issues of the inbox as it is now whose notifications are unread.)
+                    let inbox = self.inbox.lock().unwrap().clone();
+                    let value: serde_json::Value =
+                        serde_json::from_str(inbox.as_deref().unwrap_or(INBOX)).unwrap_or_default();
+                    let nodes: Vec<serde_json::Value> = value["data"]["inboxNotifications"]["nodes"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .filter(|node| node["readAt"].is_null() && node["issue"]["id"].is_string())
+                        .map(|node| serde_json::json!({ "issue": { "id": node["issue"]["id"] } }))
+                        .collect();
+                    reply(
+                        200,
+                        &serde_json::json!({ "data": { "inboxNotifications": { "nodes": nodes } } })
+                            .to_string(),
                     )
                 }
                 "Projects" => match self.projects.lock().unwrap().clone() {
@@ -7217,7 +7236,7 @@ fn the_card_of_lists_has_mine_all_the_favorites_the_teams_the_views_and_the_proj
     let order = [
         "My issues|Assigned to you|1",
         "All issues|The workspace|2",
-        "Inbox|Your notifications|3",
+        "Inbox|Unread notifications|3",
         "Projects|The workspace's projects|4",
         "Bugs to triage|View|5",
         "Billing|Project|6",
@@ -10752,4 +10771,59 @@ fn one_click_on_a_line_opens_its_issue_and_one_on_a_head_only_folds_it() {
     page.advance(0.4).expect("a moment");
     assert!(page.bounds("panel-close").is_none(), "{}", said(&page));
     assert!(!page.says("ACM-398"), "{}", said(&page));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_inbox_tab_has_a_dot_while_the_inbox_has_anything_unread_and_it_goes_as_it_is_read() {
+    let (linear, _session, mut page) = open_lists(WHOLE);
+    page.wait_for(WITHIN, |_| linear.times("InboxUnread") >= 1)
+        .unwrap_or_else(|why| panic!("the inbox is asked about: {why:?}"));
+    let lit = |page: &Page| page.bounds("inbox-unread").is_some();
+    page.wait_for(WITHIN, |page| lit(page))
+        .unwrap_or_else(|why| panic!("the dot is lit: {why:?}: {}", said(&page)));
+    let tabs = page.bounds("tabs");
+    // Each unread line marked read: the dot goes with the last, and the tabs do not move.
+    page.press("3").expect("3");
+    list_button_says(&mut page, "Inbox");
+    page.wait_for(WITHIN, |page| page.bounds("row:i:issue-412").is_some())
+        .unwrap_or_else(|why| panic!("the inbox comes: {why:?}: {}", said(&page)));
+    for round in 0..4 {
+        page.press("u").expect("u");
+        page.wait_for(WITHIN, |_| {
+            linear.times("NotificationMarkReadAll") == round + 1
+        })
+        .unwrap_or_else(|why| panic!("mark {round}: {why:?}"));
+        page.advance(0.4).expect("a moment");
+    }
+    page.wait_for(WITHIN, |page| !lit(page))
+        .unwrap_or_else(|why| panic!("the dot goes: {why:?}: {}", said(&page)));
+    assert_eq!(page.bounds("tabs"), tabs);
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_line_pressed_while_a_new_issue_is_written_puts_the_form_away_and_its_draft_is_kept() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    open_new(&mut page);
+    page.type_text("Rate limits for the admin API")
+        .expect("the title");
+    page.advance(0.3).expect("a moment");
+    page.click("row:i:issue-398").expect("a line");
+    page.wait_for(WITHIN, |page| {
+        page.bounds("new-value:state").is_none() && page.bounds("panel-close").is_some()
+    })
+    .unwrap_or_else(|why| panic!("the form goes: {why:?}: {}", said(&page)));
+    page.wait_for(WITHIN, |page| {
+        page.words_in("side").iter().any(|word| word == "ACM-398")
+    })
+    .unwrap_or_else(|why| panic!("its issue opens: {why:?}: {:?}", page.words_in("side")));
+    assert_eq!(linear.times("IssueCreate"), 0);
+    // The form again: the draft is as it was left.
+    page.press("escape").expect("escape");
+    open_new(&mut page);
+    assert_eq!(
+        page.field("new-title/field"),
+        Some("Rate limits for the admin API")
+    );
 }

@@ -53,14 +53,22 @@ end
 -- are the same, and a change of `S.catalog` is a new table with the same lists in it).
 local function items()
 	local catalog = S.catalog
-	if L.built == catalog and L.items ~= nil then
+	-- (The inbox's line says whether it has anything unread.)
+	local unread = S.issues ~= nil and S.issues.inboxUnread == true
+	if L.built == catalog and L.unread == unread and L.items ~= nil then
 		return L.items
 	end
+	L.unread = unread
 	local out, keys = {}, {}
 	for _, own in OWN do
 		if not own.after then
-			out[#out + 1] = own
-			keys[#keys + 1] = own.key
+			local entry = own
+			if own.key == "inbox" and unread then
+				entry = table.clone(own)
+				entry.hint = "Unread notifications"
+			end
+			out[#out + 1] = entry
+			keys[#keys + 1] = own.key .. "\n" .. entry.hint
 		end
 	end
 	local placed = false

@@ -943,6 +943,10 @@ the lists came, asking failed). The same value `view` answers with.
   has not read it in Linear. Its `updated` is the day of the notification, not of the issue, and it has
   `state`, `{ "name": "In Progress", "kind": "started" }`, the state of its issue (in any other list
   the group of a row is its state). A row of any other list has neither `note` nor `state`. `counts.shownOpen` is, for the inbox, how many of its rows are unread.
+- `inboxUnread`: whether the person's inbox has an unread notification of an issue (what the inbox
+  shows): as the inbox's own lines say it where it is the list held, else as Linear said it at the last
+  refresh of everything (one question, `InboxUnread`, the first 50 unread); null where it could not be
+  asked (a key that may not read the inbox). The page marks the inbox by it.
 - `catalog`: the lists the page can go to besides My issues and All issues, as Linear last said them.
   `loaded` is false until the first answer, and `error` says why one could not come (the lists of
   before stay). Each `item` has `key` (`kind:id`, what the page keeps it by), `kind` and `id` (what

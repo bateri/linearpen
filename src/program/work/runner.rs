@@ -49,6 +49,24 @@ pub trait Runner: Send + Sync {
         env: &[(&str, &str)],
     ) -> io::Result<Ran>;
 
+    /// Runs `program` as `run_with` does, and stops it where `stopped` says so before it ends (a runner
+    /// that cannot stop what it runs runs it to its end: the default).
+    ///
+    /// # Errors
+    ///
+    /// The program could not be started, or it was stopped (`ErrorKind::Interrupted`).
+    fn run_until(
+        &self,
+        program: &str,
+        args: &[String],
+        cwd: Option<&Path>,
+        env: &[(&str, &str)],
+        stopped: &dyn Fn() -> bool,
+    ) -> io::Result<Ran> {
+        let _ = stopped;
+        self.run_with(program, args, cwd, env)
+    }
+
     /// Runs `program` as `run_with` does, with no variable of its own set.
     ///
     /// # Errors

@@ -8,9 +8,13 @@
   `Cmd Shift Right`) to make the issue wider or narrower. linearpen opens it as wide the next time.
 - **One click opens an issue.** A line of the list opens its issue (or project) beside the list with
   one click, as in Linear, not two; a double click out of habit does not press what opens under it.
-- **Work on gives way to the line you choose.** With the form of Work on open, pressing another issue
-  in the list puts the form away and opens that issue; what you wrote for the agent is kept for its
-  issue.
+- **A form gives way to the line you choose.** With the form of Work on or of a new issue open,
+  pressing an issue in the list puts the form away and opens that issue; what you wrote for the agent is
+  kept for its issue, and the draft of the new issue as it was.
+- **The inbox tab says when something is unread.** A dot on Inbox while your inbox has an unread
+  notification of an issue (asked with each refresh), and the card's Inbox line says so too.
+- **Try again has its key.** Every Try again (an issue, the choices of a new issue, a project, a pull
+  request) says `Cmd R`, which asks again. Going back from a pull request stops `gh` asking GitHub.
 - **Tabs on a wide pane.** The head has My issues, All issues, Inbox and Projects as tabs, `1` to `4`,
   and More after them for every other list. A narrow pane keeps the list's button. The first five
   favorites are now `5` to `9`.

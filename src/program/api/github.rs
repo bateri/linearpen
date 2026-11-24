@@ -5,7 +5,7 @@ use std::sync::Arc;
 use pencere::Options;
 use serde::{Deserialize, Serialize};
 
-use super::{Failure, call};
+use super::{Failure, call_stoppable};
 use crate::github::{Problem, Pull};
 use crate::linear::types::pull_request_number;
 use crate::session::Session;
@@ -104,13 +104,17 @@ fn message(pull: Pull) -> PullMessage {
     }
 }
 
-fn pull(session: &Session, asked: Asked) -> Result<PullMessage, Failure> {
+fn pull(
+    session: &Session,
+    asked: Asked,
+    stopped: &dyn Fn() -> bool,
+) -> Result<PullMessage, Failure> {
     if pull_request_number(&asked.url).is_none() {
         return Err(Failure::BadParams(
             "url is not the address of a pull request of GitHub's".to_owned(),
         ));
     }
-    match session.pull(&asked.url) {
+    match session.pull(&asked.url, stopped) {
         Ok(found) => Ok(message(found)),
         Err(Problem::Missing) => Err(Failure::Unavailable(
             "gh, GitHub's command, is not installed".to_owned(),
@@ -123,5 +127,6 @@ fn pull(session: &Session, asked: Asked) -> Result<PullMessage, Failure> {
 }
 
 pub fn calls(options: Options, session: &Arc<Session>) -> Options {
-    call(options, session, "pull", pull)
+    // (Given up where the page lets the pull request go: `gh` is stopped.)
+    call_stoppable(options, session, "pull", pull)
 }

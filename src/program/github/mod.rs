@@ -335,23 +335,43 @@ impl Runner for Timed {
         cwd: Option<&Path>,
         env: &[(&str, &str)],
     ) -> io::Result<Ran> {
+        self.run_until(program, args, cwd, env, &|| false)
+    }
+
+    fn run_until(
+        &self,
+        program: &str,
+        args: &[String],
+        cwd: Option<&Path>,
+        env: &[(&str, &str)],
+        stopped: &dyn Fn() -> bool,
+    ) -> io::Result<Ran> {
         let seconds = if args.first().map(String::as_str) == Some("--version") {
             VERSION_SECONDS
         } else {
             VIEW_SECONDS
         };
-        run_for(program, args, cwd, env, Duration::from_secs(seconds))
+        run_for(
+            program,
+            args,
+            cwd,
+            env,
+            Duration::from_secs(seconds),
+            stopped,
+        )
     }
 }
 
 /// Runs `program` as the system's runner does (no shell, nothing on its stdin, without the key), and
-/// stops it where it has not ended in `limit`: `ErrorKind::TimedOut`.
+/// stops it where it has not ended in `limit` (`ErrorKind::TimedOut`) or where `stopped` says so (the
+/// page let the call go: `ErrorKind::Interrupted`).
 fn run_for(
     program: &str,
     args: &[String],
     cwd: Option<&Path>,
     env: &[(&str, &str)],
     limit: Duration,
+    stopped: &dyn Fn() -> bool,
 ) -> io::Result<Ran> {
     let mut command = command_of(program, args, cwd);
     for (name, value) in env {
@@ -392,14 +412,19 @@ fn run_for(
                 err: text(err),
             });
         }
-        if Instant::now() >= deadline {
+        let late = Instant::now() >= deadline;
+        if late || stopped() {
             let _ = child.kill();
             let _ = child.wait();
             // (The readers are let go: a child of its own that holds the pipes is not waited for.)
-            return Err(io::Error::new(
-                io::ErrorKind::TimedOut,
-                format!("{program} did not end in {} seconds", limit.as_secs()),
-            ));
+            return Err(if late {
+                io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    format!("{program} did not end in {} seconds", limit.as_secs()),
+                )
+            } else {
+                io::Error::new(io::ErrorKind::Interrupted, format!("{program} was stopped"))
+            });
         }
         std::thread::sleep(Duration::from_millis(20));
     }
@@ -411,7 +436,21 @@ fn run_for(
 /// # Errors
 ///
 /// `gh` is not there, not signed in, or GitHub did not tell it.
+#[cfg(test)]
 pub fn view(runner: &dyn Runner, url: &str) -> Result<Pull, Problem> {
+    view_until(runner, url, &|| false)
+}
+
+/// As `view`, stopping `gh` where `stopped` says so (the page let the call go).
+///
+/// # Errors
+///
+/// As `view`; stopped, `Problem::Failed`.
+pub fn view_until(
+    runner: &dyn Runner,
+    url: &str,
+    stopped: &dyn Fn() -> bool,
+) -> Result<Pull, Problem> {
     let Some(address) = pull_request_address(url) else {
         return Err(Problem::Failed(
             "not the address of a pull request of GitHub's".to_owned(),
@@ -421,7 +460,7 @@ pub fn view(runner: &dyn Runner, url: &str) -> Result<Pull, Problem> {
         .into_iter()
         .map(str::to_owned)
         .collect();
-    match runner.run_with("gh", &args, None, &QUIET) {
+    match runner.run_until("gh", &args, None, &QUIET, stopped) {
         Err(why) if why.kind() == io::ErrorKind::NotFound => Err(Problem::Missing),
         Err(why) if why.kind() == io::ErrorKind::TimedOut => Err(Problem::Failed(format!(
             "GitHub did not answer in {VIEW_SECONDS} seconds"
@@ -452,6 +491,7 @@ mod tests {
             None,
             &[],
             Duration::from_millis(300),
+            &|| false,
         );
         let why = ran.expect_err("stopped");
         assert_eq!(why.kind(), io::ErrorKind::TimedOut);
@@ -467,11 +507,29 @@ mod tests {
             None,
             &[],
             Duration::from_secs(5),
+            &|| false,
         )
         .expect("it ends");
         assert!(ran.ok);
         assert_eq!(ran.out, "out\n");
         assert_eq!(ran.err, "err\n");
+        // One the page let go of is stopped at once.
+        let began = Instant::now();
+        let why = run_for(
+            "sleep",
+            &["5".to_owned()],
+            None,
+            &[],
+            Duration::from_secs(20),
+            &|| began.elapsed() > Duration::from_millis(200),
+        )
+        .expect_err("let go");
+        assert_eq!(why.kind(), io::ErrorKind::Interrupted);
+        assert!(
+            began.elapsed() < Duration::from_secs(3),
+            "{:?}",
+            began.elapsed()
+        );
     }
 
     #[test]

@@ -191,7 +191,28 @@ function head.tabbed()
 	return S.width >= SIZE.tabs_from
 end
 
--- A tab: its key and its name, the one of the list shown lit as the list's button is.
+-- Whether the inbox has anything unread, as the program last told it.
+local function unread()
+	return S.issues ~= nil and S.issues.inboxUnread == true
+end
+
+-- The inbox's dot: lit where it has anything unread, its place kept where not.
+local function inbox_dot()
+	local dot = b.div()
+		:size(6, 6)
+		:rounded(3)
+		:no_shrink()
+		:bg(unread() and "accent" or b.alpha("accent", 0))
+		:motion({ seconds = u.theme.motion, color = true })
+	if unread() then
+		dot:id("inbox-unread"):label("Unread")
+	end
+	return dot
+end
+
+-- A tab: its key and its name, the one of the list shown lit as the list's button is; the inbox's with
+-- a dot where it has anything unread (in a place of its own, there whether the dot is or not, so that
+-- the tabs do not move as it comes and goes).
 local function tab(one)
 	local t = u.theme
 	local id = "tab:" .. one.kind
@@ -224,6 +245,7 @@ local function tab(one)
 				:color(current and t.ink or b.alpha("foreground", 0.72))
 				:no_shrink()
 		)
+		:child(one.kind == "inbox" and inbox_dot() or nil)
 end
 
 -- The room the head's buttons need, the list's room this wide: more where it has the tabs.

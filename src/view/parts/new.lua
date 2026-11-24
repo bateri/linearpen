@@ -198,6 +198,8 @@ function new.show()
 		begin()
 	end
 	N.open = true
+	-- (The moves of the list's cursor by the person: one after it, a line pressed, puts the form away.)
+	N.moves = list.moves()
 	N.restoring = N.about ~= ""
 	ask(N.team or N.hint)
 	N.redraw = true
@@ -205,6 +207,12 @@ function new.show()
 	-- does when the field is there (the kit would otherwise look for it a few frames and give up).
 	u:field(TITLE_FIELD)
 	return u:focus(TITLE_FIELD)
+end
+
+-- Whether the person put the list's cursor on a line since the form opened: a line is chosen, and the
+-- form gives it the place beside the list (its draft is kept), as the form of Work on does.
+function new.left()
+	return N.open and list.moves() ~= (N.moves or 0)
 end
 
 -- Puts the form away and keeps the draft.
@@ -565,7 +573,7 @@ function new.view(width)
 		))
 	elseif data == nil then
 		content:child(b.text(N.options.error or "The program did not say what can be chosen"):color("warning"):wrap():text_size(SIZE.small))
-		content:child(kit.button("new-retry", "Try again"))
+		content:child(kit.button("new-retry", "Try again", { suffix = commands.label("refresh") }))
 	else
 		content:child(value_chips(data))
 	end

@@ -145,6 +145,10 @@ pub struct State {
     /// When the lists were told, seconds since the epoch.
     pub updated: Option<u64>,
     pub view: View,
+    /// Whether the person's inbox has an unread notification of an issue, as Linear last said it (with
+    /// each refresh of everything, and as the inbox shown and its marks say it); None where it could not
+    /// be asked.
+    pub inbox_unread: Option<bool>,
     /// The person's day (`2026-11-24`) as the page last told it (`view`'s `today`): what the lateness of a
     /// project and the years of its days are said by. None until the page tells it: then the day of the
     /// system's clock in UTC.
@@ -694,10 +698,13 @@ fn work(shared: &Arc<Shared>, panes: Option<&Panes>) {
             find_agents(shared, panes);
         }
         if everything {
-            // The names of the lists come after the lists: a list is shown without them.
+            // The names of the lists come after the lists: a list is shown without them. Then whether the
+            // inbox has anything unread (a key that may not read it leaves the mark unknown).
             let named = linear::names(shared.transport.as_ref(), &key);
+            let unread = linear::inbox::unread(shared.transport.as_ref(), &key).ok();
             let mut state = shared.lock();
             state.named(named);
+            state.inbox_unread = unread;
             shared.changed(&mut state);
             next = Instant::now() + shared.every;
         }
@@ -744,6 +751,7 @@ impl Session {
                 filter_options: None,
                 view_seen: [0; 4],
                 today: None,
+                inbox_unread: None,
                 generation: 0,
                 refresh_wanted: false,
                 everything: false,
@@ -796,11 +804,15 @@ impl Session {
     /// # Errors
     ///
     /// `gh` is not there, not signed in, or GitHub did not tell it.
-    pub fn pull(&self, url: &str) -> Result<crate::github::Pull, crate::github::Problem> {
+    pub fn pull(
+        &self,
+        url: &str,
+        stopped: &dyn Fn() -> bool,
+    ) -> Result<crate::github::Pull, crate::github::Problem> {
         if !self.github_here() {
             return Err(crate::github::Problem::Missing);
         }
-        crate::github::view(self.github.as_ref(), url)
+        crate::github::view_until(self.github.as_ref(), url, stopped)
     }
 
     /// The hand on the view that `serve` is given (`Options::control`): the pictures are attached

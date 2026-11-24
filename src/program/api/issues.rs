@@ -408,6 +408,19 @@ pub struct Snapshot {
     /// The issues an agent works on, by Linear's id.
     pub working: BTreeMap<String, WorkingMessage>,
     pub catalog: CatalogMessage,
+    /// Whether the person's inbox has an unread notification of an issue: as the inbox shown says it,
+    /// else as Linear last said it; null where that could not be asked.
+    #[serde(rename = "inboxUnread")]
+    pub inbox_unread: Option<bool>,
+}
+
+/// Whether the inbox has anything unread: its lines where it is the list held, else the last asking.
+fn inbox_unread(state: &State) -> Option<bool> {
+    let shown = state.lists.as_ref().and_then(|lists| lists.shown.as_ref());
+    if let Some((Scope::Inbox, listing)) = shown {
+        return Some(listing.notes.values().any(|note| note.unread));
+    }
+    state.inbox_unread
 }
 
 /// The branch Linear suggests for an issue, as one line with no control character in it, or none.
@@ -634,6 +647,7 @@ pub fn snapshot(state: &State) -> Snapshot {
             .as_ref()
             .map(|lists| lists.viewer.organization.name.clone()),
         person: state.lists.as_ref().map(|lists| lists.viewer.name.clone()),
+        inbox_unread: inbox_unread(state),
         working: state
             .working
             .iter()

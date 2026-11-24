@@ -209,6 +209,15 @@ local function bring(id)
 	end
 end
 
+-- Lets go of the pull request shown, and of the asking of GitHub for it where that is on its way
+-- (`gh` is stopped).
+local function let_go_of_pull()
+	if P.pull ~= nil and P.pull.calling ~= nil and P.pull.status == "loading" then
+		b.cancel(P.pull.calling)
+	end
+	P.pull = nil
+end
+
 -- Opens the issue of the list's line `item` beside the list (and asks the program for it, unless it
 -- has it).
 function panel.show(item)
@@ -220,7 +229,7 @@ function panel.show(item)
 	P.near = nil
 	if P.open ~= nil and P.open.id ~= row.id then
 		-- (A pull request shown is the issue's: going to another issue leaves it.)
-		P.pull = nil
+		let_go_of_pull()
 		-- Another issue is read from its top, not from where the one before was left.
 		kit.scroll_to(SCROLL, 0)
 	end
@@ -241,7 +250,7 @@ function panel.close()
 	P.open = nil
 	P.pin = nil
 	P.near = nil
-	P.pull = nil
+	let_go_of_pull()
 end
 
 -- --- Staying on an issue the person changed ----------------------------------------------------------
@@ -759,7 +768,7 @@ end
 
 -- Puts the pull request shown away: the issue is there again.
 function panel.close_pull()
-	P.pull = nil
+	let_go_of_pull()
 	return true
 end
 
@@ -775,8 +784,11 @@ end
 local function ask_pull()
 	P.serial += 1
 	local serial = P.serial
+	if P.pull.calling ~= nil and P.pull.status == "loading" then
+		b.cancel(P.pull.calling)
+	end
 	P.pull.serial, P.pull.status, P.pull.error = serial, "loading", nil
-	kit.call("pull", { url = P.pull.url }, function(found, err)
+	P.pull.calling = kit.call("pull", { url = P.pull.url }, function(found, err)
 		if P.pull == nil or P.pull.serial ~= serial then
 			return true
 		end
@@ -985,7 +997,7 @@ local function body(entry)
 	elseif entry.status == "failed" then
 		return b.div():col():gap(10):mt(16):items_start():child(
 			b.text(entry.error):color("dim"):wrap():text_size(SIZE.small)
-		):child(kit.button("issue-retry", "Try again"))
+		):child(kit.button("issue-retry", "Try again", { suffix = commands.label("refresh") }))
 	end
 	local detail = entry.issue
 	local box = b.div():col():text_size(13.5)

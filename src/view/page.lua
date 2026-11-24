@@ -1182,10 +1182,12 @@ local function follow()
 	pictures.track(panel.id(), panel.detail())
 	act.lists_shown()
 	local item = list.current()
-	-- A line pressed while Work on is open: the form is put away (the words for the agent are kept for its
-	-- issue) and the issue of that line stands beside the list.
-	if work.left() then
+	-- A line pressed while a form is open (Work on, a new issue): the form is put away (the words for the
+	-- agent are kept for their issue, the draft of the new issue as it is) and the issue of that line
+	-- stands beside the list.
+	if work.left() or new.left() then
 		work.close()
+		new.close()
 		if item ~= nil and item.kind == "issue" then
 			panel.show(item)
 		end

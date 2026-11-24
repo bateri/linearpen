@@ -596,6 +596,12 @@ if is ListTeams; then cat "$here/list-teams.json"; printf '\n200'; exit 0; fi
 if is ListViews; then cat "$here/list-views.json"; printf '\n200'; exit 0; fi
 if is ListProjects; then cat "$here/list-projects.json"; printf '\n200'; exit 0; fi
 if is Inbox; then cat "$here/inbox.json"; printf '\n200'; exit 0; fi
+# Whether the inbox has an unread one: inbox.json has (ACM-412's).
+if is InboxUnread; then
+	printf '%s' '{"data":{"inboxNotifications":{"nodes":[{"issue":{"id":"issue-412"}}]}}}'
+	printf '\n200'
+	exit 0
+fi
 # The projects of the workspace (projects.json: one of each state, one in a shape not a project's), and
 # what one opened carries (project.json: whichever project is asked for).
 if is Projects; then cat "$here/projects.json"; printf '\n200'; exit 0; fi

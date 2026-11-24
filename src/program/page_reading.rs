@@ -97,7 +97,7 @@ fn the_page_is_read_in_its_states() {
     // The inbox: the issues of the notifications, each line saying who, what, and whether it is unread.
     let (_linear, _session, mut page) = open_lists(WIDE);
     page.press("g").expect("g");
-    says(&mut page, "Your notifications");
+    says(&mut page, "Assigned to you");
     page.advance(0.3).expect("a moment");
     page.type_text("inbox").expect("the words");
     page.press("enter").expect("enter");

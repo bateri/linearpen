@@ -247,6 +247,15 @@ pub const ISSUE: Operation = Operation {
 
 /// The person's inbox: the first notifications Linear's Inbox shows them, what each is about, and the
 /// issue of each that is about one (as a row of a list has it).
+/// Whether the person's inbox has an unread notification of an issue: the first of the unread ones,
+/// each only as far as the issue it is of. Asked with each refresh of everything, for the mark of the
+/// inbox in the head.
+pub const INBOX_UNREAD: Operation = Operation {
+    name: "InboxUnread",
+    text: "query InboxUnread { inboxNotifications(first: 50, unreadOnly: true) { nodes { \
+           ... on IssueNotification { issue { id } } } } }",
+};
+
 pub const INBOX: Operation = Operation {
     name: "Inbox",
     text: concat!(
@@ -386,12 +395,13 @@ pub const FILE_UPLOAD: Operation = Operation {
 
 /// Every operation there is, for the test that scans for a `mutation`.
 #[cfg(test)]
-pub const ALL: [Operation; 27] = [
+pub const ALL: [Operation; 28] = [
     VERIFY,
     MY_ISSUES,
     ALL_ISSUES,
     SEARCH_ISSUES,
     INBOX,
+    INBOX_UNREAD,
     PROJECTS,
     PROJECT,
     TEAM_ISSUES,
