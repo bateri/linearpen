@@ -6,6 +6,9 @@
 
 - **Size the issue.** Drag the edge between the list and the issue (or press `Cmd Shift Left` and
   `Cmd Shift Right`) to make the issue wider or narrower. linearpen opens it as wide the next time.
+- **Work on gives way to the line you choose.** With the form of Work on open, pressing another issue
+  in the list puts the form away and opens that issue; what you wrote for the agent is kept for its
+  issue.
 - **Tabs on a wide pane.** The head has My issues, All issues, Inbox and Projects as tabs, `1` to `4`,
   and More after them for every other list. A narrow pane keeps the list's button. The first five
   favorites are now `5` to `9`.

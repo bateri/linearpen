@@ -42,6 +42,9 @@ local W = {
 	restoring = false,
 	starting = false,
 	error = nil,
+	-- The moves of the list's cursor by the person when the form opened: one after it (a line pressed)
+	-- puts the form away for the issue of that line (`work.left`).
+	moves = 0,
 }
 work.state = W
 
@@ -268,6 +271,7 @@ function work.show()
 	}
 	panel.close()
 	W.open, W.id = true, info.id
+	W.moves = list.moves()
 	-- The words kept are of the issue they were written for; another issue's form begins empty.
 	if W.words_of ~= info.id then
 		W.words, W.words_of = "", info.id
@@ -278,6 +282,12 @@ function work.show()
 	W.asked, W.options, W.error = nil, nil, nil
 	work.sync()
 	return u:focus(nil)
+end
+
+-- Whether the person put the list's cursor on a line since the form opened: another issue is chosen,
+-- and the form is not of it.
+function work.left()
+	return W.open and list.moves() ~= W.moves
 end
 
 -- Puts the form away and keeps the words for the agent.

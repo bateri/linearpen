@@ -10689,3 +10689,40 @@ fn a_wide_head_has_the_four_lists_as_tabs_by_their_keys_and_a_narrow_one_its_but
             .any(|word| word == "My issues")
     );
 }
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_line_pressed_while_work_on_is_open_puts_the_form_away_and_opens_its_issue_and_the_words_are_kept()
+ {
+    let (_linear, rig, mut page) = open_machine_left(WIDE, &["claude"], None, |_| {});
+    open_form_with_status(&mut page, false);
+    page.click("work-prompt1").expect("the words for the agent");
+    page.insert_text("Keep the old keys working.")
+        .expect("the words");
+    page.advance(0.3).expect("a moment");
+    // Another issue chosen in the list: the form goes, and that issue is beside the list.
+    page.click("row:i:issue-398").expect("another line");
+    page.wait_for(WITHIN, |page| {
+        page.bounds("work-prompt1").is_none() && page.bounds("panel-close").is_some()
+    })
+    .unwrap_or_else(|why| panic!("the form goes: {why:?}: {}", said(&page)));
+    page.wait_for(WITHIN, |page| {
+        page.says("Checkout test fails one run in ten")
+    })
+    .unwrap_or_else(|why| panic!("its issue opens: {why:?}: {}", said(&page)));
+    assert!(
+        page.words_in("side").iter().any(|word| word == "ACM-398"),
+        "{:?}",
+        page.words_in("side")
+    );
+    // Back on the first issue, Work on has the words written for it.
+    page.click("row:i:issue-412").expect("the first line");
+    page.wait_for(WITHIN, |page| {
+        page.words_in("side").iter().any(|word| word == "ACM-412")
+    })
+    .unwrap_or_else(|why| panic!("it opens: {why:?}: {:?}", page.words_in("side")));
+    open_form_with_status(&mut page, false);
+    page.wait_for(WITHIN, |page| page.says("Keep the old keys working."))
+        .unwrap_or_else(|why| panic!("the words are kept: {why:?}: {}", said(&page)));
+    rig.hands.end();
+}
