@@ -99,7 +99,9 @@ optional (`{}` asks for the list as it is). Params:
 
 - `list`: `{ "kind", "id"? }`, the list the page shows. `kind` is `"mine"` (the issues assigned
   to the person, the default), `"all"` (the issues of the workspace; asked for when it is shown),
-  or one of `"team"` (the issues of a team), `"cycle"` (the issues of a cycle: the `id` of any
+  `"created"` (the issues the person made, by hand or through an integration, as Linear's My issues
+  tab Created) and `"subscribed"` (the issues the person is subscribed to), each asked for when it is
+  shown, or one of `"team"` (the issues of a team), `"cycle"` (the issues of a cycle: the `id` of any
   cycle, the running one of a team is in the `catalog`),
   `"view"` (a saved view of issues), `"project"` (a project's issues) and `"label"` (the
   issues with a label), which take the `id` of what they are of (the ids the topic's `catalog` tells);
@@ -107,7 +109,7 @@ optional (`{}` asks for the list as it is). Params:
   and is what Linear finds for them in the whole workspace, up to 500. A list holds up to 500
   issues: every open one first, then the 100 done and canceled ones that changed last (where
   `filters` name states, as many of those as there is room for; a search, every state as Linear ranks
-  them); the groups of the closed ones begin folded. `mine` and `all` take
+  them); the groups of the closed ones begin folded. `mine`, `all`, `created` and `subscribed` take
   no `id`. Only the list shown and My issues are asked for: going to another
   list lets go of the one left and asks Linear for the new one, and the topic tells it as `listing`
   `"loading"` until it comes. An `id` Linear does not know is not an error of the call: `listing` is `failed`

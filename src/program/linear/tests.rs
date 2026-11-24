@@ -1422,6 +1422,8 @@ fn a_scope_is_told_and_read_by_its_kind_and_its_id() {
     let all = [
         (Scope::Mine, "mine", None),
         (Scope::All, "all", None),
+        (Scope::Created, "created", None),
+        (Scope::Subscribed, "subscribed", None),
         (Scope::Team("t".to_owned()), "team", Some("t")),
         (Scope::Cycle("c".to_owned()), "cycle", Some("c")),
         (Scope::View("v".to_owned()), "view", Some("v")),
@@ -1436,6 +1438,7 @@ fn a_scope_is_told_and_read_by_its_kind_and_its_id() {
     // A kind that is not one, an id where there is none, and no id where there must be one.
     assert_eq!(Scope::of("folder", Some("x")), None);
     assert_eq!(Scope::of("mine", Some("x")), None);
+    assert_eq!(Scope::of("created", Some("x")), None);
     assert_eq!(Scope::of("view", None), None);
     assert_eq!(Scope::of("view", Some("")), None);
 }

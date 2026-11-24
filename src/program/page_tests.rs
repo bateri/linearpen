@@ -808,9 +808,23 @@ fn edit_node(node: &mut serde_json::Value, input: &serde_json::Value) {
 fn narrowed(body: &str) -> bool {
     let asked: serde_json::Value = serde_json::from_str(body).unwrap();
     let filter = &asked["variables"]["filter"];
-    let kinds_alone = filter.as_object().is_some_and(|parts| parts.len() == 1)
-        && filter["state"].get("type").is_some();
-    !(filter.is_null() || kinds_alone)
+    if filter.is_null() {
+        return false;
+    }
+    // The kinds of state asked for (the open ones, the closed ones) and whose the list is (the
+    // person made it, follows it) are the list's own, not a filter of the person's.
+    let parts = filter
+        .get("and")
+        .and_then(serde_json::Value::as_array)
+        .cloned()
+        .unwrap_or_else(|| vec![filter.clone()]);
+    let own = |part: &serde_json::Value| {
+        let one = part.as_object().is_some_and(|members| members.len() == 1);
+        one && (part["state"].get("type").is_some()
+            || part["creator"]["isMe"]["eq"] == true
+            || part["subscribers"]["some"]["isMe"]["eq"] == true)
+    };
+    !parts.iter().all(own)
 }
 
 /// Whether the request asks for the closed issues of a list (`true`) or its open ones (`false`), by
@@ -6318,6 +6332,70 @@ fn open_card_of_lists(page: &mut Page) {
     page.advance(0.3).expect("the card comes to rest");
 }
 
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_issues_the_person_made_and_follows_are_lists_of_the_card_asked_for_by_whose_they_are() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    for (words, name, whose) in [
+        (
+            "created",
+            "Created by me",
+            serde_json::json!({ "creator": { "isMe": { "eq": true } } }),
+        ),
+        (
+            "subscribed",
+            "Subscribed",
+            serde_json::json!({ "subscribers": { "some": { "isMe": { "eq": true } } } }),
+        ),
+    ] {
+        open_card_of_lists(&mut page);
+        page.type_text(words).expect("the words");
+        page.press("enter").expect("enter");
+        list_button_says(&mut page, name);
+        // (The stand-in for Linear answers the workspace's issues: it does not evaluate whose they are.)
+        page.wait_for(WITHIN, |page| page.says("ACM-417"))
+            .unwrap_or_else(|why| panic!("{name}: the list comes: {why:?}: {}", said(&page)));
+        // The open issues of the workspace that are the person's in that way.
+        assert_eq!(
+            last_filter(&linear, "AllIssues"),
+            serde_json::json!({ "and": [
+                { "state": { "type": { "nin": ["completed", "canceled"] } } },
+                whose,
+            ] }),
+            "{name}"
+        );
+    }
+    // Back to My issues, which is asked for as it always is.
+    page.press("1").expect("1");
+    list_button_says(&mut page, "My issues");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn an_issue_made_while_the_issues_the_person_made_are_shown_is_in_them_under_the_cursor() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    open_card_of_lists(&mut page);
+    page.type_text("created").expect("the words");
+    page.press("enter").expect("enter");
+    list_button_says(&mut page, "Created by me");
+    page.wait_for(WITHIN, |page| page.says("ACM-417"))
+        .unwrap_or_else(|why| panic!("the list comes: {why:?}: {}", said(&page)));
+    open_new(&mut page);
+    page.type_text("Retry the webhook").expect("the title");
+    let before = linear.times("AllIssues");
+    page.press("mod+enter").expect("mod+enter");
+    made(&linear, &mut page, 1);
+    // The list is asked for again, still the issues the person made, and the new one is in it.
+    page.wait_for(WITHIN, |_| linear.times("AllIssues") > before)
+        .unwrap_or_else(|why| panic!("asked again: {why:?}"));
+    assert_eq!(
+        last_filter(&linear, "AllIssues")["and"][1],
+        serde_json::json!({ "creator": { "isMe": { "eq": true } } })
+    );
+    cursor_on(&mut page, "ACM-900");
+    list_button_says(&mut page, "Created by me");
+}
+
 /// Waits until the button of the lists says `name`.
 fn list_button_says(page: &mut Page, name: &str) {
     page.wait_for(WITHIN, |page| {
@@ -6922,8 +7000,9 @@ fn in_an_80_by_24_pane_the_card_of_lists_and_the_palette_stay_inside_it_with_the
     for words in ["Enter", "Close", "Assigned to you", "Agent-ready"] {
         assert!(page.says(words), "{words}: {}", said(&page));
     }
-    // The last list is reached by the arrows, and Enter goes to it.
-    for _ in 0..16 {
+    // The last list is reached by the arrows, and Enter goes to it (four lists of the person's and the
+    // workspace's come first).
+    for _ in 0..18 {
         page.press("down").expect("down");
     }
     page.press("enter").expect("enter");

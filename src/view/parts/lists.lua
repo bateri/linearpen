@@ -1,6 +1,7 @@
 -- The card of lists, which the button of the head and `g` open: the lists a person can go to, one a
 -- line with what it is and, where it has one, its key. It is the kit's palette (a field that finds,
--- the arrows, Enter, Esc). My issues and All issues come first (`1`, `2`); then what Linear starred
+-- the arrows, Enter, Esc). My issues and All issues come first (`1`, `2`), then the issues the person
+-- made and those they are subscribed to (no key: 3 to 9 are the favorites'); then what Linear starred
 -- (`3` to `9` for the first seven), the teams, the saved views and the projects, as the program
 -- tells them (`S.catalog`). What each is is said at the end of its line, in words, because the card
 -- cannot draw the heads of its sections.
@@ -14,10 +15,13 @@ local lists = {}
 local L = { open = false, state = nil, serial = 0, built = nil, version = nil, items = nil }
 lists.state = L
 
--- The first two lists, which every workspace has.
+-- The lists every workspace has: the person's in three ways (as Linear's My issues has them), and the
+-- workspace's.
 local OWN = {
 	{ key = "mine", title = "My issues", hint = "Assigned to you", keys = "1", list = { kind = "mine" } },
 	{ key = "all", title = "All issues", hint = "The workspace", keys = "2", list = { kind = "all" } },
+	{ key = "created", title = "Created by me", hint = "Made by you", list = { kind = "created" } },
+	{ key = "subscribed", title = "Subscribed", hint = "You follow them", list = { kind = "subscribed" } },
 }
 
 -- What a list of the program's says of what it is.
@@ -114,9 +118,10 @@ end
 
 -- What the head's button calls the list that is shown.
 function lists.name()
-	local own = S.scope == "mine" and OWN[1] or S.scope == "all" and OWN[2] or nil
-	if own ~= nil then
-		return own.title
+	for _, own in OWN do
+		if own.key == S.scope then
+			return own.title
+		end
 	end
 	local key = lists.current()
 	for _, item in S.catalog ~= nil and S.catalog.items or {} do

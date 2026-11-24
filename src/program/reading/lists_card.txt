@@ -3,17 +3,17 @@ note: behind the modal in front, 33 items of the page, not read
 items:
 5bzy95  dialog "Lists" [action "Close"]
 he0aw9    listbox "List"
-tzhnw8      option "My issues" [selected, 1 of 17]
-ckdxnh      option "All issues" [2 of 17]
-7zmdjz      option "Bugs to triage" [3 of 17]
-k01w7k      option "Billing" [4 of 17]
-97d15p      option "Agent-ready" [5 of 17]
-htwhy3      option "ACM · Current cycle" [6 of 17]
-c7xcms      option "ACM · Issues" [7 of 17]
-tpt3v4      option "WEB · Current cycle" [8 of 17]
-k7mq8n      option "WEB · Issues" [9 of 17]
-2hjzjc      option "MOB · Current cycle" [10 of 17]
-qa8144      option "MOB · Issues" [11 of 17]
+tzhnw8      option "My issues" [selected, 1 of 19]
+ckdxnh      option "All issues" [2 of 19]
+hs60wy      option "Created by me" [3 of 19]
+833rv9      option "Subscribed" [4 of 19]
+7zmdjz      option "Bugs to triage" [5 of 19]
+k01w7k      option "Billing" [6 of 19]
+97d15p      option "Agent-ready" [7 of 19]
+htwhy3      option "ACM · Current cycle" [8 of 19]
+c7xcms      option "ACM · Issues" [9 of 19]
+tpt3v4      option "WEB · Current cycle" [10 of 19]
+k7mq8n      option "WEB · Issues" [11 of 19]
           text "Enter"
           text "Open"
           text "Esc"

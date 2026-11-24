@@ -315,8 +315,9 @@ function new.create()
 			return true
 		end
 		N.open = false
-		-- (Where All issues is shown the issue is in it, whoever it is for.)
-		local kind = (S.scope == "mine" and mine) and "mine" or "all"
+		-- (Where All issues is shown the issue is in it, whoever it is for; and in the issues the person
+		-- made, which it is one of.)
+		local kind = (S.scope == "mine" and mine) and "mine" or S.scope == "created" and "created" or "all"
 		N.pending = { id = result.id, kind = kind, expires = S.now + WAIT }
 		-- The list is looked at as it is where the issue will be: no filter (the words, and what Linear is
 		-- asked to narrow by), the list it is in, its group open.

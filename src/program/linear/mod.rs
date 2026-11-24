@@ -49,13 +49,15 @@ use serde::{Deserialize, Serialize};
 use query::{Lookup, Operation, Page};
 use types::Connection;
 
-/// Which issues a list shows: the ones assigned to the person, all of the workspace's, the issues
-/// of one thing Linear has (by its id): a team, a cycle, a saved view, a project, a label, or what a
-/// search for some words finds (the whole workspace).
+/// Which issues a list shows: the ones assigned to the person, all of the workspace's, the ones the
+/// person made or is subscribed to, the issues of one thing Linear has (by its id): a team, a cycle, a
+/// saved view, a project, a label, or what a search for some words finds (the whole workspace).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Scope {
     Mine,
     All,
+    Created,
+    Subscribed,
     Team(String),
     Cycle(String),
     View(String),
@@ -66,13 +68,15 @@ pub enum Scope {
 }
 
 impl Scope {
-    /// The word the page is told: `mine`, `all`, `team`, `cycle`, `view`, `project`, `label` or
-    /// `search`.
+    /// The word the page is told: `mine`, `all`, `created`, `subscribed`, `team`, `cycle`, `view`,
+    /// `project`, `label` or `search`.
     #[must_use]
     pub fn kind(&self) -> &'static str {
         match self {
             Self::Mine => "mine",
             Self::All => "all",
+            Self::Created => "created",
+            Self::Subscribed => "subscribed",
             Self::Team(_) => "team",
             Self::Cycle(_) => "cycle",
             Self::View(_) => "view",
@@ -86,7 +90,7 @@ impl Scope {
     #[must_use]
     pub fn id(&self) -> Option<&str> {
         match self {
-            Self::Mine | Self::All => None,
+            Self::Mine | Self::All | Self::Created | Self::Subscribed => None,
             Self::Team(id)
             | Self::Cycle(id)
             | Self::View(id)
@@ -104,6 +108,8 @@ impl Scope {
         match (kind, id) {
             ("mine", None) => Some(Self::Mine),
             ("all", None) => Some(Self::All),
+            ("created", None) => Some(Self::Created),
+            ("subscribed", None) => Some(Self::Subscribed),
             ("team", Some(id)) if !id.is_empty() => Some(Self::Team(id)),
             ("cycle", Some(id)) if !id.is_empty() => Some(Self::Cycle(id)),
             ("view", Some(id)) if !id.is_empty() => Some(Self::View(id)),
@@ -406,6 +412,27 @@ fn pages(
                 (data.viewer.viewer, data.viewer.assigned_issues)
             }
             Scope::All => {
+                let data: AllData = run(transport, key, &query::ALL_ISSUES, Some(page))?;
+                (data.viewer, data.issues)
+            }
+            Scope::Created | Scope::Subscribed => {
+                // The workspace's issues that are the person's in one more way: they made it, or they
+                // are subscribed to it ("and"ed with what the list is filtered by).
+                let whose = if *scope == Scope::Created {
+                    serde_json::json!({ "creator": { "isMe": { "eq": true } } })
+                } else {
+                    serde_json::json!({ "subscribers": { "some": { "isMe": { "eq": true } } } })
+                };
+                let filter = if filter.is_null() {
+                    whose
+                } else {
+                    serde_json::json!({ "and": [filter, whose] })
+                };
+                let page = Page {
+                    first,
+                    after: after.as_deref(),
+                    filter,
+                };
                 let data: AllData = run(transport, key, &query::ALL_ISSUES, Some(page))?;
                 (data.viewer, data.issues)
             }
