@@ -35,6 +35,8 @@ struct Boot {
     prefs: Remembered,
     /// How wide the person last left what stands beside the list, points.
     panel: Option<u32>,
+    /// Whether `gh` is there to read the pull requests of an issue with.
+    github: bool,
 }
 
 fn boot(session: &Session, _: Nothing) -> Result<Boot, Failure> {
@@ -61,6 +63,7 @@ fn boot(session: &Session, _: Nothing) -> Result<Boot, Failure> {
             .state
             .as_deref()
             .and_then(|state| prefs::load(state).panel),
+        github: session.github_here(),
     })
 }
 

@@ -48,8 +48,10 @@ local TABLE = {
 	{ id = "narrow", title = "Narrow the panel", group = "Issue", keys = { "mod+shift+right" }, when = "sizable" },
 	-- The notifications of the issue the keys are for, read in Linear's inbox (in the inbox only).
 	{ id = "mark_read", title = "Mark read", group = "Issue", keys = { "u" }, when = "readable" },
-	-- The pull request of the issue open, in the browser (several: a menu of them).
-	{ id = "pull_request", title = "Open the pull request", group = "Issue", keys = { "shift+g" }, when = "pulled" },
+	-- The pull request of the issue open, in its place where `gh` is there, else in the browser (several:
+	-- a menu of them); and the one shown, in the browser.
+	{ id = "pull_request", title = "Show the pull request", group = "Issue", keys = { "shift+g" }, when = "pulled" },
+	{ id = "pull_github", title = "Open the pull request on GitHub", group = "Issue", keys = { "mod+shift+o" }, when = "pull_shown" },
 	{ id = "read_down", title = "Scroll the issue down", group = "Issue", keys = { "space" }, when = "reading" },
 	{ id = "read_up", title = "Scroll the issue up", group = "Issue", keys = { "shift+space" }, when = "reading" },
 	{ id = "work", title = "Work on the issue", group = "Issue", keys = { "w" }, when = "workable" },

@@ -59,7 +59,8 @@ commands:
   "Widen the panel" [shift+cmd+left] (disabled)
   "Narrow the panel" [shift+cmd+right] (disabled)
   "Mark read" [u] (disabled)
-  "Open the pull request" [shift+g]
+  "Show the pull request" [shift+g]
+  "Open the pull request on GitHub" [shift+cmd+o] (disabled)
   "Scroll the issue down" [space]
   "Scroll the issue up" [shift+space]
   "Work on the issue" [w]

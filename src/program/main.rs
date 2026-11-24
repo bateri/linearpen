@@ -30,6 +30,7 @@
 mod api;
 mod cli;
 mod command_line;
+mod github;
 mod icons;
 mod linear;
 mod model;

@@ -428,6 +428,36 @@ pub struct Session {
     pub pictures: Pictures,
     /// The program's hand on the view: what holds the files the page draws (`serve` is given it).
     control: pencere::ViewControl,
+    /// What runs `gh`, to read a pull request of GitHub's, and whether it is there (asked once).
+    github: Arc<dyn Runner>,
+    github_here: std::sync::OnceLock<bool>,
+}
+
+/// What runs `gh` where nothing says otherwise: the system's, but in a test none (a test that reads a
+/// pull request gives its own: nothing of a test reaches the person's GitHub).
+#[cfg(not(test))]
+fn github_runner() -> Arc<dyn Runner> {
+    Arc::new(System)
+}
+
+#[cfg(test)]
+fn github_runner() -> Arc<dyn Runner> {
+    struct Nowhere;
+    impl Runner for Nowhere {
+        fn run_with(
+            &self,
+            _: &str,
+            _: &[String],
+            _: Option<&Path>,
+            _: &[(&str, &str)],
+        ) -> std::io::Result<crate::work::runner::Ran> {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "no gh in a test that gives none",
+            ))
+        }
+    }
+    Arc::new(Nowhere)
 }
 
 /// Now, seconds since the epoch.
@@ -734,7 +764,38 @@ impl Session {
             work,
             pictures: Pictures::new(Arc::new(control.clone())),
             control,
+            github: github_runner(),
+            github_here: std::sync::OnceLock::new(),
         }
+    }
+
+    /// The session with what runs `gh` (a test's stand-in).
+    #[cfg(test)]
+    #[must_use]
+    pub fn with_github(mut self, runner: Arc<dyn Runner>) -> Self {
+        self.github = runner;
+        self.github_here = std::sync::OnceLock::new();
+        self
+    }
+
+    /// Whether `gh` is there to read pull requests with: asked once (`gh --version`, which asks GitHub
+    /// nothing). Where it is not, nothing of GitHub's is ever run.
+    pub fn github_here(&self) -> bool {
+        *self
+            .github_here
+            .get_or_init(|| crate::github::here(self.github.as_ref()))
+    }
+
+    /// What GitHub says of the pull request at `url` (with no lock held while `gh` runs).
+    ///
+    /// # Errors
+    ///
+    /// `gh` is not there, not signed in, or GitHub did not tell it.
+    pub fn pull(&self, url: &str) -> Result<crate::github::Pull, crate::github::Problem> {
+        if !self.github_here() {
+            return Err(crate::github::Problem::Missing);
+        }
+        crate::github::view(self.github.as_ref(), url)
     }
 
     /// The hand on the view that `serve` is given (`Options::control`): the pictures are attached

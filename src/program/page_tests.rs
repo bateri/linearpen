@@ -38,6 +38,120 @@ pub(crate) type Page = Headless<InProcess>;
 const MY_ISSUES: &str = include_str!("../../test/stand-in/my-issues.json");
 const MY_ISSUES_EMPTY: &str = include_str!("../../test/stand-in/my-issues-empty.json");
 const INBOX: &str = include_str!("../../test/stand-in/inbox.json");
+const GH_PR_VIEW: &str = include_str!("../../test/stand-in/gh-pr-view.json");
+
+/// `gh` as a test has it: there and signed in (the answer of test/stand-in/gh-pr-view.json), not there,
+/// signed out, refusing, or holding its answer until let go. What it was asked is kept.
+pub(crate) struct Gh {
+    pub(crate) mode: Mutex<&'static str>,
+    pub(crate) held: Mutex<bool>,
+    pub(crate) asked: Mutex<Vec<Vec<String>>>,
+}
+
+impl Gh {
+    pub(crate) fn new(mode: &'static str) -> Arc<Self> {
+        Arc::new(Self {
+            mode: Mutex::new(mode),
+            held: Mutex::new(false),
+            asked: Mutex::new(Vec::new()),
+        })
+    }
+}
+
+impl crate::work::runner::Runner for Gh {
+    fn run_with(
+        &self,
+        program: &str,
+        args: &[String],
+        _: Option<&std::path::Path>,
+        _: &[(&str, &str)],
+    ) -> std::io::Result<crate::work::runner::Ran> {
+        use crate::work::runner::Ran;
+        assert_eq!(program, "gh", "only gh is run here");
+        let mode = *self.mode.lock().unwrap();
+        if mode == "missing" {
+            return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "no gh"));
+        }
+        self.asked.lock().unwrap().push(args.to_vec());
+        let said = |ok: bool, out: &str, err: &str| {
+            Ok(Ran {
+                ok,
+                out: out.to_owned(),
+                err: err.to_owned(),
+            })
+        };
+        if args.first().map(String::as_str) == Some("--version") {
+            return said(true, "gh version 2.82.1\n", "");
+        }
+        // (Held for the most of half a minute: a test that forgets to let go is not left waiting.)
+        for _ in 0..3000 {
+            if !*self.held.lock().unwrap() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        match mode {
+            "merged" => {
+                let mut value: serde_json::Value = serde_json::from_str(GH_PR_VIEW).unwrap();
+                value["state"] = "MERGED".into();
+                value["reviewDecision"] = "APPROVED".into();
+                value["latestReviews"][0]["state"] = "APPROVED".into();
+                value["reviewRequests"] = serde_json::json!([]);
+                for check in value["statusCheckRollup"].as_array_mut().unwrap() {
+                    if check["conclusion"] != "SKIPPED" {
+                        check["status"] = "COMPLETED".into();
+                        check["conclusion"] = "SUCCESS".into();
+                    }
+                }
+                said(true, &value.to_string(), "")
+            }
+            "signed-out" => said(
+                false,
+                "",
+                "To get started with GitHub CLI, please run:  gh auth login\n",
+            ),
+            "refusing" => said(
+                false,
+                "",
+                "GraphQL: Could not resolve to a PullRequest with the number of 231.\n",
+            ),
+            _ => said(true, GH_PR_VIEW, ""),
+        }
+    }
+}
+
+/// The page over the lists of the fixtures with `gh` as `gh` has it.
+pub(crate) fn open_with_gh(gh: &Arc<Gh>) -> (Arc<Canned>, Page) {
+    open_with_gh_patiently(gh, None)
+}
+
+/// The same, with the time the page waits for the program's answers given (`open_patiently`).
+pub(crate) fn open_with_gh_patiently(
+    gh: &Arc<Gh>,
+    patience: Option<Duration>,
+) -> (Arc<Canned>, Page) {
+    let linear = Canned::new(Mode::Fine);
+    let session = session_with_gh(&linear, gh);
+    let page = open_patiently(&session, WIDE, None, "ACM-412", patience).expect("the page opens");
+    (linear, page)
+}
+
+/// A session over `linear` with `gh` as `gh` has it.
+pub(crate) fn session_with_gh(linear: &Arc<Canned>, gh: &Arc<Gh>) -> Arc<Session> {
+    Arc::new(
+        Session::new(
+            Arc::clone(linear) as Arc<dyn Transport>,
+            Paths {
+                config: None,
+                state: None,
+            },
+            Some("lin_api_test"),
+            Duration::from_secs(3600),
+        )
+        .with_github(Arc::clone(gh) as Arc<dyn crate::work::runner::Runner>),
+    )
+}
+
 const ALL_ISSUES: &str = include_str!("../../test/stand-in/all-issues.json");
 const TEAM_ISSUES: &str = include_str!("../../test/stand-in/team-issues.json");
 const TEAM_ISSUES_BIG: &str = include_str!("../../test/stand-in/team-issues-big.json");
@@ -6304,6 +6418,132 @@ fn a_capital_g_written_in_a_comment_or_the_title_is_a_letter_and_opens_nothing()
     page.press("shift+g").expect("shift and g");
     page.advance(0.3).expect("a moment");
     assert!(page.links().is_empty(), "{:?}", page.links());
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn with_gh_the_pull_request_opens_in_the_place_of_the_issue_with_its_checks_review_and_files() {
+    let gh = Gh::new("here");
+    let (_linear, mut page) = open_with_gh(&gh);
+    open_the_controls(&mut page);
+    page.click("pull:1").expect("the line of the pull request");
+    // What the issue told is there at once; what GitHub tells comes into its place.
+    page.wait_for(WITHIN, |page| page.says("acme/api #231"))
+        .unwrap_or_else(|why| panic!("the head: {why:?}: {}", said(&page)));
+    page.wait_for(WITHIN, |page| page.says("Changes requested"))
+        .unwrap_or_else(|why| panic!("what GitHub tells: {why:?}: {}", said(&page)));
+    for words in [
+        "Open",
+        "ada/acm-412-rate-limits",
+        "main",
+        "1 failed",
+        "test (linux)",
+        "1 running",
+        "deploy preview",
+        "3 passed",
+        "1 skipped",
+        "deniz",
+        "Waiting for mert, api-reviewers",
+        "+214",
+        "limits.rs",
+        "per_key_window.rs",
+    ] {
+        assert!(page.says(words), "{words}: {}", said(&page));
+    }
+    assert!(
+        page.links().is_empty(),
+        "nothing went to the browser: {:?}",
+        page.links()
+    );
+    let asked = gh.asked.lock().unwrap().clone();
+    assert_eq!(asked[0], ["--version"]);
+    assert_eq!(
+        &asked[1][..4],
+        [
+            "pr",
+            "view",
+            "https://github.com/acme/api/pull/231",
+            "--json"
+        ]
+    );
+    // The issue's keys are not for it: no comment, no edit of the description.
+    page.press("shift+m").expect("shift and m");
+    page.press("e").expect("e");
+    page.advance(0.3).expect("a moment");
+    assert!(page.says("acme/api #231"), "{}", said(&page));
+    // Open on GitHub, by its key.
+    page.press("mod+shift+o").expect("the key");
+    page.wait_for(WITHIN, |page| page.links().len() == 1)
+        .unwrap_or_else(|why| panic!("opened: {why:?}: {:?}", page.links()));
+    // Esc: the issue is there again.
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| page.says("API key"))
+        .unwrap_or_else(|why| panic!("the issue: {why:?}: {}", said(&page)));
+    assert!(!page.says("acme/api #231"), "{}", said(&page));
+    // Going to another issue leaves it.
+    page.press("shift+g").expect("the key");
+    page.wait_for(WITHIN, |page| page.says("acme/api #231"))
+        .unwrap_or_else(|why| panic!("by its key: {why:?}: {}", said(&page)));
+    page.press("down").expect("down");
+    page.wait_for(WITHIN, |page| !page.says("acme/api #231"))
+        .unwrap_or_else(|why| panic!("left: {why:?}: {}", said(&page)));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn without_gh_the_pull_request_opens_in_the_browser_and_nothing_of_githubs_runs() {
+    let gh = Gh::new("missing");
+    let (_linear, mut page) = open_with_gh(&gh);
+    open_the_controls(&mut page);
+    page.click("pull:1").expect("the line of the pull request");
+    page.wait_for(WITHIN, |page| page.links().len() == 1)
+        .unwrap_or_else(|why| panic!("the browser: {why:?}: {:?}", page.links()));
+    assert!(!page.says("Asking GitHub"), "{}", said(&page));
+    assert!(gh.asked.lock().unwrap().is_empty());
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn gh_signed_out_or_refusing_says_so_in_the_place_of_the_pull_request_and_github_is_a_press_away() {
+    for (mode, words) in [
+        (
+            "signed-out",
+            "gh is not signed in to GitHub: run gh auth login",
+        ),
+        ("refusing", "Could not resolve to a PullRequest"),
+    ] {
+        let gh = Gh::new(mode);
+        let (_linear, mut page) = open_with_gh(&gh);
+        open_the_controls(&mut page);
+        page.click("pull:1").expect("the line of the pull request");
+        page.wait_for(WITHIN, |page| page.says(words))
+            .unwrap_or_else(|why| panic!("{mode}: {why:?}: {}", said(&page)));
+        assert!(page.says("acme/api #231"), "{mode}: {}", said(&page));
+        page.click("pull-github").expect("Open on GitHub");
+        page.wait_for(WITHIN, |page| page.links().len() == 1)
+            .unwrap_or_else(|why| panic!("{mode}: opened: {why:?}: {:?}", page.links()));
+    }
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn an_answer_of_github_for_a_pull_request_no_longer_shown_is_let_go() {
+    let gh = Gh::new("here");
+    // (The program owes the answer while `gh` is held: a step that tells the page is then slow.)
+    let (_linear, mut page) = open_with_gh_patiently(&gh, Some(HURRIED));
+    open_the_controls(&mut page);
+    *gh.held.lock().unwrap() = true;
+    in_flight(page.click("pull:1"));
+    page.wait_for(WITHIN, |page| page.says("Asking GitHub"))
+        .unwrap_or_else(|why| panic!("asking: {why:?}: {}", said(&page)));
+    // Back to the issue before GitHub answers: the answer does not bring the pull request back.
+    in_flight(page.click("pull-back"));
+    page.wait_for(WITHIN, |page| !page.says("Asking GitHub"))
+        .unwrap_or_else(|why| panic!("back: {why:?}: {}", said(&page)));
+    *gh.held.lock().unwrap() = false;
+    page.advance(1.0).expect("a moment");
+    assert!(!page.says("acme/api #231"), "{}", said(&page));
+    assert!(page.says("API key"), "{}", said(&page));
 }
 
 /// The width `prefs.json` keeps for what stands beside the list.

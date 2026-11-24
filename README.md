@@ -437,7 +437,8 @@ or `Space` then presses.
 | `Enter`, `o`          | open the issue beside the list                                       |
 | `⇧O`                  | open it in Linear                                                    |
 | `⌘⇧↑` `⌘⇧↓`            | open its parent, open a sub-issue or a related issue (a menu)        |
-| `⇧G`                  | open its pull request in your browser (several: a menu)              |
+| `⇧G`                  | show its pull request (several: a menu; without `gh`, the browser)   |
+| `⌘⇧O`                 | open the pull request shown on GitHub                                |
 | `u`                   | in the inbox, mark the notifications of the issue read in Linear     |
 | `Space`, `⇧ Space`    | scroll the open issue down, up                                       |
 | `⌘⇧←` `⌘⇧→`            | make the issue beside the list wider, narrower                       |

@@ -20,8 +20,8 @@ use crate::page_pictures::{
     read_to_the_end,
 };
 use crate::page_tests::{
-    Canned, Mode, PANE, Page, close_picker, cursor, ls_of_p41, open, pressable, rig, rig_polling,
-    session_over, turn, with_my_comment,
+    Canned, Gh, HURRIED, Mode, PANE, Page, close_picker, cursor, ls_of_p41, open, open_patiently,
+    pressable, rig, rig_polling, session_over, session_with_gh, turn, with_my_comment,
 };
 
 /// A page as large as a terminal pane on a laptop.
@@ -157,6 +157,48 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     save(&page, &fonts, Palette::Dark, "inbox-issue.png");
     let page = inbox(PANE, &fonts)?;
     save(&page, &fonts, Palette::Dark, "narrow-inbox.png");
+
+    // A pull request of the issue open, read with `gh`: open with a failed check and changes asked; merged;
+    // while GitHub is asked; where `gh` is not signed in; in the colours of a light terminal; in an 80
+    // by 24 pane.
+    let pulled =
+        |size: (f32, f32), fonts: &Fonts, mode: &'static str, held: bool| -> Result<Page, Error> {
+            let linear = Canned::new(Mode::Fine);
+            let gh = Gh::new(mode);
+            let session = session_with_gh(&linear, &gh);
+            let mut page = open_patiently(&session, size, Some(fonts), "ACM-412", Some(HURRIED))?;
+            page.press("enter")?;
+            page.wait_for(Duration::from_secs(20), |page| {
+                page.bounds("pull:1").is_some()
+            })?;
+            page.advance(0.4)?;
+            *gh.held.lock().unwrap() = held;
+            let _ = page.click("pull:1");
+            let words = match (mode, held) {
+                (_, true) => "Asking GitHub",
+                ("signed-out", _) => "gh auth login",
+                ("merged", _) => "Approved",
+                _ => "Changes requested",
+            };
+            page.wait_for(Duration::from_secs(20), |page| page.says(words))?;
+            page.advance(0.4)?;
+            if held {
+                *gh.held.lock().unwrap() = false;
+            }
+            Ok(page)
+        };
+    let page = pulled(BIG, &fonts, "here", false)?;
+    save(&page, &fonts, Palette::Dark, "pull.png");
+    save(&page, &fonts, Palette::Light, "light-pull.png");
+    let page = pulled(BIG, &fonts, "merged", false)?;
+    save(&page, &fonts, Palette::Dark, "pull-merged.png");
+    save(&page, &fonts, Palette::Light, "light-pull-merged.png");
+    let page = pulled(BIG, &fonts, "here", true)?;
+    save(&page, &fonts, Palette::Dark, "pull-loading.png");
+    let page = pulled(BIG, &fonts, "signed-out", false)?;
+    save(&page, &fonts, Palette::Dark, "pull-signed-out.png");
+    let page = pulled(PANE, &fonts, "here", false)?;
+    save(&page, &fonts, Palette::Dark, "narrow-pull.png");
 
     // The filter, on a word.
     let mut page = lists(BIG, &fonts)?;

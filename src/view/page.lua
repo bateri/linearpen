@@ -204,32 +204,36 @@ commands.when.estimable = function()
 end
 -- The title is of one issue (the one read, where one is), and needs none either.
 commands.when.titleable = function()
-	return commands.when.idle() and change.single_can()
+	return commands.when.idle() and change.single_can() and not panel.pull_open()
 end
 -- The parent and the other neighbours are the open issue's, as it tells them (they are not offered
 -- where it has none).
+-- (The issue's keys are not for the pull request shown in its place: what they act on is not drawn.)
 commands.when.parented = function()
-	return commands.when.idle() and panel.has_parent()
+	return commands.when.idle() and panel.has_parent() and not panel.pull_open()
 end
 commands.when.readable = function()
 	return commands.when.idle() and act.unread(context.single())
 end
 commands.when.pulled = function()
-	return commands.when.idle() and panel.pulls() > 0
+	return commands.when.idle() and panel.pulls() > 0 and not panel.pull_open()
+end
+commands.when.pull_shown = function()
+	return commands.when.idle() and panel.pull_open()
 end
 commands.when.neighboured = function()
-	return commands.when.idle() and panel.neighbours() > 0
+	return commands.when.idle() and panel.neighbours() > 0 and not panel.pull_open()
 end
 -- The comment is the open issue's: its field is at the end of its comments, and the words in it are
 -- sent by ⌘Enter while the field has the keyboard, and by the press of Comment (a form has ⌘Enter for its
 -- own, and a key pressed elsewhere sends nothing the person wrote).
 commands.when.commentable = function()
-	return commands.when.idle() and panel.detail() ~= nil
+	return commands.when.idle() and panel.detail() ~= nil and not panel.pull_open()
 end
 -- Attach file: where there is a place for files (the key does not need the list's keys, since the field
 -- of the comment has the keyboard where it is the comment's).
 commands.when.attachable = function()
-	return attach_key() ~= nil
+	return attach_key() ~= nil and not panel.pull_open()
 end
 -- Add to description: files are chosen for it, and the keyboard is not in a field (⌘Enter there is the
 -- field's: the comment is posted, the issue made, the words searched for). The comment's field and the
@@ -247,11 +251,15 @@ end
 -- comment of the person's is edited where there is one.
 commands.when.describable_words = function()
 	local detail = panel.detail()
-	return commands.when.idle() and detail ~= nil and edit.of(detail.id) == nil
+	return commands.when.idle() and detail ~= nil and edit.of(detail.id) == nil and not panel.pull_open()
 end
 commands.when.comment_editable = function()
 	local detail = panel.detail()
-	return commands.when.list() and detail ~= nil and edit.of(detail.id) == nil and edit.last_mine(detail) ~= nil
+	return commands.when.list()
+		and detail ~= nil
+		and edit.of(detail.id) == nil
+		and edit.last_mine(detail) ~= nil
+		and not panel.pull_open()
 end
 -- Save the edit: one is open on the issue open and can be saved, and the keyboard is not in another field
 -- (⌘Enter there is that field's: the comment is posted, the words searched for).
@@ -349,7 +357,7 @@ commands.when.reachable = function()
 end
 -- Work on is the open issue's: where an issue is open (its detail has the button).
 commands.when.workable = function()
-	return commands.when.idle() and work.workable()
+	return commands.when.idle() and work.workable() and not panel.pull_open()
 end
 commands.when.startable = function()
 	return S.screen == "list" and not modal() and work.startable()
@@ -726,6 +734,8 @@ local function command(id)
 		return panel.open_neighbours()
 	elseif id == "pull_request" then
 		return panel.open_pulls()
+	elseif id == "pull_github" then
+		return panel.pull_on_github()
 	elseif id == "mark_read" then
 		return act.mark_read(context.single())
 	elseif id == "lists" then
@@ -830,6 +840,12 @@ local function press(id)
 		return panel.open_near(string.sub(id, 6))
 	elseif string.sub(id, 1, 5) == "pull:" then
 		return panel.open_pull(tonumber(string.sub(id, 6)))
+	elseif id == "pull-back" then
+		return panel.close_pull()
+	elseif id == "pull-github" then
+		return panel.pull_on_github()
+	elseif id == "pull-retry" then
+		return panel.retry_pull()
 	elseif id == "issue-retry" then
 		panel.retry()
 	elseif id == "clear-selection" then
@@ -949,6 +965,9 @@ local function back()
 		work.close()
 	elseif filters.is_open() then
 		filters.close()
+	elseif panel.pull_open() then
+		-- (The pull request shown goes, and the issue is there again.)
+		panel.close_pull()
 	elseif edit.cancelable() then
 		-- (The edit of the issue open is let go before the issue is put away; where its words were
 		-- changed, it asks first.)

@@ -10,6 +10,7 @@ mod comment;
 mod create;
 mod edit;
 mod filters;
+mod github;
 mod inbox;
 mod issue;
 mod issues;
@@ -59,6 +60,8 @@ enum Failure {
     EditFailed(String),
     /// A file of Linear was to be saved, and was not: the words say why.
     SaveFailed(String),
+    /// A pull request was to be read from GitHub, and `gh` did not tell it: its words.
+    PullFailed(String),
     /// A PDF could not be read for its pages and words: the words say why.
     PdfFailed(String),
     /// The keyboard was to go to an agent's pane, and did not: the words say why.
@@ -79,6 +82,7 @@ impl From<Failure> for ViewError {
             Failure::DescribeFailed(words) => Self::with_message("describe-failed", words),
             Failure::EditFailed(words) => Self::with_message("edit-failed", words),
             Failure::SaveFailed(words) => Self::with_message("save-failed", words),
+            Failure::PullFailed(words) => Self::with_message("pull-failed", words),
             Failure::PdfFailed(words) => Self::with_message("pdf-failed", words),
             Failure::GoFailed(words) => Self::with_message("go-failed", words),
             Failure::Linear(error) => Self::with_message(error.kind(), error.to_string()),
@@ -136,5 +140,6 @@ pub fn serve(options: Options, session: &Arc<Session>) -> Options {
     let options = pictures::calls(options, session);
     let options = filters::calls(options, session);
     let options = inbox::calls(options, session);
+    let options = github::calls(options, session);
     issues::topic(options, session)
 }

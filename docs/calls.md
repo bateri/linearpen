@@ -23,7 +23,8 @@ which of three it is: the description could not be read, the files would make it
 written in either), or the write was sent and failed), `save-failed` (a file of Linear was to be saved and was not: the words say why),
 `edit-failed` (the words of a description or of a comment were to be written, or an edit of them
 begun, and were not, or it is not known whether they were: the words say why),
-`pdf-failed` (a PDF could not be read for its pages and words: the words say why) and `go-failed`
+`pdf-failed` (a PDF could not be read for its pages and words: the words say why), `pull-failed` (`gh`
+ran and GitHub did not tell a pull request: its words say why) and `go-failed`
 (the keyboard was to go to an agent's pane and did not: the words say why). The
 words of an error are for the person and never hold the key, nor the address a file is sent to
 (Linear signs it).
@@ -61,7 +62,7 @@ has a key and has not begun (listening to the topic `issues` begins it too). Par
 ```json
 { "version": "0.1.0", "key": "file", "problem": null,
   "prefs": { "agent": "codex", "folder": "here", "place": "tab", "status": "keep" },
-  "panel": 560 }
+  "panel": 560, "github": true }
 ```
 
 `key` says where the key is from: `none` (the page shows Connect), `environment` or `file`.
@@ -75,6 +76,10 @@ file does not say it, is not a word of the form's, or the file is missing or can
 the agent is installed is not told here: the page takes what it cannot have away when `work_options`
 says what can be chosen. The words the person writes for the agent are not kept: they are for one
 start.
+
+`github` is whether `gh`, GitHub's own command, is there (`gh --version` runs): where it is, a pull
+request opens in the pane (`pull`); where it is not, nothing of GitHub's is ever run and a pull
+request opens in the browser.
 
 `panel` is how wide, in points, the person last left what stands beside the list (the issue, or a form)
 by dragging its edge or with the keys (`panel_width`): a whole number from 200 to 4000, or null where the
@@ -780,6 +785,36 @@ look-before-again words where no answer came after it was sent.
 Asks Linear for My issues and the list shown again, for the names of the lists the page can go to, and
 for the teams and choices of a new issue and each issue opened (`issue`) the next time they are needed. It answers at once with `{}`; the topic tells the lists when they come. Params: none. Errors:
 `no-key`.
+
+### `pull`
+
+What GitHub says of a pull request linked to the issue open: asked of GitHub with `gh`, GitHub's own
+command, as the person signed in to it (`gh pr view <url> --json …`); the program never holds a key of
+GitHub's, and nothing of Linear's key goes to `gh`. Asked when the person opens the pull request in the
+pane, not before; read only (no review, comment or merge is sent). Params: `{ "url": "https://github.com/acme/api/pull/231" }`,
+an address `pullRequests` told (`https://github.com/<owner>/<repo>/pull/<number>` and nothing more;
+anything else is `bad-params`, and `gh` is not run).
+
+```json
+{ "number": 231, "title": "Add per-key rate limits", "url": "https://github.com/acme/api/pull/231",
+  "repository": "acme/api", "state": "open", "author": "ada",
+  "head": "ada/acm-412-rate-limits", "base": "main",
+  "additions": 214, "deletions": 31, "changedFiles": 6,
+  "files": [{ "path": "src/limits.rs", "additions": 120, "deletions": 4 }],
+  "checks": { "passed": 4, "failed": ["lint"], "running": [], "skipped": 1 },
+  "review": { "decision": "changesRequested",
+              "reviews": [{ "who": "deniz", "state": "changesRequested" }], "waiting": ["mert"] } }
+```
+
+`state` is `open`, `draft`, `merged` or `closed`. `files` are the first 100 GitHub tells (`changedFiles`
+counts all). `checks` counts the checks of its last commit that passed and were skipped, and names the
+ones that failed and those still running (at most 50 each). `review.decision` is `approved`,
+`changesRequested`, `required` or null (none asked); `reviews` the last review of each who reviewed
+(`approved`, `changesRequested`, `commented`, `dismissed`), `waiting` those asked who have not. Every
+word of it is GitHub's, cut at 300 characters, with no control character: text to show.
+Errors: `bad-params`; `unavailable` where `gh` is not there or not signed in to GitHub (the words say
+which: the page then opens the address in the browser, as it does where it never asked); `pull-failed`
+where `gh` ran and GitHub did not tell it (the words are `gh`'s).
 
 ### `mark_read`
 

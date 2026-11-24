@@ -11,7 +11,10 @@
   change it or work on it as from any list. Opening an issue marks nothing read; press `u` (or Mark
   read in its menu) to mark its notifications read in Linear.
 - **The pull request of an issue.** An issue with a pull request of GitHub linked to it shows it under
-  the issues round it, by its number and its title: press it (or `Shift G`) to open it in your browser.
+  the issues round it. Press it (or `Shift G`) and the pull request opens in the place of the issue:
+  its state, its branch, its checks (what failed and what still runs), its review and its files, with
+  `Cmd Shift O` to open it on GitHub and `Esc` back to the issue. It is read with `gh`, GitHub's own
+  command, signed in as you; where `gh` is not installed it opens in your browser, as a link.
 - **Created by me and Subscribed.** Two more lists in the card of lists (`g`), as Linear's My issues
   has them: the issues you made, and the issues you are subscribed to.
 

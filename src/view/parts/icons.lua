@@ -126,6 +126,32 @@ function icons.person()
 	}):no_shrink()
 end
 
+-- A check that passed: a tick.
+function icons.tick(color)
+	return canvas({
+		b.path():move_to(3.2, 7.4):line_to(5.9, 10):line_to(10.8, 4.2):stroke(1.6, color or "success"),
+	}):no_shrink()
+end
+
+-- A check that failed, a pull request closed: a cross.
+function icons.cross(color)
+	color = color or "error"
+	return canvas({
+		b.path():move_to(4, 4):line_to(10, 10):stroke(1.6, color),
+		b.path():move_to(10, 4):line_to(4, 10):stroke(1.6, color),
+	}):no_shrink()
+end
+
+-- A check that was skipped: a dash.
+function icons.skip(color)
+	return canvas({ b.path():move_to(4, 7):line_to(10, 7):stroke(1.6, color or "dim") }):no_shrink()
+end
+
+-- A review that asks for changes, or a review waited for: a ring.
+function icons.ring(color)
+	return canvas({ b.path():circle(7, 7, 3.6):stroke(1.5, color or "dim") }):no_shrink()
+end
+
 -- The head of a group of the inbox: a dot for the unread, a ring for the read.
 function icons.inbox(unread)
 	if unread then

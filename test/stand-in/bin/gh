@@ -1,0 +1,22 @@
+#!/bin/sh
+# Stands in for gh, GitHub's command, in the tests and in `make demo`: nothing here reaches the network.
+# `gh --version` says it is there; `gh pr view <url> --json ...` answers with test/stand-in/gh-pr-view.json
+# (a pull request open, with a check failed, one running, and changes asked for). Anything else is not
+# known.
+#
+#   STANDIN_GH=signed-out   gh is not signed in to GitHub
+here=$(cd "$(dirname "$0")/.." && pwd)
+if [ "${1-}" = "--version" ]; then
+	echo "gh version 2.82.1 (stand-in)"
+	exit 0
+fi
+if [ "${1-}" = "pr" ] && [ "${2-}" = "view" ]; then
+	if [ "${STANDIN_GH-}" = "signed-out" ]; then
+		echo "To get started with GitHub CLI, please run:  gh auth login" >&2
+		exit 4
+	fi
+	cat "$here/gh-pr-view.json"
+	exit 0
+fi
+echo "stand-in gh: a command it does not know" >&2
+exit 2

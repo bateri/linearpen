@@ -12,6 +12,7 @@ local attach = require("./attach")
 local edit = require("./edit")
 local commands = require("./commands")
 local icons = require("./icons")
+local pull = require("./pull")
 local list = require("./list")
 local pictures = require("./pictures")
 local picker = require("./picker")
@@ -37,8 +38,10 @@ local panel = {}
 -- `serial` numbers the menu of the neighbours (a pick of an older one is not one).
 -- `room` is the points the text of an issue has across, as it was drawn last (the pictures of the text
 -- are no wider).
--- (`width` is what the person sized what stands beside the list to, or nil: `panel.width`.)
-local P = { open = nil, kept = {}, asked = {}, told = {}, again = nil, pin = nil, near = nil, serial = 0, room = 400, width = nil }
+-- (`width` is what the person sized what stands beside the list to, or nil: `panel.width`. `pull` is the
+-- pull request shown in the place of the issue, or nil: `{ issue, url, number, title, repository,
+-- status, data, error, serial }`.)
+local P = { open = nil, kept = {}, asked = {}, told = {}, again = nil, pin = nil, near = nil, serial = 0, room = 400, width = nil, pull = nil }
 panel.state = P
 
 -- The box that scrolls: the description and the comments.
@@ -209,6 +212,8 @@ function panel.show(item)
 	P.pin = nil
 	P.near = nil
 	if P.open ~= nil and P.open.id ~= row.id then
+		-- (A pull request shown is the issue's: going to another issue leaves it.)
+		P.pull = nil
 		-- Another issue is read from its top, not from where the one before was left.
 		kit.scroll_to(SCROLL, 0)
 	end
@@ -229,6 +234,7 @@ function panel.close()
 	P.open = nil
 	P.pin = nil
 	P.near = nil
+	P.pull = nil
 end
 
 -- --- Staying on an issue the person changed ----------------------------------------------------------
@@ -698,7 +704,8 @@ local function pull_row(pull, index, first, several, ids)
 	local over = u:hovered(name)
 	local repository = string.match(pull.url, "^https://github%.com/([^/]+/[^/]+)/pull/") or "GitHub"
 	local where = repository .. "#" .. tostring(pull.number)
-	local tip = "Open " .. where .. " in your browser"
+	local here = S.boot ~= nil and S.boot.github == true
+	local tip = here and ("Show " .. where .. " here") or ("Open " .. where .. " in your browser")
 	if pull.subtitle ~= nil and pull.subtitle ~= "" then
 		tip = pull.subtitle .. ". " .. tip
 	end
@@ -714,7 +721,7 @@ local function pull_row(pull, index, first, several, ids)
 		:motion({ seconds = t.motion, color = true })
 		:press(name)
 		:focusable()
-		:role("link")
+		:role(here and "button" or "link")
 		:label("Pull request " .. where .. ", " .. pull.title)
 		-- (With several, the key opens the menu of them, not this one: the tip does not say it.)
 		:tip(tip, not several and commands.label("pull_request") or nil)
@@ -738,13 +745,73 @@ end
 
 local PULLS = "pulls-menu"
 
--- Opens the `index`th pull request of the issue open in the browser. The reply.
-function panel.open_pull(index)
-	local pull = pulls_of(panel.detail())[index]
-	if pull == nil then
+-- Whether a pull request is shown in the place of the issue.
+function panel.pull_open()
+	return P.pull ~= nil and P.open ~= nil and P.pull.issue == P.open.id
+end
+
+-- Puts the pull request shown away: the issue is there again.
+function panel.close_pull()
+	P.pull = nil
+	return true
+end
+
+-- The pull request shown, opened in the browser. The reply.
+function panel.pull_on_github()
+	if not panel.pull_open() then
 		return true
 	end
-	return { link = pull.url }
+	return { link = P.pull.url }
+end
+
+-- Asks GitHub (`pull`) for the pull request shown; an answer for one that is no longer shown is let go.
+local function ask_pull()
+	P.serial += 1
+	local serial = P.serial
+	P.pull.serial, P.pull.status, P.pull.error = serial, "loading", nil
+	kit.call("pull", { url = P.pull.url }, function(found, err)
+		if P.pull == nil or P.pull.serial ~= serial then
+			return true
+		end
+		if err then
+			P.pull.status = "failed"
+			P.pull.error = err.message or err.code
+		else
+			P.pull.status, P.pull.data = "ready", found
+		end
+		return true
+	end)
+end
+
+-- Asks again for the pull request shown, where GitHub did not tell it. The reply.
+function panel.retry_pull()
+	if panel.pull_open() then
+		ask_pull()
+	end
+	return true
+end
+
+-- Opens the `index`th pull request of the issue open: in the place of the issue where `gh` is there to
+-- read it with, else in the browser (as a link). The reply.
+function panel.open_pull(index)
+	local found = pulls_of(panel.detail())[index]
+	if found == nil then
+		return true
+	end
+	if S.boot == nil or S.boot.github ~= true then
+		return { link = found.url }
+	end
+	local repository = string.match(found.url, "^https://github%.com/([^/]+/[^/]+)/pull/") or "GitHub"
+	P.pull = {
+		issue = P.open.id,
+		url = found.url,
+		number = found.number,
+		title = found.title ~= "" and found.title or (repository .. "#" .. tostring(found.number)),
+		repository = repository,
+	}
+	ask_pull()
+	kit.scroll_to("panel-scroll", 0)
+	return true
 end
 
 -- The issue `id` that the open one is tied to, or nil.
@@ -953,6 +1020,9 @@ end
 -- facts, then what scrolls.
 function panel.view(width)
 	local info = P.open
+	if panel.pull_open() then
+		return pull.view(width, P.pull)
+	end
 	P.room = math.max(width - 2 * SIZE.pad - 2, 120)
 	local entry = P.kept[info.id]
 	local detail = entry ~= nil and entry.status == "ready" and entry.issue or nil
