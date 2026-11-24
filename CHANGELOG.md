@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Size the issue.** Drag the edge between the list and the issue (or press `Cmd Shift Left` and
+  `Cmd Shift Right`) to make the issue wider or narrower. linearpen opens it as wide the next time.
+
+### Changed
+
+- **The issue opens from the top of the pane.** The list's head (the list button, the filter, Refresh
+  and New issue) stays over the list, and no longer runs over the issue. Where the list has too little
+  room beside the issue, Refresh and New issue are in the line of keys.
+- **Smoother motion.** The issue slides in as it opens, a group's arrow turns as it folds, the row of
+  filters opens and closes in place, and the dot of an agent that has stopped breathes slowly. The line
+  that says Linear is asked again is moved by the terminal and costs the page nothing. This needs bateri
+  0.33.0 or later; an older one shows them as before.
+
 ### Fixed
 
 - A screen reader, and an agent that reads the pane, are told which value's card is open (the labels

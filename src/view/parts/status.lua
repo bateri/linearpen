@@ -359,12 +359,13 @@ function status.view()
 	elseif not alone and head.field.value ~= "" then
 		start[#start + 1] = { key = "clear", words = hint({ "back" }, "clear the filter"), priority = 5 }
 	end
-	-- A key that has a button is on the button; where the head has none (the page has too little room)
-	-- the key is here, which is the only place it is written.
-	if S.width < SIZE.wide then
+	-- A key that has a button is on the button; where the head has none (the list has too little room:
+	-- the pane is narrow, or an issue stands beside it) the key is here, which is the only place it is
+	-- written.
+	if S.room < SIZE.wide then
 		start[#start + 1] = { key = "refresh", words = hint({ "refresh" }, "refresh"), priority = 3 }
 	end
-	if S.width < SIZE.roomy and not typing then
+	if S.room < SIZE.roomy and not typing then
 		start[#start + 1] = { key = "new", words = hint({ "new" }, "new issue"), priority = 4 }
 	end
 	-- The marks of the agents on the lines are pressed, and have no key: the key goes to the agent of the

@@ -2,8 +2,6 @@ focus: page
 items:
 tvyqqt  button "My issues" [description "Go to another list, key G"]
         text "/"
-5eas2b  button "Refresh" [description "Ask Linear for the issues again"]
-        button "New issue" [disabled, description "A form is open"]
 kkd8ks  menuitem "In Progress, 4" [expanded]
 w35jhj  menuitem "ACM-412, Add rate limiting to the public API" [selected]
 7jqnj6    checkbox "Select" [unchecked]
@@ -22,6 +20,7 @@ cmgnvk  menuitem "ACM-409, Empty state for the audit log"
 5323pm  menuitem "ACM-402, Move the cron jobs to the queue"
 bhrsjb  menuitem "ACM-396, Search matches only the first word"
 zfkyy4  menuitem "Backlog, 2" [collapsed]
+ptz1sk  slider "Panel width" [value "484 pt"]
         text "Work on ACM-412"
 nak9h2  button "Close"
         text "Add rate limiting to the public API"
@@ -70,6 +69,8 @@ commands:
   "Open in Linear" [shift+o] (disabled)
   "Open the parent issue" [shift+cmd+up] (disabled)
   "Open a sub-issue or a related issue" [shift+cmd+down] (disabled)
+  "Widen the panel" [shift+cmd+left] (disabled)
+  "Narrow the panel" [shift+cmd+right] (disabled)
   "Scroll the issue down" [space] (disabled)
   "Scroll the issue up" [shift+space] (disabled)
   "Work on the issue" [w] (disabled)

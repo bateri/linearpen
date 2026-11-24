@@ -98,9 +98,14 @@ used first, and kept nowhere. A key file that other users can read is still read
 
 <img src="docs/issue.png" width="720" alt="linearpen: an issue open beside the list">
 
-The head of the page has the list button, the filter, Refresh and New issue, each in its own place
-whatever the page is doing (in a pane too narrow for the list and an issue beside it, the head goes
-with the list). The list is **My issues** (what is assigned to you) or any other list
+The head of the list has the list button, the filter, Refresh and New issue, each in its own place
+whatever the list is doing. An issue opens beside the list from the top of the pane, and the head stays
+over the list: drag the edge between them (or press `⌘⇧←` and `⌘⇧→`) to make the issue wider or
+narrower, as far as leaves the list room for its whole head, and linearpen opens it that wide the next
+time. On a pane where the issue at its narrowest leaves the list less room, the filter narrows first and
+then Refresh and New issue leave for the line of keys, as they do on a narrow pane, and the issue does not
+grow past what keeps the rest of the head; in a pane too narrow for the list and an issue beside it, the
+issue has the pane and the head goes with the list. The list is **My issues** (what is assigned to you) or any other list
 you go to: **All issues** (the issues of the workspace, each saying whose it is), what you
 starred in Linear, the issues or the running cycle of a team you are in (in the order of your own
 list of teams), a saved view, a project. Each holds its open issues and the 100 done and canceled
@@ -430,6 +435,7 @@ or `Space` then presses.
 | `⇧O`                  | open it in Linear                                                    |
 | `⌘⇧↑` `⌘⇧↓`            | open its parent, open a sub-issue or a related issue (a menu)        |
 | `Space`, `⇧ Space`    | scroll the open issue down, up                                       |
+| `⌘⇧←` `⌘⇧→`            | make the issue beside the list wider, narrower                       |
 | `x`, `Shift ↑↓`, `⌘A` | select the issue, select more, select all                            |
 | `s` `p` `a` `l` `⇧P`  | change the status, priority, assignee, labels, project               |
 | `⇧C` `⇧E` `⇧D`        | change the cycle, the estimate, the due date                         |

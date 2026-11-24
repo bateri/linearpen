@@ -20,13 +20,15 @@ local SIZE = {
 	body = 14,
 	small = 13,
 	tiny = 12,
-	-- The page's width (the head is the page's, whatever stands beside the list) from which the head
-	-- holds Refresh, and below which the filter has a row of its own: the room the longest name of a
-	-- list has in its button (a name is cut at 26 letters) and the filter beside it, so that the head is
-	-- one row from the width of the pane and not from what is in it.
-	wide = 880,
+	-- The head's width (the list's: the page's, or less what stands beside the list) from which it
+	-- holds Refresh, from which its filter is the wider one, and below which the filter has a row of its
+	-- own: the room the longest name of a list has in its button (a name is cut at 26 letters) and the
+	-- filter beside it, so that the head is one row from the room it has and not from what is in it.
+	-- Where the room narrows the filter gives way first (260 to 200), then Refresh, then New issue.
+	wide = 820,
+	filter_room = 880,
 	stacked = 540,
-	-- The filter's width: it is the same whatever it holds, and a little more where the page is wide.
+	-- The filter's width: it is the same whatever it holds, and a little more where the head is wide.
 	filter = 200,
 	filter_wide = 260,
 	-- The page's width from which the bar of the selection has all the values, and from which four.
@@ -39,8 +41,20 @@ local SIZE = {
 	-- A page this wide shows the labels of an issue, and this much the name of whose it is.
 	labels = 760,
 	assignee = 880,
-	-- The page's width from which the head holds New issue (below it the key is in the line of keys).
+	-- The head's width from which it holds New issue (below it the key is in the line of keys).
 	roomy = 760,
+	-- The page's width from which the issue (or a form) stands beside the list; below it, it has the pane.
+	beside = 760,
+	-- What stands beside the list: at least this wide (the three buttons over an issue are whole), and,
+	-- until the person sizes it, a part of the page up to the most. The person sizes it by its edge or
+	-- with the keys, a step at a time, up to what leaves the list the room of the fullest head it can
+	-- have (`wide`, else `roomy`, else `stacked`: `panel.most`).
+	side_least = 420,
+	side_most = 520,
+	side_share = 0.44,
+	side_step = 40,
+	-- The edge between the list and what stands beside it, the kit's split's (its `GRIP`).
+	edge = 7,
 	-- Of the 80 columns of a pane: a page this short drops what it can.
 	short = 440,
 }

@@ -1,11 +1,12 @@
 //! What the person chose in the form that hands issues to an agent (which agent, which folder, where
-//! the pane goes, whether the issues are moved), kept between runs so that the form opens as it was
-//! left. A file of four short words in the state directory, `0600`, written beside itself and renamed
-//! over, so that it is never seen half-written. Nothing of Linear is in it, and no key.
+//! the pane goes, whether the issues are moved), and how wide they left what stands beside the list,
+//! kept between runs so that the form opens as it was left and the issue as wide. A file of four short
+//! words and a number in the state directory, `0600`, written beside itself and renamed over, so that
+//! it is never seen half-written. Nothing of Linear is in it, and no key.
 //!
 //! It is a convenience and never a reason for anything to fail: a file that is missing, too big, not
-//! JSON or with anything in it that is not a short word is read as if it said nothing of that, and a
-//! file that cannot be written is let be.
+//! JSON or with anything in it that is not a short word (or, for the width, a whole number of points
+//! in its range) is read as if it said nothing of that, and a file that cannot be written is let be.
 
 use std::fs;
 use std::io::{Read, Write};
@@ -16,7 +17,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 /// The file, in the state directory.
 pub const FILE: &str = "prefs.json";
 
-/// The most that is read of it: it holds four words.
+/// The most that is read of it: it holds four words and a number.
 const MOST_BYTES: u64 = 4096;
 
 /// What makes the name of the file written beside the file different for each save (two saves of
@@ -26,14 +27,28 @@ static SAVES: AtomicU64 = AtomicU64::new(0);
 /// The longest a word is, in characters.
 const MOST_CHARS: usize = 32;
 
+/// The narrowest and the widest what stands beside the list is kept at, points: anything else is not
+/// a width a page was left at.
+pub const PANEL_LEAST: u32 = 200;
+pub const PANEL_MOST: u32 = 4000;
+
 /// The choices, each of which may be unknown. What a word means is for whoever asks: this holds no
-/// more than that it is a short word of lowercase letters and dashes.
+/// more than that it is a short word of lowercase letters and dashes. `panel` is the width, in points,
+/// that what stands beside the list was left at.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Prefs {
     pub agent: Option<String>,
     pub folder: Option<String>,
     pub place: Option<String>,
     pub status: Option<String>,
+    pub panel: Option<u32>,
+}
+
+/// Whether `width` is one a page was left at: a whole number of points from `PANEL_LEAST` to
+/// `PANEL_MOST`.
+#[must_use]
+pub fn is_panel(width: u32) -> bool {
+    (PANEL_LEAST..=PANEL_MOST).contains(&width)
 }
 
 /// Whether `text` is a word that is kept: one to `MOST_CHARS` lowercase letters or dashes.
@@ -71,16 +86,22 @@ pub fn load(state: &Path) -> Prefs {
             .filter(|text| is_word(text))
             .map(str::to_owned)
     };
+    let panel = members
+        .get("panel")
+        .and_then(serde_json::Value::as_u64)
+        .and_then(|width| u32::try_from(width).ok())
+        .filter(|width| is_panel(*width));
     Prefs {
         agent: word("agent"),
         folder: word("folder"),
         place: word("place"),
         status: word("status"),
+        panel,
     }
 }
 
-/// Keeps `prefs` in `state` (made `0700` where it is made here): the words that are given, and none
-/// that is not.
+/// Keeps `prefs` in `state` (made `0700` where it is made here): the words and the width that are
+/// given, and none that is not.
 ///
 /// # Errors
 ///
@@ -104,6 +125,9 @@ pub fn save(state: &Path, prefs: &Prefs) -> Result<(), String> {
         if let Some(word) = value.as_deref().filter(|word| is_word(word)) {
             members.insert(name.to_owned(), serde_json::Value::from(word));
         }
+    }
+    if let Some(width) = prefs.panel.filter(|width| is_panel(*width)) {
+        members.insert("panel".to_owned(), serde_json::Value::from(width));
     }
     let text = serde_json::to_string(&members).map_err(|why| why.to_string())?;
     let file = state.join(FILE);
@@ -141,6 +165,7 @@ mod tests {
             folder: Some("worktree".to_owned()),
             place: Some("tab".to_owned()),
             status: Some("keep".to_owned()),
+            panel: Some(560),
         }
     }
 
@@ -164,21 +189,23 @@ mod tests {
     }
 
     #[test]
-    fn the_file_holds_the_four_words_and_nothing_of_linear_or_the_key() {
+    fn the_file_holds_the_four_words_and_the_width_and_nothing_of_linear_or_the_key() {
         let root = tempfile::tempdir().unwrap();
         save(root.path(), &prefs()).unwrap();
         let text = fs::read_to_string(root.path().join(FILE)).unwrap();
         let value: serde_json::Value = serde_json::from_str(&text).unwrap();
         let mut names: Vec<_> = value.as_object().unwrap().keys().cloned().collect();
         names.sort();
-        assert_eq!(names, ["agent", "folder", "place", "status"]);
+        assert_eq!(names, ["agent", "folder", "panel", "place", "status"]);
         assert!(text.len() < 128, "{text}");
-        // A word that is not a short word of letters is not written, whoever gave it.
+        // A word that is not a short word of letters is not written, whoever gave it, nor a width out
+        // of its range.
         let odd = Prefs {
             agent: Some("lin_api_0123456789".to_owned()),
             folder: Some("x".repeat(33)),
             place: Some("a b".to_owned()),
             status: Some(String::new()),
+            panel: Some(PANEL_MOST + 1),
         };
         save(root.path(), &odd).unwrap();
         assert_eq!(fs::read_to_string(root.path().join(FILE)).unwrap(), "{}\n");
@@ -268,7 +295,7 @@ mod tests {
         fs::write(
             root.path().join(FILE),
             r#"{ "agent": 3, "folder": "worktree", "place": ["tab"], "status": "Keep Going",
-                 "other": "x", "more": { "agent": "codex" } }"#,
+                 "panel": "560", "other": "x", "more": { "agent": "codex" } }"#,
         )
         .unwrap();
         assert_eq!(
@@ -278,6 +305,32 @@ mod tests {
                 ..Prefs::default()
             }
         );
+    }
+
+    #[test]
+    fn a_width_is_kept_only_as_a_whole_number_of_points_in_its_range() {
+        let root = tempfile::tempdir().unwrap();
+        let put = |text: &str| fs::write(root.path().join(FILE), text).unwrap();
+        for (text, panel) in [
+            (r#"{ "panel": 560 }"#, Some(560)),
+            (r#"{ "panel": 200 }"#, Some(PANEL_LEAST)),
+            (r#"{ "panel": 4000 }"#, Some(PANEL_MOST)),
+            (r#"{ "panel": 199 }"#, None),
+            (r#"{ "panel": 4001 }"#, None),
+            (r#"{ "panel": -560 }"#, None),
+            (r#"{ "panel": 560.5 }"#, None),
+            (r#"{ "panel": 99999999999 }"#, None),
+            (r#"{ "panel": null }"#, None),
+        ] {
+            put(text);
+            assert_eq!(load(root.path()).panel, panel, "{text}");
+        }
+        // Saving the form's words keeps the width that was there, as `start` does it (load, then save).
+        put(r#"{ "panel": 640, "agent": "codex" }"#);
+        let mut kept = load(root.path());
+        kept.agent = Some("claude".to_owned());
+        save(root.path(), &kept).unwrap();
+        assert_eq!(load(root.path()).panel, Some(640));
     }
 
     #[test]

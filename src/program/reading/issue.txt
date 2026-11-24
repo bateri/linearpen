@@ -2,8 +2,6 @@ focus: page
 items:
 tvyqqt  button "My issues" [description "Go to another list, key G"]
         text "/"
-5eas2b  button "Refresh" [description "Ask Linear for the issues again"]
-rcfzep  button "New issue" [description "Write an issue and add it to Linear"]
 kkd8ks  menuitem "In Progress, 4" [expanded]
 w35jhj  menuitem "ACM-412, Add rate limiting to the public API" [selected]
 7jqnj6    checkbox "Select" [unchecked]
@@ -22,6 +20,7 @@ cmgnvk  menuitem "ACM-409, Empty state for the audit log"
 5323pm  menuitem "ACM-402, Move the cron jobs to the queue"
 bhrsjb  menuitem "ACM-396, Search matches only the first word"
 zfkyy4  menuitem "Backlog, 2" [collapsed]
+ptz1sk  slider "Panel width" [value "484 pt"]
 waac17  button "Work on issue" [description "Start an agent on it, in a pane beside this one"]
 wx7gpn  button "Open in Linear" [description "Open the issue in your browser"]
 zd6rfy  button "Close"
@@ -56,6 +55,8 @@ rfjrkn  button "Edit description" [description "Edit the words of the descriptio
         text "Mert"
         text "Nov 8"
         text "Keep a fallback for when Redis is down. We cannot fail closed on reads."
+        text "⇧"
+        text "M"
         text "↑"
         text "↓"
         text "move"
@@ -70,10 +71,18 @@ rfjrkn  button "Edit description" [description "Edit the words of the descriptio
         text "G"
         text "go to"
 3n5n4k  button "filters"
+        text "⌘"
+        text "R"
+        text "refresh"
+        text "C"
+        text "new issue"
 b2gqrr  button "palette" [description "Find a command"]
 c9zsn1  button "help" [description "Show the keys"]
 fields:
 dxc3be  field "Filter issues"
+editors:
+tb964x  editor "Comment" lines 1-1 of 1, caret 1:1
+  1| 
 scrolls:
 tjhhq5  scroll 0% (at the top)
 commands:
@@ -98,6 +107,8 @@ commands:
   "Open in Linear" [shift+o]
   "Open the parent issue" [shift+cmd+up]
   "Open a sub-issue or a related issue" [shift+cmd+down]
+  "Widen the panel" [shift+cmd+left]
+  "Narrow the panel" [shift+cmd+right]
   "Scroll the issue down" [space]
   "Scroll the issue up" [shift+space]
   "Work on the issue" [w]

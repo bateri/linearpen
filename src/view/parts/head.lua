@@ -1,13 +1,14 @@
--- The head of the page, the whole width of it (what stands beside the list is under it): the list
--- that is shown (its name, its count, and the card of lists it opens), the filter (with how many it
--- lets through inside it), Refresh and New issue. Each is where it is and as wide as it is whatever
--- the page is doing: what is selected, what is under the cursor and the issue that is open change
--- nothing in it. The head is one row, the list at the left and the filter at the right (the same width
--- whatever the list is called: a long name is cut in its button); where the pane has no room for both
--- the filter has a row of its own. Refresh and New issue leave for the line of keys as the pane
--- narrows. Under them, where there is something to say, the row of the filters of the list
+-- The head of the list, over it and as wide as it is (what stands beside the list has the page from
+-- its top: `page.lua`): the list that is shown (its name, its count, and the card of lists it opens),
+-- the filter (with how many it lets through inside it), Refresh and New issue. Each is where it is and
+-- as wide as it is whatever the list is doing: what is selected, what is under the cursor and what is
+-- typed change nothing in it. The head is one row, the list at the left and the filter at the right
+-- (the same width whatever the list is called: a long name is cut in its button); where the head has
+-- no room for both the filter has a row of its own. As the room narrows (a narrower pane, or an issue
+-- opened beside the list) the filter gives way first, then Refresh and New issue leave for the line of
+-- keys. Under them, where there is something to say, the row of the filters of the list
 -- (`filters.lua`). Where the issue or a form takes a pane too narrow for the list beside it, the head
--- is not drawn (`page.lua`): it is the list's.
+-- is not drawn: it is the list's.
 
 local kit = require("../lib/kit")
 local commands = require("./commands")
@@ -226,14 +227,14 @@ local function new_button()
 	}))
 end
 
-function head.view()
-	local width = S.width
+-- The head, `width` points wide: the list's room.
+function head.view(width)
 	local stacked = width < SIZE.stacked
 	local bar = b.div():row():items_center():gap(10):pt(SIZE.head_top):pb(SIZE.head_bottom):px(SIZE.pad):no_shrink()
 	bar:child(lists_button())
 	bar:child(b.spacer())
 	if not stacked then
-		bar:child(filter_box(width >= SIZE.wide and SIZE.filter_wide or SIZE.filter))
+		bar:child(filter_box(width >= SIZE.filter_room and SIZE.filter_wide or SIZE.filter))
 	end
 	if width >= SIZE.wide then
 		bar:child(refresh_button())
@@ -245,8 +246,16 @@ function head.view()
 	if stacked then
 		box:child(b.div():px(SIZE.pad):pb(8):child(filter_box(nil)))
 	end
+	-- The row of the filters opens to its lines and closes, the list under it following its edge, where
+	-- the terminal's kit makes a box follow its size; where it has not, it comes and goes at once.
 	local row = filters.view()
-	if row ~= nil then
+	if kit.has("motion.auto_size") then
+		local holder = b.div():id("filters-holder"):col():no_shrink():motion({ seconds = 0.24, auto_size = true })
+		if row ~= nil then
+			holder:child(row:motion({ exit = { opacity = 1, seconds = 0.24 } }))
+		end
+		box:child(holder)
+	elseif row ~= nil then
 		box:child(row)
 	end
 	return box

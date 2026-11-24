@@ -65,6 +65,11 @@ function act.view(params, after)
 end
 
 -- Asks Linear for the lists again.
+-- Keeps how wide what stands beside the list was left (`panel_width`); nothing is waited for.
+function act.panel_width(width)
+	kit.call("panel_width", { width = width })
+end
+
 function act.refresh()
 	if S.refreshing then
 		return
@@ -127,6 +132,10 @@ function data.start()
 			return true
 		end
 		S.boot = boot
+		-- (A width the person left before; the page's width holds it.)
+		if type(boot.panel) == "number" then
+			act.keep_width(boot.panel)
+		end
 		S.has_key = boot.key ~= "none"
 		S.key_problem = boot.problem
 		if not S.has_key then

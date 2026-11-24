@@ -42,6 +42,19 @@ local function line(name, look)
 		:motion({ seconds = u.theme.motion, color = true })
 end
 
+-- The arrow of a group's head, which points at its lines where they are open and turns to them as the
+-- group opens (and back as it folds), where the terminal's kit turns what it draws.
+local function arrow(key, closed)
+	local drawn = icons.arrow(true)
+	if not kit.has("element.transform") or drawn.transform == nil then
+		return icons.arrow(closed)
+	end
+	return drawn
+		:id("arrow:" .. key)
+		:transform({ rotate = closed and 0 or 90 })
+		:motion({ transform = true, seconds = 0.24 })
+end
+
 -- The head of a group: its arrow, the circle of its state, its name and how many it holds. It is
 -- as tall as an issue, with four points above it that set it apart from the group before.
 function row.group(item, look, late)
@@ -51,7 +64,7 @@ function row.group(item, look, late)
 		:label(string.format("%s, %d", group.name, group.count))
 		:selected(look.selected)
 		:expanded(not group.closed)
-	inner:child(icons.arrow(group.closed))
+	inner:child(arrow(item.key, group.closed))
 	inner:child(icons.state(group.kind, late))
 	inner:child(b.text(group.name):weight(700):color(group.closed and "dim" or "foreground"):no_shrink())
 	inner:child(b.text(tostring(group.count)):text_size(SIZE.small):color("dim"):no_shrink())
@@ -180,12 +193,15 @@ local function agent(id, working)
 		:border(1, b.alpha("foreground", over and 0.22 or 0.1))
 		:motion({ seconds = t.motion, color = true })
 	if working.idle then
-		-- (The state is in the label too, for what reads the page aloud.)
+		-- (The state is in the label too, for what reads the page aloud.) The dot breathes, slowly, where
+		-- the terminal's kit loops: the agent may wait for the person.
 		local stopped = working.agent .. " has stopped: it is done, or it waits for you"
+		local dot = b.div():size(7, 7):rounded(4):bg("warning")
+		if kit.has("motion.loop") then
+			dot:motion({ loop = { seconds = 1.6, opacity = 0.35 } })
+		end
 		return mark:label(go .. ", " .. stopped):tip(stopped .. ". Go to its pane"):child(
-			b.div():id(row.idle_name(id)):size(12, 12):items_center():justify_center():no_shrink():child(
-				b.div():size(7, 7):rounded(4):bg("warning")
-			)
+			b.div():id(row.idle_name(id)):size(12, 12):items_center():justify_center():no_shrink():child(dot)
 		):child(b.text(go):text_size(SIZE.small):color("warning"):no_shrink())
 	end
 	return mark:label(go .. ", at work"):tip(working.agent .. " works on it. Go to its pane"):child(

@@ -65,6 +65,14 @@ kh1dpj    button "Close"
           text "⌘"
           text "↓"
           text "Open a sub-issue or a related issue"
+          text "⇧"
+          text "⌘"
+          text "←"
+          text "Widen the panel"
+          text "⇧"
+          text "⌘"
+          text "→"
+          text "Narrow the panel"
           text "Space"
           text "Scroll the issue down"
           text "⇧"
@@ -105,12 +113,6 @@ kh1dpj    button "Close"
           text "⌘"
           text "E"
           text "Open the link"
-          text "⇧"
-          text "⌘"
-          text "K"
-          text "Copy the file's link"
-          text "C"
-          text "New issue"
 scrolls:
 1v22rg  scroll 0% (at the top)
 commands:
@@ -135,6 +137,8 @@ commands:
   "Open in Linear" [shift+o] (disabled)
   "Open the parent issue" [shift+cmd+up] (disabled)
   "Open a sub-issue or a related issue" [shift+cmd+down] (disabled)
+  "Widen the panel" [shift+cmd+left] (disabled)
+  "Narrow the panel" [shift+cmd+right] (disabled)
   "Scroll the issue down" [space] (disabled)
   "Scroll the issue up" [shift+space] (disabled)
   "Work on the issue" [w] (disabled)

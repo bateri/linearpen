@@ -2,8 +2,6 @@ focus: editor tb964x
 items:
 tvyqqt  button "My issues" [description "Go to another list, key G"]
         text "/"
-5eas2b  button "Refresh" [description "Ask Linear for the issues again"]
-rcfzep  button "New issue" [description "Write an issue and add it to Linear"]
 kkd8ks  menuitem "In Progress, 4" [expanded]
 w35jhj  menuitem "ACM-412, Add rate limiting to the public API" [selected]
 7jqnj6    checkbox "Select" [unchecked]
@@ -22,6 +20,7 @@ cmgnvk  menuitem "ACM-409, Empty state for the audit log"
 5323pm  menuitem "ACM-402, Move the cron jobs to the queue"
 bhrsjb  menuitem "ACM-396, Search matches only the first word"
 zfkyy4  menuitem "Backlog, 2" [collapsed]
+ptz1sk  slider "Panel width" [value "484 pt"]
 waac17  button "Work on issue" [description "Start an agent on it, in a pane beside this one"]
 wx7gpn  button "Open in Linear" [description "Open the issue in your browser"]
 zd6rfy  button "Close"
@@ -36,6 +35,7 @@ gnzqed  button "Assignee" [collapsed, value "Me"]
 tr9yaf  button "Cycle" [collapsed, value "Cycle 12"]
 fn7g2r  button "Estimate" [collapsed]
 6tfb7f  button "Due date" [collapsed]
+        text "The public API has no limit per key. On Nov 3 one customer’s import script took the read replicas down."
         text "What we want"
         text "•"
         text "A limit per API key, 600 requests a minute unless the plan says more"
@@ -89,6 +89,8 @@ commands:
   "Open in Linear" [shift+o] (disabled)
   "Open the parent issue" [shift+cmd+up] (disabled)
   "Open a sub-issue or a related issue" [shift+cmd+down] (disabled)
+  "Widen the panel" [shift+cmd+left] (disabled)
+  "Narrow the panel" [shift+cmd+right] (disabled)
   "Scroll the issue down" [space] (disabled)
   "Scroll the issue up" [shift+space] (disabled)
   "Work on the issue" [w] (disabled)

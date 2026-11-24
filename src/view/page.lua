@@ -329,6 +329,10 @@ for number = 3, 9 do
 	end
 end
 -- The agent of the one issue the keys are for, where one works on it.
+-- What stands beside the list can be sized: it is beside it (not over it), and no words are being written.
+commands.when.sizable = function()
+	return commands.when.idle() and S.panel_open and not S.covered and not S.writing
+end
 commands.when.reachable = function()
 	return commands.when.idle() and work.agent_of(context.single()) ~= nil
 end
@@ -430,11 +434,13 @@ end
 local SWEEP = 1.2
 local LIGHT = 0.3
 
--- The line along the top of what is under the head (the list and the issue beside it, or the issue or
--- the form that has the pane) while Linear is asked for the lists again (Refresh, the five minutes, an
--- issue made), and then for the issue open: the same in every width, where the button of Refresh is or
--- is not. It is out of the flow, over the top of them, so nothing moves when it comes or goes. A list
--- that is coming says so in its own place and has none. Under Reduce Motion it is lit and still.
+-- The line along the top of the page (over the list and its head and the issue beside it, or the issue
+-- or the form that has the pane) while Linear is asked for the lists again (Refresh, the five minutes,
+-- an issue made), and then for the issue open: the same in every width, where the button of Refresh is
+-- or is not. It is out of the flow, over the top of them, so nothing moves when it comes or goes. A list
+-- that is coming says so in its own place and has none. Its light crosses it, moved by the terminal (a
+-- loop: the page is not drawn again for it), or by the page frame by frame where the terminal's kit has
+-- no loop. Under Reduce Motion it is lit and still.
 local function refreshing()
 	if not (S.refreshing or panel.again()) or S.issues.listing ~= "ready" then
 		return nil
@@ -443,10 +449,16 @@ local function refreshing()
 	if u.reduce_motion then
 		return line:bg(b.alpha("accent", 0.6))
 	end
-	u:animate()
 	local light = S.width * LIGHT
+	local lit = b.div():id("refreshing-light"):absolute():size(light, 2):bg("accent")
+	if kit.has("motion.loop") then
+		return line:child(lit:inset(0, nil, nil, -light):motion({
+			loop = { seconds = SWEEP, dx = S.width + light, ease = "linear", alternate = false },
+		}))
+	end
+	u:animate()
 	local at = (S.now % SWEEP) / SWEEP * (S.width + light) - light
-	return line:child(b.div():id("refreshing-light"):absolute():inset(0, nil, nil, at):size(light, 2):bg("accent"))
+	return line:child(lit:inset(0, nil, nil, at))
 end
 
 -- `row` (what is under the head) with the line over its top while Linear is asked.
@@ -470,9 +482,31 @@ local function side(width)
 	return panel.view(width)
 end
 
--- The head, the whole width of the page, and under it the list and, beside it, the issue or a form. In
--- a pane too narrow for both, the issue or the form has the pane to itself: the head is the list's, and
--- it goes with the list (`commands.when.headed`).
+-- What stands beside the list (or has the pane), `width` points wide, in a box that comes in from the
+-- right as it opens. The box is the same for the issue and the forms, so going from one issue to the
+-- next, or from the issue to a form, does not bring it in again.
+local function beside(width)
+	return b.div()
+		:id("side")
+		:row()
+		:w(width)
+		:h_full()
+		:min_h(0)
+		:no_shrink()
+		:motion({ enter = { opacity = 0, dx = 24, seconds = 0.24 } })
+		:child(side(width))
+end
+
+-- The edge between the list and what stands beside it, the kit's split: dragged (or moved with the arrow
+-- keys while it has the keyboard, or with the page's own keys, `commands.lua`) it sizes what stands
+-- beside the list, between `SIZE.side_least` and what leaves the list its whole head (`panel.most`). Its
+-- state is the width drawn: what the person left it at, held by the page's width (`panel.width`).
+local EDGE = "side-edge"
+local edge = { size = SIZE.side_least, drawer = false }
+
+-- The list and its head, and beside them the issue or a form from the top of the page to the line of
+-- keys, the edge between them. In a pane too narrow for both, the issue or the form has the pane to
+-- itself: the head is the list's, and it goes with the list (`commands.when.headed`).
 local function listing()
 	local page = b.div():col():grow(1):min_h(0)
 	if pictures.is_open() then
@@ -480,10 +514,10 @@ local function listing()
 		return page:child(pictures.view())
 	end
 	if S.covered then
-		return page:child(lined(b.div():row():grow(1):min_h(0):child(side(S.width))))
+		return page:child(lined(b.div():row():grow(1):min_h(0):child(beside(S.width))))
 	end
-	page:child(head.view())
 	local left = b.div():col():grow(1):min_w(0):min_h(0)
+	left:child(head.view(S.room))
 	local banner = problem()
 	if banner ~= nil then
 		left:child(banner)
@@ -493,11 +527,32 @@ local function listing()
 		left:child(strip)
 	end
 	left:child(body())
-	local row = b.div():row():grow(1):min_h(0):child(left)
-	if S.panel_open then
-		row:child(side(panel.width(S.width)))
+	local row = b.div():row():grow(1):min_h(0)
+	if not S.panel_open then
+		return page:child(lined(row:child(left)))
 	end
-	return page:child(lined(row))
+	local width = panel.width(S.width)
+	edge.size = width
+	return page:child(lined(row:child(u:split(EDGE, {
+		state = edge,
+		side = "end",
+		min = SIZE.side_least,
+		max = panel.most(S.width),
+		label = "Panel width",
+		first = left,
+		second = beside(width),
+	}))))
+end
+
+-- Sizes what stands beside the list by `by` points, as far as it goes, and keeps it. The reply.
+local function size_side(by)
+	local now = panel.width(S.width)
+	local to = math.min(math.max(now + by, SIZE.side_least), panel.most(S.width))
+	if to ~= now then
+		panel.keep(to)
+		act.panel_width(to)
+	end
+	return true
 end
 
 local function render(size, now, reduce_motion)
@@ -512,10 +567,11 @@ local function render(size, now, reduce_motion)
 	S.editing = S.screen == "list" and change.editing()
 	S.writing = S.screen == "list" and (comment.typing() or edit.typing())
 	S.panel_open = S.screen == "list" and (panel.is_open() or S.form_open)
-	S.room = (S.panel_open and S.width >= 760) and S.width - panel.width(S.width) or S.width
 	-- The issue or a form has the whole pane (it is too narrow for the list beside it): the list and its
 	-- head are not on the page, and no key is theirs.
-	S.covered = S.panel_open and S.width < 760
+	S.covered = S.panel_open and S.width < SIZE.beside
+	-- The list's room, and its head's: the page's, less what stands beside it and the edge between them.
+	S.room = (S.panel_open and not S.covered) and S.width - panel.width(S.width) - SIZE.edge or S.width
 	S.alone = S.covered and panel.is_open() and not S.form_open
 	local root = b.div():size_full():col():bg("background"):color("foreground"):family("terminal")
 	if S.screen == "boot" then
@@ -593,6 +649,10 @@ local function command(id)
 		return context.copy("link", context.single())
 	elseif id == "share" then
 		return context.copy("share", context.single())
+	elseif id == "widen" then
+		return size_side(SIZE.side_step)
+	elseif id == "narrow" then
+		return size_side(-SIZE.side_step)
 	elseif id == "link" then
 		return context.link(context.single())
 	elseif id == "comment" then
@@ -709,7 +769,8 @@ local function press(id)
 	elseif id == "panel-title-edit" then
 		return panel.rename()
 	elseif id == "picture-close" then
-		return pictures.close()
+		-- (Pressed with the pointer: the keyboard stays the list's, as after any press, `keyboard_back`.)
+		return pictures.close(true)
 	elseif string.sub(id, 1, 4) == "pic:" or string.sub(id, 1, 10) == "file-open:" then
 		return pictures.open(id)
 	elseif string.sub(id, 1, 10) == "file-save:" or id == "pdf-save" then
@@ -830,6 +891,14 @@ local function on_action(action)
 		return true
 	elseif from == "commands" and kind == "command" then
 		return command(action.id)
+	elseif from == EDGE and kind == "resize" then
+		-- The edge goes with the pointer; where it is let go (or a key moved it) the width is kept.
+		local width = math.floor(action.size + 0.5)
+		panel.keep(width)
+		if action.final then
+			act.panel_width(width)
+		end
+		return true
 	end
 	return true
 end

@@ -11,7 +11,7 @@ mod common;
 use std::time::Duration;
 
 use common::{Home, KEY, Script, answers, host, program, pushes, run};
-use serde_json::json;
+use serde_json::{Value, json};
 
 /// The script of a run that has a key in its environment, as one that is started from a shell.
 fn keyed() -> Script {
@@ -39,6 +39,29 @@ fn the_view_is_opened_and_the_page_boots() {
     assert_eq!(boot["version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(boot["key"], "environment");
     assert!(boot["problem"].is_null());
+}
+
+#[test]
+fn the_width_the_issue_was_left_at_is_kept_and_the_next_boot_tells_it() {
+    let home = Home::new();
+    let heard = home.ask(
+        &Script::new()
+            .call("boot", json!({}))
+            .call("panel_width", json!({ "width": 560 }))
+            .call("panel_width", json!({ "width": 199 }))
+            .call("panel_width", json!({ "width": "wide" }))
+            .call("panel_width", json!({ "width": 600, "more": true })),
+    );
+    assert_eq!(heard[0].result()["panel"], Value::Null, "{:?}", heard[0]);
+    assert_eq!(heard[1].result(), &json!({}), "{:?}", heard[1]);
+    for refused in &heard[2..] {
+        assert!(refused.failed("bad-params"), "{refused:?}");
+    }
+    // The next run is told the width that was kept, and nothing of it is Linear's.
+    let again = home.ask(&Script::new().call("boot", json!({})));
+    assert_eq!(again[0].result()["panel"], 560, "{:?}", again[0]);
+    let file = std::fs::read_to_string(home.path("state").join("linearpen/prefs.json")).unwrap();
+    assert_eq!(file.trim(), r#"{"panel":560}"#);
 }
 
 #[test]

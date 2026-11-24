@@ -629,8 +629,9 @@ function pictures.turn(step)
 	return page_to(Pc.big.page + step)
 end
 
--- The file is put away, and the keyboard is on it in the text again. The reply.
-function pictures.close()
+-- The file is put away, and the keyboard is on it in the text again, unless it was put away with the
+-- pointer (`pointer`): a press leaves the keyboard the list's. The reply.
+function pictures.close(pointer)
 	local big = Pc.big
 	Pc.big = nil
 	if big == nil then
@@ -642,6 +643,9 @@ function pictures.close()
 	if Pc.scroll ~= nil then
 		act.panel_scroll(Pc.scroll)
 		Pc.scroll = nil
+	end
+	if pointer then
+		return true
 	end
 	return u:focus(big.id)
 end

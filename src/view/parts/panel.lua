@@ -37,21 +37,46 @@ local panel = {}
 -- `serial` numbers the menu of the neighbours (a pick of an older one is not one).
 -- `room` is the points the text of an issue has across, as it was drawn last (the pictures of the text
 -- are no wider).
-local P = { open = nil, kept = {}, asked = {}, told = {}, again = nil, pin = nil, near = nil, serial = 0, room = 400 }
+-- (`width` is what the person sized what stands beside the list to, or nil: `panel.width`.)
+local P = { open = nil, kept = {}, asked = {}, told = {}, again = nil, pin = nil, near = nil, serial = 0, room = 400, width = nil }
 panel.state = P
 
 -- The box that scrolls: the description and the comments.
 local SCROLL = "panel-scroll"
 
--- The room an issue takes beside the list (the page is this wide), points: a part of the page, held
--- between two widths; a pane too narrow for both takes the whole of it.
+-- The most what stands beside the list takes of a page `page` points wide: what leaves the list the
+-- room of the fullest head it can have beside the least of it (past the edge between them): the whole
+-- head, else the head with New issue, else the head in one row; and never less than the least. (Where
+-- the head cannot be whole the issue is not made narrower for it: it would not be whole either way.)
+local HEADS = { SIZE.wide, SIZE.roomy, SIZE.stacked }
+function panel.most(page)
+	for _, head in HEADS do
+		local most = page - SIZE.edge - head
+		if most >= SIZE.side_least then
+			return most
+		end
+	end
+	return SIZE.side_least
+end
+
+-- The room the issue (or a form) takes beside the list, the page this wide, points: as wide as the
+-- person left it (its edge dragged, or the keys), or until they do a part of the page up to
+-- `SIZE.side_most`; held between the least (the three buttons over an issue are whole) and what leaves
+-- the list its whole head. A pane too narrow for both gives it the whole of it.
 function panel.width(page)
-	if page < 760 then
+	if page < SIZE.beside then
 		return page
 	end
-	-- (At least 420: the three buttons over an issue are whole in it.)
-	return math.floor(math.min(520, math.max(420, page * 0.44)) + 0.5)
+	local want = P.width or math.min(SIZE.side_most, page * SIZE.side_share)
+	return math.floor(math.min(math.max(want, SIZE.side_least), panel.most(page)) + 0.5)
 end
+
+-- Keeps the width the person sized it to (the page's width holds it between its bounds).
+function panel.keep(width)
+	P.width = width
+end
+-- (The width the person left it at before, which `boot` tells.)
+act.keep_width = panel.keep
 
 function panel.is_open()
 	return P.open ~= nil
@@ -894,11 +919,8 @@ function panel.view(width)
 	content:child(
 		b.div():id(SCROLL):grow(1):min_h(0):scroll():col():pt(14):px(SIZE.pad):pb(SIZE.pad):child(body(entry))
 	)
-	local side = b.div():row():w(width):no_shrink():min_h(0)
-	if width < S.width then
-		side:child(b.div():w(1):bg(b.alpha("foreground", 0.23)):no_shrink())
-	end
-	return side:child(content)
+	-- (Beside the list, the edge between them is the page's: `page.lua`.)
+	return b.div():row():w(width):no_shrink():min_h(0):child(content)
 end
 
 return panel

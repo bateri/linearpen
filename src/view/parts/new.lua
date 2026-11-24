@@ -588,10 +588,8 @@ function new.view(width)
 	end
 	content:child(made)
 	-- (The form has a name: a drop on it is the new issue's.)
+	-- (Beside the list, the edge between them is the page's: `page.lua`.)
 	local side = b.div():id("new-form"):row():w(width):no_shrink():min_h(0)
-	if width < S.width then
-		side:child(b.div():w(1):bg(b.alpha("foreground", 0.23)):no_shrink())
-	end
 	return side:child(b.div():id(SCROLL):scroll():col():grow(1):min_w(0):min_h(0):pb(SIZE.pad):child(content))
 end
 

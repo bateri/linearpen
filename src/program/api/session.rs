@@ -1,4 +1,4 @@
-//! The calls about the session: `boot`, `connect`, `view` and `refresh`.
+//! The calls about the session: `boot`, `connect`, `view`, `refresh` and `panel_width`.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -13,6 +13,7 @@ use super::{Failure, call};
 use crate::linear::{self, Filters, Key, Scope};
 use crate::session::Session;
 use crate::state::credentials::{self, Source};
+use crate::state::prefs;
 
 /// The longest filter (or the longest words of a search) taken, in characters, and the most groups
 /// folded one way or the other.
@@ -32,6 +33,8 @@ struct Boot {
     problem: Option<String>,
     /// What the form that hands issues to an agent was last left at, to open it with.
     prefs: Remembered,
+    /// How wide the person last left what stands beside the list, points.
+    panel: Option<u32>,
 }
 
 fn boot(session: &Session, _: Nothing) -> Result<Boot, Failure> {
@@ -53,6 +56,11 @@ fn boot(session: &Session, _: Nothing) -> Result<Boot, Failure> {
         key,
         problem,
         prefs: remembered(session),
+        panel: session
+            .paths
+            .state
+            .as_deref()
+            .and_then(|state| prefs::load(state).panel),
     })
 }
 
@@ -206,9 +214,35 @@ fn refresh(session: &Session, _: Nothing) -> Result<Done, Failure> {
 #[derive(Serialize)]
 struct Done {}
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PanelWidth {
+    width: u32,
+}
+
+/// Keeps how wide the person left what stands beside the list, for the next `boot`, beside the form's
+/// words. Best effort: a file that cannot be written is let be.
+fn panel_width(session: &Session, params: PanelWidth) -> Result<Done, Failure> {
+    if !prefs::is_panel(params.width) {
+        return Err(Failure::BadParams(format!(
+            "width is {}: a width is {} to {} points",
+            params.width,
+            prefs::PANEL_LEAST,
+            prefs::PANEL_MOST
+        )));
+    }
+    if let Some(state) = session.paths.state.as_deref() {
+        let mut kept = prefs::load(state);
+        kept.panel = Some(params.width);
+        let _ = prefs::save(state, &kept);
+    }
+    Ok(Done {})
+}
+
 pub fn calls(options: Options, session: &Arc<Session>) -> Options {
     let options = call(options, session, "boot", boot);
     let options = call(options, session, "connect", connect);
     let options = call(options, session, "view", view);
+    let options = call(options, session, "panel_width", panel_width);
     call(options, session, "refresh", refresh)
 }

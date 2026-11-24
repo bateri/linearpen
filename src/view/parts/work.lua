@@ -528,11 +528,8 @@ function work.view(width)
 	local box = b.div():col():grow(1):min_w(0):min_h(0):child(top)
 	box:child(b.div():h(1):bg(b.alpha("foreground", 0.18)):no_shrink())
 	box:child(b.div():id("work-scroll"):scroll():col():grow(1):min_w(0):min_h(0):pb(SIZE.pad):child(content))
-	local side = b.div():row():w(width):no_shrink():min_h(0)
-	if width < S.width then
-		side:child(b.div():w(1):bg(b.alpha("foreground", 0.23)):no_shrink())
-	end
-	return side:child(box)
+	-- (Beside the list, the edge between them is the page's: `page.lua`.)
+	return b.div():row():w(width):no_shrink():min_h(0):child(box)
 end
 
 -- --- What the person does ------------------------------------------------------------------------

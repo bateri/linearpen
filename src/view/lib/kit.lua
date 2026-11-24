@@ -195,6 +195,13 @@ end
 -- through here, so that no two parts require each other.
 local act = {}
 
+-- Whether the terminal's kit has `name`, one of what came to it after its first (`pencere.has`: a
+-- motion's `loop`, an element's `transform`): the page is run by the terminal's kit, which may be older
+-- than the page, and draws without what it has not.
+local function has(name)
+	return b.has ~= nil and b.has(name) == true
+end
+
 return {
 	b = b,
 	u = u,
@@ -202,6 +209,7 @@ return {
 	S = S,
 	SIZE = SIZES,
 	act = act,
+	has = has,
 	gather = gather,
 	take = take,
 	call = call,

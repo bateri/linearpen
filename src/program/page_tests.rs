@@ -21,6 +21,8 @@ use crate::state::Paths;
 
 /// A page as large as the docs' pictures, and an 80×24 pane.
 pub(crate) const WIDE: (f32, f32) = (1100.0, 720.0);
+/// A page wide enough for the list's head to keep all of it with an issue beside the list.
+pub(crate) const WHOLE: (f32, f32) = (1400.0, 720.0);
 pub(crate) const PANE: (f32, f32) = (600.0, 330.0);
 
 /// How long a test waits for what the program says on its own (a list, a call).
@@ -1841,8 +1843,8 @@ fn a_pane_too_narrow_for_the_list_and_the_field_in_one_row_keeps_two() {
 #[test]
 #[ignore = "opens the kit's interpreter: make test-page"]
 fn a_key_with_no_button_for_want_of_room_is_said_on_the_line_of_keys() {
-    // 820 points: room for New issue (760) but not for Refresh (880).
-    let (_linear, _session, page) = open_lists((820.0, 500.0));
+    // 800 points: room for New issue (760) but not for Refresh (820).
+    let (_linear, _session, page) = open_lists((800.0, 500.0));
     assert!(page.bounds("new").is_some(), "{}", said(&page));
     assert!(page.bounds("refresh").is_none(), "{}", said(&page));
     assert!(page.says("refresh"), "{}", said(&page));
@@ -1910,6 +1912,8 @@ pub(crate) fn open_the_issue(page: &mut Page) {
     page.press("enter").expect("enter");
     page.wait_for(WITHIN, |page| page.says("API key"))
         .unwrap_or_else(|why| panic!("the description comes: {why:?}: {}", said(page)));
+    // (It comes in from the right: what is measured or pressed is where it stays.)
+    page.idle().expect("the issue is in its place");
 }
 
 #[test]
@@ -3538,6 +3542,8 @@ pub(crate) fn open_new(page: &mut Page) {
     page.press("c").expect("c");
     page.wait_for(WITHIN, |page| page.bounds("new-value:state").is_some())
         .unwrap_or_else(|why| panic!("the form opens: {why:?}: {}", said(page)));
+    // (It comes in from the right: what is measured or pressed is where it stays.)
+    page.idle().expect("the form is in its place");
 }
 
 /// The titles of the entries of the menu that is open.
@@ -3863,6 +3869,8 @@ fn a_filter_chip_tells_a_screen_reader_what_it_filters_by() {
     page.press("f").expect("f");
     page.wait_for(WITHIN, |page| pressable(page, "filters:status"))
         .unwrap_or_else(|why| panic!("the row opens: {why:?}: {}", said(&page)));
+    // (It opens to its lines: a chip is pressed where it stays.)
+    page.advance(0.3).expect("the row is open");
     assert_eq!(value_of(&page, "filters:status"), None);
     page.click("filters:status").expect("status");
     turn(&mut page, "In Progress");
@@ -4032,7 +4040,8 @@ fn a_team_made_in_linear_is_offered_to_the_open_form_when_the_lists_come_again()
     let linear = Canned::new(Mode::Fine);
     linear.set_one_team();
     let session = session_over(&linear, Some("lin_api_test"), None);
-    let mut page = open(&session, WIDE, None, "ACM-412").expect("the page opens");
+    // (A page wide enough for the head to keep Refresh beside the form.)
+    let mut page = open(&session, WHOLE, None, "ACM-412").expect("the page opens");
     open_new(&mut page);
     assert!(page.bounds("new-value:team").is_none(), "{}", said(&page));
     linear.make_team();
@@ -5973,6 +5982,85 @@ fn beside_the_narrowest_list_the_three_buttons_over_the_issue_are_whole() {
     assert!(close.x + close.w <= size.0 + 0.5, "{close:?}");
 }
 
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_edge_and_its_keys_size_the_issue_up_to_what_leaves_the_list_its_head_and_the_width_is_kept()
+{
+    let size = (1600.0, 800.0);
+    let (_linear, rig, mut page) = open_machine_left(size, &["claude"], None, |_| {});
+    open_the_issue_under_the_cursor(&mut page);
+    // Until the person sizes it, a part of the page up to 520; the head is whole over the list.
+    let side = page.bounds("side").expect("the issue");
+    assert!((side.w - 520.0).abs() < 0.6, "{side:?}");
+    for name in ["lists", "filter-box", "refresh", "new"] {
+        assert!(page.bounds(name).is_some(), "{name}: {}", said(&page));
+    }
+    // Dragged to the left it is wider, and the width it is let go at is kept.
+    let handle = page.bounds("side-edge/handle").expect("the edge");
+    let from = pencere_view::Point {
+        x: handle.x + handle.w / 2.0,
+        y: handle.y + handle.h / 2.0,
+    };
+    page.drag_between(
+        from,
+        pencere_view::Point {
+            x: from.x - 120.0,
+            y: from.y,
+        },
+    )
+    .expect("the edge is dragged");
+    page.advance(0.3).expect("a moment");
+    let wider = page.bounds("side").expect("the issue");
+    assert!((wider.w - 640.0).abs() < 1.0, "{wider:?}");
+    page.wait_for(WITHIN, |_| kept_width(&rig) == Some(640))
+        .unwrap_or_else(|why| panic!("the width is kept: {why:?}: {:?}", kept_width(&rig)));
+    // As far as it goes: the list keeps the room of its whole head (1600 - 7 - 820).
+    page.drag_between(
+        pencere_view::Point {
+            x: wider.x - 3.5,
+            y: from.y,
+        },
+        pencere_view::Point {
+            x: 100.0,
+            y: from.y,
+        },
+    )
+    .expect("the edge is dragged");
+    page.advance(0.3).expect("a moment");
+    let widest = page.bounds("side").expect("the issue");
+    assert!((widest.w - 773.0).abs() < 1.0, "{widest:?}");
+    for name in ["lists", "filter-box", "refresh", "new"] {
+        let at = page
+            .bounds(name)
+            .unwrap_or_else(|| panic!("{name}: {}", said(&page)));
+        assert!(at.x + at.w <= widest.x, "{name}: {at:?} {widest:?}");
+    }
+    // The keys narrow it a step at a time, and keep each step.
+    page.press("mod+shift+right").expect("the key");
+    page.advance(0.3).expect("a moment");
+    let narrower = page.bounds("side").expect("the issue");
+    assert!((narrower.w - 733.0).abs() < 1.0, "{narrower:?}");
+    page.wait_for(WITHIN, |_| kept_width(&rig) == Some(733))
+        .unwrap_or_else(|why| panic!("the step is kept: {why:?}: {:?}", kept_width(&rig)));
+    // The next time linearpen opens, the issue is as wide as it was left.
+    let mut again = open(&rig.session, size, None, "ACM-412").expect("the page opens again");
+    open_the_issue_under_the_cursor(&mut again);
+    let side = again.bounds("side").expect("the issue");
+    assert!((side.w - 733.0).abs() < 1.0, "{side:?}");
+    // A narrower page holds it: the list keeps its head, and the issue at least 420.
+    again.resize(1300.0, 800.0).expect("the pane narrows");
+    again.advance(0.3).expect("a moment");
+    let held = again.bounds("side").expect("the issue");
+    assert!((held.w - 473.0).abs() < 1.0, "{held:?}");
+    rig.hands.end();
+}
+
+/// The width `prefs.json` keeps for what stands beside the list.
+fn kept_width(rig: &Rig) -> Option<u64> {
+    let text = std::fs::read_to_string(rig.state_dir().join("prefs.json")).ok()?;
+    serde_json::from_str::<serde_json::Value>(&text).ok()?["panel"].as_u64()
+}
+
 // --- The head: its places do not change with the state -------------------------------------------------
 
 /// Where the controls of the head are: the list, the filter, Refresh and New issue.
@@ -6005,6 +6093,32 @@ fn head_is_as_it_was(
     }
 }
 
+/// Whether the head is the list's, with what stands beside the list open: that has the page from its
+/// top, the head is over the list only (every control of it ends before the edge), and the list's button
+/// is where it was without it.
+fn head_is_over_the_list(
+    page: &Page,
+    before: &[(&'static str, Option<pencere_view::Rect>)],
+    when: &str,
+) {
+    let side = page.bounds("side").expect("what stands beside the list");
+    let lists = page.bounds("lists").expect("the list's button");
+    assert!(
+        side.y <= lists.y,
+        "{when}: {side:?} is not from the top, {lists:?}"
+    );
+    for (name, _) in before {
+        if let Some(now) = page.bounds(name) {
+            assert!(
+                now.x + now.w <= side.x - 6.0,
+                "{name} {when}: {now:?} is not left of {side:?}"
+            );
+        }
+    }
+    let (_, was) = before.iter().find(|(name, _)| *name == "lists").unwrap();
+    assert_eq!(Some(lists), *was, "{when}: the list's button moved");
+}
+
 #[test]
 #[ignore = "opens the kit's interpreter: make test-page"]
 fn the_controls_of_the_head_stay_where_they_are_and_as_wide_whatever_the_page_is_doing() {
@@ -6012,15 +6126,15 @@ fn the_controls_of_the_head_stay_where_they_are_and_as_wide_whatever_the_page_is
         let (_linear, _session, mut page) = open_lists(size);
         let before = head_places(&page);
         for (name, at) in &before {
-            // (Refresh is left out of a page narrower than 880: the page's width decides, not its state.)
-            if *name == "refresh" && size.0 < 880.0 {
+            // (Refresh is left out of a page narrower than 820: the page's width decides, not its state.)
+            if *name == "refresh" && size.0 < 820.0 {
                 assert!(at.is_none(), "{name} is not on the page at {size:?}");
                 continue;
             }
             assert!(at.is_some(), "{name} is on the page at {size:?}");
         }
         // Refresh and New issue say their keys (the page's width decides whether they are there).
-        if size.0 >= 880.0 {
+        if size.0 >= 820.0 {
             assert!(
                 page.words_in("refresh").iter().any(|word| word == "⌘R"),
                 "{:?}",
@@ -6055,9 +6169,11 @@ fn the_controls_of_the_head_stay_where_they_are_and_as_wide_whatever_the_page_is
         page.wait_for(WITHIN, |page| !page.says("selected"))
             .unwrap_or_else(|why| panic!("cleared: {why:?}: {}", said(&page)));
         head_is_as_it_was(&page, &before, "with the selection cleared");
-        // An issue opens and closes.
+        // An issue opens and closes: beside it the head is the list's (`head_is_over_the_list`), and
+        // as it was when it closes.
         open_the_issue_under_the_cursor(&mut page);
-        head_is_as_it_was(&page, &before, "with an issue open");
+        head_is_over_the_list(&page, &before, "with an issue open");
+        let beside = head_places(&page);
         page.press("escape").expect("escape");
         page.wait_for(WITHIN, |page| page.bounds("panel-close").is_none())
             .unwrap_or_else(|why| panic!("closed: {why:?}: {}", said(&page)));
@@ -6072,9 +6188,10 @@ fn the_controls_of_the_head_stay_where_they_are_and_as_wide_whatever_the_page_is
         page.press("escape").expect("escape leaves the field");
         page.wait_for(WITHIN, |page| !page.says(" of "))
             .unwrap_or_else(|why| panic!("the filter is gone: {why:?}: {}", said(&page)));
-        // The form of Work on is open: New issue is dim and cannot be pressed, and keeps its key.
+        // The form of Work on is open: the head is as it was beside the issue (the form is as wide), and
+        // New issue, where it has room, is dim and cannot be pressed, and keeps its key.
         open_form(&mut page);
-        head_is_as_it_was(&page, &before, "with the Work on form open");
+        head_is_as_it_was(&page, &beside, "with the Work on form open");
         assert!(
             !pressable(&page, "new"),
             "New issue cannot be pressed with a form open"
@@ -6286,13 +6403,17 @@ fn while_linear_is_asked_again_a_line_over_the_top_of_the_list_says_so_in_every_
         );
         assert!(line.w >= row.w, "{size:?}: {line:?} {row:?}");
         assert_eq!(placed(&page), before, "{size:?}");
-        // Its light goes along it.
+        // Its light goes along it, and the terminal moves it: the page asks for no frame of its own.
         let at = page.bounds("refreshing-light").map(|light| light.x);
         page.advance(0.3).expect("a moment");
         assert_ne!(
             page.bounds("refreshing-light").map(|light| light.x),
             at,
             "{size:?}"
+        );
+        assert!(
+            !page.page().animating_to_rest(),
+            "{size:?}: the page asks for frames of its own for the line"
         );
         linear.set(Mode::Fine);
         page.wait_for(WITHIN, |page| page.bounds("refreshing").is_none())
@@ -7839,7 +7960,8 @@ fn keyed_buttons(page: &Page) -> Vec<(&'static str, &'static str, Option<pencere
 #[test]
 #[ignore = "opens the kit's interpreter: make test-page"]
 fn a_button_says_its_key_and_stays_as_wide_whatever_has_the_keyboard() {
-    let (_linear, _session, mut page) = open_lists(WIDE);
+    // (A page wide enough for the head to keep Refresh and New issue beside the issue.)
+    let (_linear, _session, mut page) = open_lists(WHOLE);
     open_the_controls(&mut page);
     let before = keyed_buttons(&page);
     for (name, key, at) in &before {
@@ -8635,6 +8757,8 @@ fn the_row_of_filters_opens_from_the_line_of_keys_and_a_press_elsewhere_puts_it_
         .expect("the filter on the line of keys is pressed");
     page.wait_for(WITHIN, |page| pressable(page, "filters:project"))
         .unwrap_or_else(|why| panic!("the row opens: {why:?}: {}", said(&page)));
+    // (It opens to its lines: a chip is pressed where it stays.)
+    page.advance(0.3).expect("the row is open");
     page.wait_for(WITHIN, |_| linear.times("FilterOptions") >= 1)
         .expect("the choices are asked for");
     // A chip is pressed with the pointer: its card opens, and the row stays while it is used.
@@ -8681,6 +8805,8 @@ fn the_choices_of_the_filters_are_asked_for_as_the_lists_come_and_a_chip_opens_o
     page.press("f").expect("f");
     page.wait_for(WITHIN, |page| pressable(page, "filters:status"))
         .unwrap_or_else(|why| panic!("the row opens: {why:?}: {}", said(&page)));
+    // (It opens to its lines: a chip is pressed where it stays.)
+    page.advance(0.3).expect("the row is open");
     page.click("filters:status").expect("status");
     assert!(
         picker_titles(&page).contains(&"In Progress".to_owned()),
@@ -8712,6 +8838,8 @@ fn a_chip_pressed_before_its_choices_have_come_opens_its_card_at_once_which_fill
     in_flight(page.press("f"));
     page.wait_for(WITHIN, |page| pressable(page, "filters:labels"))
         .unwrap_or_else(|why| panic!("the row opens: {why:?}: {}", said(&page)));
+    // (It opens to its lines: a chip is pressed where it stays.)
+    in_flight(page.advance(0.3));
     in_flight(page.click("filters:labels"));
     page.wait_for(WITHIN, picker_open)
         .unwrap_or_else(|why| panic!("the card opens at once: {why:?}: {}", said(&page)));
@@ -8783,6 +8911,8 @@ fn a_control_of_the_issue_pressed_while_the_row_of_filters_is_open_is_pressed_an
     page.press("f").expect("f");
     page.wait_for(WITHIN, |page| pressable(page, "filters:status"))
         .unwrap_or_else(|why| panic!("the row opens: {why:?}: {}", said(&page)));
+    // (It opens to its lines: a chip is pressed where it stays.)
+    page.advance(0.3).expect("the row is open");
     let before = page.bounds("panel-value:labels").expect("the labels");
     // The row goes when the button comes up, not when it goes down: the issue under the row does not
     // move from under the pointer while the button is down.
@@ -8795,11 +8925,10 @@ fn a_control_of_the_issue_pressed_while_the_row_of_filters_is_open_is_pressed_an
         "the row goes: {}",
         said(&page)
     );
+    // (The issue has the page from its top, beside the list and its head: the row was never over it,
+    // and it does not move when the row goes.)
     let after = page.bounds("panel-value:labels").expect("the labels");
-    assert!(
-        after.y < before.y,
-        "the issue takes the row's place: {before:?} {after:?}"
-    );
+    assert_eq!(after, before, "the issue stays where it is");
     let card = page.bounds(PICKER).expect("the card");
     assert!(
         card.y >= after.y + after.h,

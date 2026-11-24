@@ -45,8 +45,8 @@ Linear.
 
 The program also writes two things of its own, in `$XDG_STATE_HOME/linearpen` (`~/.local/state/linearpen`)
 and never to Linear: the file of the issue handed to an agent, under `work/` (see `start`), which it
-puts away again when it is older than 14 days, and `prefs.json`, four words (`0600`), which `start`
-keeps and `boot` tells.
+puts away again when it is older than 14 days, and `prefs.json`, four words and a width (`0600`), which
+`start` and `panel_width` keep and `boot` tells.
 
 ## Calls
 
@@ -57,7 +57,8 @@ has a key and has not begun (listening to the topic `issues` begins it too). Par
 
 ```json
 { "version": "0.1.0", "key": "file", "problem": null,
-  "prefs": { "agent": "codex", "folder": "here", "place": "tab", "status": "keep" } }
+  "prefs": { "agent": "codex", "folder": "here", "place": "tab", "status": "keep" },
+  "panel": 560 }
 ```
 
 `key` says where the key is from: `none` (the page shows Connect), `environment` or `file`.
@@ -71,6 +72,11 @@ file does not say it, is not a word of the form's, or the file is missing or can
 the agent is installed is not told here: the page takes what it cannot have away when `work_options`
 says what can be chosen. The words the person writes for the agent are not kept: they are for one
 start.
+
+`panel` is how wide, in points, the person last left what stands beside the list (the issue, or a form)
+by dragging its edge or with the keys (`panel_width`): a whole number from 200 to 4000, or null where the
+file does not say it, says something else, or is missing or cannot be read. The page holds it between
+what the page's width allows.
 
 ### `connect`
 
@@ -747,6 +753,14 @@ look-before-again words where no answer came after it was sent.
 Asks Linear for My issues and the list shown again, for the names of the lists the page can go to, and
 for the teams and choices of a new issue and each issue opened (`issue`) the next time they are needed. It answers at once with `{}`; the topic tells the lists when they come. Params: none. Errors:
 `no-key`.
+
+### `panel_width`
+
+Keeps how wide the person left what stands beside the list, for `boot` to tell the next time the pen
+opens (in `prefs.json`, beside the form's words, which it leaves as they are). The page calls it when a
+drag of the edge is let go and at each step of the keys, not while the edge moves. Params:
+`{ "width": 560 }`, a whole number of points from 200 to 4000; anything else is `bad-params`. Answer: `{}`.
+It is a convenience: a file that cannot be written is let be, and the answer is the same.
 
 ## Topic
 

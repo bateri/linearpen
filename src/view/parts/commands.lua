@@ -43,6 +43,9 @@ local TABLE = {
 		keys = { "mod+shift+down" },
 		when = "neighboured",
 	},
+	-- The edge between the list and the issue: the arrow says where the edge goes.
+	{ id = "widen", title = "Widen the panel", group = "Issue", keys = { "mod+shift+left" }, when = "sizable" },
+	{ id = "narrow", title = "Narrow the panel", group = "Issue", keys = { "mod+shift+right" }, when = "sizable" },
 	{ id = "read_down", title = "Scroll the issue down", group = "Issue", keys = { "space" }, when = "reading" },
 	{ id = "read_up", title = "Scroll the issue up", group = "Issue", keys = { "shift+space" }, when = "reading" },
 	{ id = "work", title = "Work on the issue", group = "Issue", keys = { "w" }, when = "workable" },
