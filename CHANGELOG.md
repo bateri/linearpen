@@ -6,6 +6,8 @@
 
 - **Size the issue.** Drag the edge between the list and the issue (or press `Cmd Shift Left` and
   `Cmd Shift Right`) to make the issue wider or narrower. linearpen opens it as wide the next time.
+- **One click opens an issue.** A line of the list opens its issue (or project) beside the list with
+  one click, as in Linear, not two; a double click out of habit does not press what opens under it.
 - **Work on gives way to the line you choose.** With the form of Work on open, pressing another issue
   in the list puts the form away and opens that issue; what you wrote for the agent is kept for its
   issue.

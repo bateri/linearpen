@@ -10726,3 +10726,30 @@ fn a_line_pressed_while_work_on_is_open_puts_the_form_away_and_opens_its_issue_a
         .unwrap_or_else(|why| panic!("the words are kept: {why:?}: {}", said(&page)));
     rig.hands.end();
 }
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn one_click_on_a_line_opens_its_issue_and_one_on_a_head_only_folds_it() {
+    let (_linear, _session, mut page) = open_lists(WIDE);
+    page.click("row:i:issue-398").expect("a line");
+    page.wait_for(WITHIN, |page| page.bounds("panel-close").is_some())
+        .unwrap_or_else(|why| panic!("its issue opens: {why:?}: {}", said(&page)));
+    page.wait_for(WITHIN, |page| {
+        page.words_in("side").iter().any(|word| word == "ACM-398")
+    })
+    .unwrap_or_else(|why| panic!("it is that one: {why:?}: {:?}", page.words_in("side")));
+    // Another click: the issue beside the list is that line's.
+    page.click("row:i:issue-405").expect("another line");
+    page.wait_for(WITHIN, |page| {
+        page.words_in("side").iter().any(|word| word == "ACM-405")
+    })
+    .unwrap_or_else(|why| panic!("it follows: {why:?}: {:?}", page.words_in("side")));
+    // A head folds its group, and opens nothing.
+    page.press("escape").expect("escape");
+    page.wait_for(WITHIN, |page| page.bounds("panel-close").is_none())
+        .unwrap_or_else(|why| panic!("it closes: {why:?}: {}", said(&page)));
+    page.click("row:g:started:In Progress").expect("a head");
+    page.advance(0.4).expect("a moment");
+    assert!(page.bounds("panel-close").is_none(), "{}", said(&page));
+    assert!(!page.says("ACM-398"), "{}", said(&page));
+}

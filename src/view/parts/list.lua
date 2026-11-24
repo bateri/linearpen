@@ -338,8 +338,8 @@ function list.fold(closed)
 	return true
 end
 
--- A press on the lines: the one it landed on takes the cursor, and a group's head turns over too.
--- Whether the press was on a line.
+-- A press on the lines: the one it landed on takes the cursor, and a group's head turns over too (the
+-- line opens when the button comes up on it: `list.released`). Whether the press was on a line.
 function list.press(event)
 	if (event.button or "left") ~= "left" then
 		return false
@@ -375,9 +375,22 @@ function list.press(event)
 		if (event.count or 1) < 2 then
 			list.fold(nil)
 		end
-	elseif event.count == 2 then
-		act.open_issue(item)
 	end
+	return true
+end
+
+-- The button came up on the line it went down on (`armed`, `over`: the names under the pointer then
+-- and now): an issue (or a project) opens beside the list with one click, as Linear opens it. Not where
+-- the line was dragged away, out of the page or to another line. Whether it was one.
+function list.released(armed, over)
+	if armed == nil or armed ~= over or string.sub(armed, 1, 4) ~= "row:" then
+		return false
+	end
+	local item = L.items[index_of(string.sub(armed, 5)) or 0]
+	if item == nil or item.kind == "group" then
+		return false
+	end
+	act.open_issue(item)
 	return true
 end
 

@@ -1327,7 +1327,13 @@ local function handle(event)
 	elseif kind == "focus" and event.field ~= nil and not picker.holds(event.field) then
 		-- The person clicked into a field (the filter's): the row of the filters is put away.
 		filters.close()
+	elseif kind == "press" and (event.count or 1) >= 2 and S.opened_by_click then
+		-- The second press of a double click whose first opened a line: the issue now stands where the
+		-- line was (in a narrow pane it has the pane), and the press is not for what came under it. (A
+		-- line opens with one click; a double one is the habit of the lists that open with two.)
+		S.armed, S.opened_by_click = nil, false
 	elseif kind == "press" then
+		S.opened_by_click = false
 		if (event.button or "left") == "left" then
 			S.armed = b.layout.hit({ x = event.x, y = event.y })
 			-- (A press elsewhere puts the row of the filters away, when its button comes up: gone while
@@ -1364,6 +1370,14 @@ local function handle(event)
 			and (event.button or "left") == "left"
 		then
 			reply = b.merge(reply, press(armed))
+		elseif
+			S.screen == "list"
+			and not modal()
+			and (event.button or "left") == "left"
+			and list.released(armed, over)
+		then
+			S.opened_by_click = true
+			reply = b.merge(reply, true)
 		elseif not taken then
 			reply = b.merge(reply, markdown.handle(event))
 		end
