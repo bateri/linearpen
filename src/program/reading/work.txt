@@ -40,6 +40,9 @@ dcde2k  button "Start Claude" [description "Start the agent in a new pane"]
         text "←"
         text "→"
         text "choose"
+        text "⌘"
+        text "R"
+        text "refresh"
 b2gqrr  button "palette" [description "Find a command"]
 c9zsn1  button "help" [description "Show the keys"]
 fields:
@@ -108,6 +111,6 @@ commands:
   "Filter by status, label and more" [f] (disabled)
   "Clear the filters" [shift+f] (disabled)
   "Search all of Linear" (disabled)
-  "Ask Linear again" [cmd+r] (disabled)
+  "Ask Linear again" [cmd+r]
   "Find a command" [cmd+k]
   "Show the keys" [?]

@@ -128,6 +128,6 @@ commands:
   "Filter by status, label and more" [f] (disabled)
   "Clear the filters" [shift+f] (disabled)
   "Search all of Linear" (disabled)
-  "Ask Linear again" [cmd+r] (disabled)
+  "Ask Linear again" [cmd+r]
   "Find a command" [cmd+k]
   "Show the keys" [?] (disabled)

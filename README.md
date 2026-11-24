@@ -104,8 +104,8 @@ over the list: drag the edge between them (or press `⌘⇧←` and `⌘⇧→`)
 narrower, as far as leaves the list room for its whole head, and linearpen opens it that wide the next
 time. On a pane where the issue at its narrowest leaves the list less room, the filter narrows first and
 then Refresh and New issue leave for the line of keys, as they do on a narrow pane, and the issue does not
-grow past what keeps the rest of the head; in a pane too narrow for the list and an issue beside it, the
-issue has the pane and the head goes with the list. The list is **My issues** (what is assigned to you) or any other list
+grow past what keeps the rest of the head; in a pane too narrow for the issue and a list with its head
+on one row beside it (under 967 points), the issue has the pane and the head goes with the list. The list is **My issues** (what is assigned to you) or any other list
 you go to: **All issues** (the issues of the workspace, each saying whose it is), what you
 starred in Linear, the issues or the running cycle of a team you are in (in the order of your own
 list of teams), a saved view, a project. Each holds its open issues and the 100 done and canceled

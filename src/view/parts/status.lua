@@ -111,6 +111,14 @@ end
 
 -- What the keyboard does in the form that hands issues to an agent: Tab goes on, and on a choice the
 -- arrows choose (in the words for the agent they move the caret).
+-- Refresh's key, where the head has no button for it (the list beside the form has too little room).
+local function refresh_hint(start)
+	if S.room < SIZE.wide then
+		start[#start + 1] = { key = "refresh", words = hint({ "refresh" }, "refresh"), priority = 3 }
+	end
+	return start
+end
+
 local function work_hints()
 	local start = { { key = "next_field", words = hint({ "next_field" }, "next field"), priority = 8 } }
 	if not work.typing() then
@@ -120,7 +128,7 @@ local function work_hints()
 			priority = 6,
 		}
 	end
-	return start
+	return refresh_hint(start)
 end
 
 -- What the keyboard does in the form of a new issue: Tab goes on, and on a value Enter chooses.
@@ -129,7 +137,7 @@ local function new_hints()
 	if new.on_value() then
 		start[#start + 1] = { key = "choose", words = hint({ "open" }, "choose"), priority = 6 }
 	end
-	return start
+	return refresh_hint(start)
 end
 
 -- What the keyboard does while the title of the issue is written: it goes in, or it does not.

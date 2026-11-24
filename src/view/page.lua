@@ -145,8 +145,9 @@ end
 commands.when.helpable = function()
 	return S.screen == "list" and not modal() and not new.is_open() and not panel.editing() and not work.typing()
 end
+-- (With a form open too: Refresh asks again for what the form offers, a team made in Linear.)
 commands.when.keyed = function()
-	return (S.screen == "list" or S.screen == "failed") and not modal() and not form_open()
+	return (S.screen == "list" or S.screen == "failed") and not modal()
 end
 commands.when.chord = function()
 	return S.screen == "list" and not modal()

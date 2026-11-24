@@ -33,6 +33,9 @@ c437zf  button "Project" [collapsed]
         button "Create issue" [disabled, description "Give it a title first"]
         text "Tab"
         text "next field"
+        text "⌘"
+        text "R"
+        text "refresh"
 b2gqrr  button "palette" [description "Find a command"]
 fields:
 dxc3be  field "Filter issues"
@@ -101,6 +104,6 @@ commands:
   "Filter by status, label and more" [f] (disabled)
   "Clear the filters" [shift+f] (disabled)
   "Search all of Linear" (disabled)
-  "Ask Linear again" [cmd+r] (disabled)
+  "Ask Linear again" [cmd+r]
   "Find a command" [cmd+k]
   "Show the keys" [?] (disabled)

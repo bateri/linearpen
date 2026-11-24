@@ -4036,6 +4036,39 @@ fn a_team_made_in_linear_is_offered_to_the_draft_once_refresh_has_asked_again() 
 
 #[test]
 #[ignore = "opens the kit's interpreter: make test-page"]
+fn with_a_form_open_beside_a_list_too_narrow_for_refresh_its_key_asks_again_and_is_said() {
+    let linear = Canned::new(Mode::Fine);
+    linear.set_one_team();
+    let session = session_over(&linear, Some("lin_api_test"), None);
+    let mut page = open(&session, WIDE, None, "ACM-412").expect("the page opens");
+    open_new(&mut page);
+    assert!(page.bounds("refresh").is_none(), "{}", said(&page));
+    assert!(
+        page.says("refresh"),
+        "the key is on the line: {}",
+        said(&page)
+    );
+    linear.make_team();
+    the_lists_are_a_second_old();
+    page.press("mod+r").expect("the key");
+    page.wait_for(WITHIN, |page| page.bounds("new-value:team").is_some())
+        .unwrap_or_else(|why| panic!("the new team is offered: {why:?}: {}", said(&page)));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_pane_too_narrow_for_a_list_of_one_row_beside_the_issue_gives_the_issue_the_pane() {
+    // 966 points: the issue at its narrowest and the edge leave the list less than one row of head.
+    let (_linear, _session, mut page) = open_lists((966.0, 600.0));
+    open_the_issue_under_the_cursor(&mut page);
+    assert!(page.bounds("lists").is_none(), "{}", said(&page));
+    assert!(page.bounds("side-edge/handle").is_none(), "{}", said(&page));
+    let side = page.bounds("side").expect("the issue");
+    assert!((side.w - 966.0).abs() < 0.6, "{side:?}");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
 fn a_team_made_in_linear_is_offered_to_the_open_form_when_the_lists_come_again() {
     let linear = Canned::new(Mode::Fine);
     linear.set_one_team();
@@ -5968,7 +6001,8 @@ fn in_a_narrow_pane_the_issue_read_has_the_work_button_in_its_first_line_and_the
 #[test]
 #[ignore = "opens the kit's interpreter: make test-page"]
 fn beside_the_narrowest_list_the_three_buttons_over_the_issue_are_whole() {
-    let size = (760.0, 600.0);
+    // (The narrowest page the issue stands beside the list in: 420 + 7 + 540.)
+    let size = (967.0, 600.0);
     let (_linear, _session, mut page) = open_lists(size);
     open_the_issue(&mut page);
     page.advance(0.4).expect("a moment");
@@ -6138,7 +6172,8 @@ fn head_is_over_the_list(
 #[test]
 #[ignore = "opens the kit's interpreter: make test-page"]
 fn the_controls_of_the_head_stay_where_they_are_and_as_wide_whatever_the_page_is_doing() {
-    for size in [WIDE, (900.0, 600.0), (780.0, 600.0)] {
+    // (The pages the issue stands beside the list in: whole, and the narrowest, 420 + 7 + 540.)
+    for size in [WIDE, (1000.0, 600.0), (967.0, 600.0)] {
         let (_linear, _session, mut page) = open_lists(size);
         let before = head_places(&page);
         for (name, at) in &before {
@@ -8318,9 +8353,9 @@ fn share_makes_anyones_title_one_line_and_without_a_link_copies_nothing() {
 #[test]
 #[ignore = "opens the kit's interpreter: make test-page"]
 fn share_is_whole_on_the_line_of_the_identifier_where_the_issue_is_narrowest() {
-    // An 80×24 pane, where the issue has the pane, and a pane of 760 points, where it is beside the list
+    // An 80×24 pane, where the issue has the pane, and a pane of 967 points, where it is beside the list
     // at its narrowest (420 points).
-    for size in [PANE, (760.0, 520.0)] {
+    for size in [PANE, (967.0, 520.0)] {
         let (_linear, _session, mut page) = open_lists(size);
         open_the_issue_under_the_cursor(&mut page);
         page.wait_for(WITHIN, |page| pressable(page, "panel-share"))

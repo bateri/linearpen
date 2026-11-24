@@ -43,8 +43,6 @@ local SIZE = {
 	assignee = 880,
 	-- The head's width from which it holds New issue (below it the key is in the line of keys).
 	roomy = 760,
-	-- The page's width from which the issue (or a form) stands beside the list; below it, it has the pane.
-	beside = 760,
 	-- What stands beside the list: at least this wide (the three buttons over an issue are whole), and,
 	-- until the person sizes it, a part of the page up to the most. The person sizes it by its edge or
 	-- with the keys, a step at a time, up to what leaves the list the room of the fullest head it can
@@ -60,5 +58,10 @@ local SIZE = {
 	-- Of the 80 columns of a pane: a page this short drops what it can.
 	short = 440,
 }
+
+-- The page's width from which the issue (or a form) stands beside the list: the least of it, the edge
+-- and a list whose head is one row. Below it, it has the pane (a head of two rows would move the list
+-- as the issue opens, and the edge could not move).
+SIZE.beside = SIZE.side_least + SIZE.edge + SIZE.stacked
 
 return SIZE
