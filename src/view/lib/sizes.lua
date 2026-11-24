@@ -53,8 +53,10 @@ local SIZE = {
 	side_most = 520,
 	side_share = 0.44,
 	side_step = 40,
-	-- The edge between the list and what stands beside it, the kit's split's (its `GRIP`).
+	-- The edge between the list and what stands beside it, the kit's split's (its `GRIP`), and how far
+	-- its arrow keys move it while it has the keyboard (the kit's `STEP`).
 	edge = 7,
+	edge_step = 16,
 	-- Of the 80 columns of a pane: a page this short drops what it can.
 	short = 440,
 }

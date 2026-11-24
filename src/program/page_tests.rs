@@ -6055,6 +6055,22 @@ fn the_edge_and_its_keys_size_the_issue_up_to_what_leaves_the_list_its_head_and_
     rig.hands.end();
 }
 
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_menu_opened_as_the_issue_comes_in_stands_by_its_value() {
+    let (_linear, _session, mut page) = open_lists(WIDE);
+    page.press("enter").expect("enter");
+    page.wait_for(WITHIN, |page| pressable(page, "panel-value:state"))
+        .unwrap_or_else(|why| panic!("the controls: {why:?}: {}", said(&page)));
+    // At once, before the issue has finished coming in.
+    page.press("s").expect("s");
+    page.advance(0.05).expect("a moment");
+    let at = page.menu().expect("the menu of the status").at;
+    page.idle().expect("the issue is in its place");
+    let value = page.bounds("panel-value:state").expect("the status");
+    assert!((at.x - value.x).abs() < 0.6, "{at:?} {value:?}");
+}
+
 /// The width `prefs.json` keeps for what stands beside the list.
 fn kept_width(rig: &Rig) -> Option<u64> {
     let text = std::fs::read_to_string(rig.state_dir().join("prefs.json")).ok()?;
@@ -9314,4 +9330,46 @@ fn an_edit_that_holds_nothing_new_is_let_go_at_once_and_save_writes_nothing() {
         .unwrap_or_else(|why| panic!("the edit is done: {why:?}: {}", said(&page)));
     page.advance(0.4).expect("a moment");
     assert!(linear.changed().is_empty());
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_edge_with_the_keyboard_on_it_is_moved_by_the_arrows_and_elsewhere_they_fold() {
+    let (_linear, rig, mut page) = open_machine_left((1600.0, 800.0), &["claude"], None, |_| {});
+    open_the_issue_under_the_cursor(&mut page);
+    // Tab goes to the list's button, the filter, Refresh, New issue, and then the edge.
+    for _ in 0..5 {
+        page.press("tab").expect("tab");
+        page.advance(0.1).expect("a moment");
+    }
+    page.press("left").expect("left");
+    page.advance(0.3).expect("a moment");
+    assert!(
+        (page.bounds("side").expect("the issue").w - 536.0).abs() < 1.0,
+        "{:?}",
+        page.bounds("side")
+    );
+    page.press("right").expect("right");
+    page.press("right").expect("right");
+    page.advance(0.3).expect("a moment");
+    assert!(
+        (page.bounds("side").expect("the issue").w - 504.0).abs() < 1.0,
+        "{:?}",
+        page.bounds("side")
+    );
+    // The list's groups are as they were, and each step is kept.
+    assert!(page.says("ACM-398"), "{}", said(&page));
+    page.wait_for(WITHIN, |_| kept_width(&rig) == Some(504))
+        .unwrap_or_else(|why| panic!("the step is kept: {why:?}: {:?}", kept_width(&rig)));
+    // Elsewhere the arrows are the list's: Esc gives the keyboard back, and left folds the group.
+    page.press("escape").expect("escape");
+    page.press("left").expect("left");
+    page.wait_for(WITHIN, |page| !page.says("ACM-398"))
+        .unwrap_or_else(|why| panic!("the group folds: {why:?}: {}", said(&page)));
+    assert!(
+        (page.bounds("side").expect("the issue").w - 504.0).abs() < 1.0,
+        "{:?}",
+        page.bounds("side")
+    );
+    rig.hands.end();
 }

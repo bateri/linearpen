@@ -331,7 +331,7 @@ end
 -- The agent of the one issue the keys are for, where one works on it.
 -- What stands beside the list can be sized: it is beside it (not over it), and no words are being written.
 commands.when.sizable = function()
-	return commands.when.idle() and S.panel_open and not S.covered and not S.writing
+	return commands.when.idle() and S.panel_open and not S.covered and not S.writing and not panel.editing()
 end
 commands.when.reachable = function()
 	return commands.when.idle() and work.agent_of(context.single()) ~= nil
@@ -482,9 +482,10 @@ local function side(width)
 	return panel.view(width)
 end
 
--- What stands beside the list (or has the pane), `width` points wide, in a box that comes in from the
--- right as it opens. The box is the same for the issue and the forms, so going from one issue to the
--- next, or from the issue to a form, does not bring it in again.
+-- What stands beside the list (or has the pane), `width` points wide, in a box that fades in as it
+-- opens. The box is the same for the issue and the forms, so going from one issue to the next, or from
+-- the issue to a form, does not bring it in again. (It does not slide: a menu opened from a value while
+-- it slid would stand where the value was on its way, and stay there.)
 local function beside(width)
 	return b.div()
 		:id("side")
@@ -493,7 +494,7 @@ local function beside(width)
 		:h_full()
 		:min_h(0)
 		:no_shrink()
-		:motion({ enter = { opacity = 0, dx = 24, seconds = 0.24 } })
+		:motion({ enter = { opacity = 0, seconds = 0.24 } })
 		:child(side(width))
 end
 
@@ -542,6 +543,20 @@ local function listing()
 		first = left,
 		second = beside(width),
 	}))))
+end
+
+-- Whether the keyboard is on the edge and `event` is one of its arrows: the plain left and right keys,
+-- which the terminal gives as the list's commands of folding a group and opening it.
+local function on_the_edge(event)
+	if u:target() ~= u:name(EDGE, "handle") then
+		return false
+	end
+	if event.type == "command" then
+		return event.id == "fold" or event.id == "unfold"
+	end
+	local mods = event.mods or {}
+	local plain = not (mods.command or mods.control or mods.alt or mods.shift)
+	return event.type == "key" and plain and (event.key == "left" or event.key == "right")
 end
 
 -- Sizes what stands beside the list by `by` points, as far as it goes, and keeps it. The reply.
@@ -612,7 +627,10 @@ end
 -- --- What the person does ------------------------------------------------------------------------------
 
 local function command(id)
-	if id == "fold" then
+	if (id == "fold" or id == "unfold") and u:target() == u:name(EDGE, "handle") then
+		-- The keyboard is on the edge: its arrows move it, left to widen the issue, a step at a time.
+		return size_side(id == "fold" and SIZE.edge_step or -SIZE.edge_step)
+	elseif id == "fold" then
 		list.fold(true)
 	elseif id == "unfold" then
 		list.fold(false)
@@ -1080,8 +1098,9 @@ end
 -- The keyboard on a control of the list's screen is there to press it and for nothing else: Tab
 -- brings it, Enter or Space presses. Any other key, and any command, is the list's and takes the
 -- keyboard back first, so that the arrows of a part of the scope never choose the scope and Enter
--- after them opens the issue. Esc gives it back and does no more. The reply, and whether the key ends
--- there.
+-- after them opens the issue. Esc gives it back and does no more. The edge between the list and the
+-- issue is the one control that is moved and not pressed: on it the plain left and right arrows are its
+-- own, and size the issue. The reply, and whether the key ends there.
 local STAYS = { tab = true, enter = true, [" "] = true, space = true }
 local MODS = { shift = true, control = true, alt = true, command = true, meta = true, caps_lock = true }
 local function keyboard_from_control(event)
@@ -1097,6 +1116,9 @@ local function keyboard_from_control(event)
 	end
 	local mods = event.mods or {}
 	local plain = not (mods.command or mods.control or mods.alt or mods.shift)
+	if on_the_edge(event) then
+		return nil, false
+	end
 	-- The keyboard is the list's again: the row of the filters, if it was open for the keyboard, closes.
 	filters.close()
 	return u:focus(nil), kind == "key" and event.key == "escape" and plain
