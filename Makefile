@@ -1,7 +1,7 @@
 # linearpen is one native file: the program (src/program/, Rust, on the pencere crate) with the page
 # (src/view/, a page of pencere's kit) and the pictures (src/assets/) carried in it by build.rs. The
 # gate and `make dev` are here.
-.PHONY: pin fmt lint test test-page test-features check-timing shots test-tools check build install uninstall pencere-src pencere fake-host pencere-ref pencere-dir dev dist sums release-prepare release publish
+.PHONY: pin fmt lint test test-page test-features check-timing shots test-tools check build install uninstall pencere-src pencere fake-host pencere-ref pencere-dir dev demo dist sums release-prepare release publish
 
 # pencere is pinned in one place, Cargo.lock (Cargo.toml names the commit): the crate the program is
 # built on is of it, and so are the `pencere` command `make dev` runs linearpen under and `make sums`
@@ -160,6 +160,17 @@ pencere-dir:
 # when one of it does.
 dev: pencere
 	"$(PENCERE)" dev
+
+# demo runs linearpen in this pane as `dev` does, on the stand-in Linear of the tests (test/stand-in/):
+# a workspace full of issues, an inbox, a pull request on ACM-412, with no key of the person's and
+# nothing sent anywhere. The stand-in bateri and agents are first on the PATH, so Work on starts
+# nothing; what is kept (the width of the issue, the form's choices) is in a folder of its own.
+demo: pencere
+	@state=$$(mktemp -d) && echo "linearpen demo: the stand-in Linear; kept in $$state" && \
+		PATH="$(CURDIR)/test/stand-in/bin:$$PATH" LINEAR_API_KEY=lin_api_demo \
+		LINEARPEN_CONFIG_DIR="$$state/config" XDG_STATE_HOME="$$state/state" \
+		STANDIN_LOG="$$state/linear.log" STANDIN_BATERI_LOG="$$state/bateri.log" \
+		"$(PENCERE)" dev
 
 # dist makes the programs for one target (TARGET, a Rust target triple) into dist/release: Apple
 # silicon Macs and both Linux architectures, the Linux ones linked statically with musl (bateri, the

@@ -13,6 +13,8 @@
 #   STANDIN_MY=empty       the person has no issues assigned
 #   STANDIN_LIST=big       a team has more issues than the pen takes (500): every page of it has a next
 #   (A search, and the choices of the filters: search-issues.json, filter-options.json.)
+#   (The inbox: inbox.json. Marking the notifications of an issue read answers that it was done; the
+#   file is not written, so the next asking tells them unread again.)
 #   (The lists a person can go to: the issues of a team, a cycle, a view, a project and a label are
 #   each a file of their own, and the names are list-*.json: three favorites, three teams, five views
 #   of issues and a view of projects, two projects.)
@@ -593,6 +595,12 @@ if is ListFavorites; then cat "$here/list-favorites.json"; printf '\n200'; exit 
 if is ListTeams; then cat "$here/list-teams.json"; printf '\n200'; exit 0; fi
 if is ListViews; then cat "$here/list-views.json"; printf '\n200'; exit 0; fi
 if is ListProjects; then cat "$here/list-projects.json"; printf '\n200'; exit 0; fi
+if is Inbox; then cat "$here/inbox.json"; printf '\n200'; exit 0; fi
+if is NotificationMarkReadAll; then
+	printf '%s' '{"data":{"notificationMarkReadAll":{"success":true}}}'
+	printf '\n200'
+	exit 0
+fi
 if is Verify; then cat "$here/verify.json"; printf '\n200'; exit 0; fi
 if is NewIssueTeams; then cat "$here/teams.json"; printf '\n200'; exit 0; fi
 if is NewIssueOptions; then
