@@ -1131,12 +1131,11 @@ local function key(event)
 	return list.key(event, false) or nil
 end
 
--- The pointer is over something the page answers itself (a line, a button): the hand.
+-- The pointer's shape over what the page answers itself, `over` being under it: the hand over a line or
+-- a button, the text's over the words of a large PDF (which are selected), nil elsewhere.
 local function shape(event, over)
-	local wanted = nil
 	if pictures.over_text(event) then
-		-- The words of a PDF that is large are selected.
-		wanted = "text"
+		return "text"
 	elseif
 		over ~= nil
 		and (
@@ -1146,14 +1145,13 @@ local function shape(event, over)
 			or string.sub(over, 1, 6) == "agent:"
 		)
 	then
-		wanted = "pointer"
+		return "pointer"
 	end
-	if wanted == S.cursor then
-		return nil
-	end
-	S.cursor = wanted
-	return { cursor = wanted or "arrow" }
+	return nil
 end
+
+-- The kinds of event of the pointer whose reply says its shape.
+local POINTER = { move = true, press = true, release = true, wheel = true }
 
 -- Linear is asked for the lists again (Refresh, and Try again with its key): what stands beside the list
 -- is asked for again too, the project shown, and the pull request GitHub did not tell.
@@ -1311,23 +1309,20 @@ local function handle(event)
 	for _, action in actions do
 		reply = b.merge(reply, on_action(action))
 	end
+	local over = nil
+	if POINTER[kind] then
+		over = b.layout.hit({ x = event.x, y = event.y })
+	end
 	if kind == "move" then
-		local over = b.layout.hit({ x = event.x, y = event.y })
 		reply = b.merge(reply, pictures.dragged(event))
-		reply = b.merge(reply, shape(event, over))
 		-- The finger is told when the pointer comes onto another line of the list (`feel.lua`): not while
 		-- a button is held (a drag), nor where something is over the list.
 		if S.screen ~= "list" or modal() then
 			feel.off()
 		elseif S.armed == nil then
-			local tick = feel.moved(over)
-			if tick ~= nil then
-				-- A reply to the pointer says its shape: one that says none is the arrow.
-				reply = b.merge(reply, b.merge(tick, { cursor = S.cursor or "arrow" }))
-			end
+			reply = b.merge(reply, feel.moved(over))
 		end
 	elseif kind == "leave" then
-		S.cursor = nil
 		feel.off()
 	elseif kind == "files" then
 		-- Files were pasted, dropped or chosen in the Open panel: they are put where they go.
@@ -1338,7 +1333,7 @@ local function handle(event)
 	elseif kind == "carried" then
 		-- The system's drag of a line out of the page is over, and the page did not hear the pointer
 		-- while it went: what it was told of the pointer (the shape, the button down) is no longer so.
-		S.cursor, S.armed, S.away = nil, nil, nil
+		S.armed, S.away = nil, nil
 		reply = b.merge(reply, true)
 	elseif kind == "focus" and event.field ~= nil and not picker.holds(event.field) then
 		-- The person clicked into a field (the filter's): the row of the filters is put away.
@@ -1400,6 +1395,14 @@ local function handle(event)
 		reply = b.merge(reply, keyboard_back(reply))
 	elseif kind == "key" and not taken then
 		reply = b.merge(reply, key(event))
+	end
+	-- Every reply to the pointer says its shape: one that says none is the arrow, and none is kept from
+	-- the last. The page's own, where a component of the library (the edge's handle, a field) said none.
+	if POINTER[kind] then
+		local wanted = shape(event, over)
+		if wanted ~= nil and not (type(reply) == "table" and reply.cursor ~= nil) then
+			reply = b.merge(reply, { cursor = wanted })
+		end
 	end
 	follow()
 	return kit.take(reply)

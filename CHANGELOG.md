@@ -53,6 +53,8 @@
 
 ### Fixed
 
+- The pointer is the hand over a line and a button at every move, press and turn of the wheel. It was
+  the hand only as it came onto one, and the arrow from its next move.
 - A screen reader, and an agent that reads the pane, are told which value's card is open (the labels
   and the filters), and what each value chip holds (the status, the priority, the labels, a filter's
   choices) beside what it is. They were told by the ring around it, and of the chip only its name.

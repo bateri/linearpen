@@ -11012,3 +11012,45 @@ fn an_agent_found_stopped_when_the_pen_begins_is_not_heard() {
     page.advance(0.5).expect("a moment");
     assert!(page.sounds().is_empty(), "{:?}", page.sounds().len());
 }
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_pointer_keeps_its_hand_on_a_line_at_every_move_turn_of_the_wheel_and_press() {
+    use pencere_view::Cursor;
+    let (_linear, _session, mut page) = open_lists((1900.0, 800.0));
+    let line = page.bounds("row:i:issue-398").expect("the line");
+    let at = |dx: f32| pencere_view::Point {
+        x: line.x + dx,
+        y: line.y + line.h / 2.0,
+    };
+    // Each move along the line says the hand again: a reply that says no shape is the arrow.
+    for dx in [200.0, 220.0, 240.0] {
+        page.move_to(at(dx)).expect("a move");
+        assert_eq!(page.cursor(), Some(Cursor::Pointer), "at {dx}");
+    }
+    page.wheel_at(at(240.0), 0.0, 20.0).expect("the wheel");
+    assert_eq!(page.cursor(), Some(Cursor::Pointer));
+    page.pointer(pencere_view::Input::Press {
+        at: at(240.0),
+        button: pencere_view::Button::Left,
+        mods: pencere_view::Mods::default(),
+        count: 1,
+    })
+    .expect("a press");
+    assert_eq!(page.cursor(), Some(Cursor::Pointer));
+    // Let go, it opens the issue beside the list; its edge keeps the shape of its own.
+    page.pointer(pencere_view::Input::Release {
+        at: at(240.0),
+        button: pencere_view::Button::Left,
+        mods: pencere_view::Mods::default(),
+    })
+    .expect("a release");
+    page.wait_for(WITHIN, |page| page.bounds("side-edge/handle").is_some())
+        .unwrap_or_else(|why| panic!("the issue: {why:?}: {}", said(&page)));
+    page.move_to(middle_of(&page, "side-edge/handle"))
+        .expect("a move");
+    assert_eq!(page.cursor(), Some(Cursor::ResizeHorizontal));
+    page.move_to(middle_of(&page, "side-edge/handle"))
+        .expect("a move");
+    assert_eq!(page.cursor(), Some(Cursor::ResizeHorizontal));
+}

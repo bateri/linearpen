@@ -31,8 +31,6 @@ local S = {
 	scope = "mine",
 	-- The groups the person folded or opened, by key; sent with every `view`.
 	closed = {},
-	-- The row the cursor is on: `{ kind = "issue", id = }` or `{ kind = "group", key = }`.
-	cursor = nil,
 	-- The Connect screen: the key typed, an answer awaited, why the last was refused.
 	connecting = false,
 	connect_error = nil,
