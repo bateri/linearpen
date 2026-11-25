@@ -1150,6 +1150,36 @@ local function shape(event, over)
 	return nil
 end
 
+-- The identifier of the issue a link of Linear's is of (`https://linear.app/acme/issue/ACM-412/add-rate-
+-- limiting`, with or without the words after it), or nil for any other link.
+local function issue_of_link(url)
+	local identifier = string.match(url, "^https?://linear%.app/[^/?#]+/issue/(%a%w*%-%d+)")
+	return identifier ~= nil and string.upper(identifier) or nil
+end
+
+-- A link was dropped on the page: the issue of a link of Linear's opens beside the list, as a press on
+-- its line opens it (a form of Work on or a new issue is put away, its words kept; while a field of the
+-- issue is written, nothing opens). Any other link is said not to be one.
+local function dropped(url)
+	if S.screen ~= "list" or modal() then
+		return nil
+	end
+	local identifier = issue_of_link(url)
+	if identifier == nil then
+		kit.toast("Only the link of a Linear issue opens here", "warn")
+		return true
+	end
+	if panel.editing() then
+		return true
+	end
+	work.close()
+	new.close()
+	if project.is_open() then
+		project.close()
+	end
+	return panel.open_link(identifier)
+end
+
 -- The kinds of event of the pointer whose reply says its shape.
 local POINTER = { move = true, press = true, release = true, wheel = true }
 
@@ -1324,6 +1354,8 @@ local function handle(event)
 		end
 	elseif kind == "leave" then
 		feel.off()
+	elseif kind == "link_dropped" then
+		reply = b.merge(reply, dropped(event.url or ""))
 	elseif kind == "files" then
 		-- Files were pasted, dropped or chosen in the Open panel: they are put where they go.
 		reply = b.merge(reply, attach.files(event, { paste = paste_key, drop = drop_key }))

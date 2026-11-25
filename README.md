@@ -478,6 +478,10 @@ or `Space` then presses.
 | `⌘K`, `?`             | find a command, the card of keys                                     |
 | `Esc`                 | close what is on top: the form, the issue, the selection, the search |
 
+Drop the link of a Linear issue on the pane (from a browser, a chat, a mail) and the issue opens
+beside the list, as a press on its line opens it: from the list where a list holds it, else asked of
+Linear by its identifier. A link that is of no issue of Linear's is said not to be one.
+
 On a Mac's trackpad, in a bateri that plays them, the pointer gives a light tick as it goes from one
 line of the list to another (not the wheel, not the keys), and the edge beside the list a soft knock
 when you drag it into either of its ends. Two things sound, both of what you may not have seen: Linear

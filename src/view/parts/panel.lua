@@ -41,7 +41,7 @@ local panel = {}
 -- (`width` is what the person sized what stands beside the list to, or nil: `panel.width`. `pull` is the
 -- pull request shown in the place of the issue, or nil: `{ issue, url, number, title, repository,
 -- status, data, error, serial }`.)
-local P = { open = nil, kept = {}, asked = {}, told = {}, again = nil, pin = nil, near = nil, serial = 0, room = 400, width = nil, pull = nil }
+local P = { open = nil, kept = {}, asked = {}, told = {}, again = nil, pin = nil, near = nil, serial = 0, room = 400, width = nil, pull = nil, linked = 0 }
 panel.state = P
 
 -- The box that scrolls: the description and the comments.
@@ -873,6 +873,60 @@ function panel.open_near(id)
 	bring(id)
 	P.pin = { id = id, moves = list.moves() }
 	P.near = id
+	return true
+end
+
+-- Opens the issue a link is of, by its identifier (`ACM-412`). Where a line of the list holds it, the
+-- cursor goes to it and the issue opens as a press on the line opens it; else Linear is asked for it, and
+-- it is read beside the list until the cursor is moved by the person, as a neighbour is. Where the person
+-- went to another line while it was asked, it is not put over that; one Linear does not give is said for
+-- a moment. The reply.
+function panel.open_link(identifier)
+	local item = list.find_issue(identifier)
+	if item ~= nil then
+		list.reveal_issue(item.row.id)
+		panel.show(item)
+		return true
+	end
+	P.linked += 1
+	local n, moves, at = P.linked, list.moves(), lists_at()
+	kit.call("issue", { id = identifier }, function(result, err)
+		if n ~= P.linked then
+			return true
+		end
+		if err then
+			kit.toast(err.message or ("Linear did not give " .. identifier), "warn")
+			return true
+		end
+		if list.moves() ~= moves then
+			keep(result.id, result, at)
+			return true
+		end
+		local line = list.item(result.id)
+		if line ~= nil then
+			keep(result.id, result, at)
+			list.reveal_issue(result.id)
+			panel.show(line)
+			return true
+		end
+		if P.open ~= nil and P.open.id ~= result.id then
+			let_go_of_pull()
+		end
+		kit.scroll_to(SCROLL, 0)
+		P.open = {
+			id = result.id,
+			identifier = result.identifier,
+			title = result.title,
+			priority = "none",
+			labels = {},
+			state = { name = result.state.name, kind = result.state.kind },
+			late = false,
+		}
+		keep(result.id, result, at)
+		P.pin = { id = result.id, moves = list.moves() }
+		P.near = result.id
+		return true
+	end)
 	return true
 end
 

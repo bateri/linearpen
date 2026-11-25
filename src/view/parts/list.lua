@@ -221,6 +221,16 @@ function list.item(id)
 	return item
 end
 
+-- The line of the issue whose identifier is `identifier` (`ACM-412`), or nil.
+function list.find_issue(identifier)
+	for _, item in L.items do
+		if item.kind == "issue" and item.row.identifier == identifier then
+			return item
+		end
+	end
+	return nil
+end
+
 -- Puts the cursor on `key` and scrolls it into view.
 local function put(key)
 	local index = index_of(key)

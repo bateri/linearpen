@@ -4,6 +4,8 @@
 
 ### Added
 
+- **Drop an issue's link on the pane.** The link of a Linear issue, dragged from a browser or a chat
+  onto linearpen, opens the issue beside the list, whether a list holds it or not.
 - **A tick under the finger, a sound for what you did not see.** On a Mac's trackpad the pointer
   ticks lightly as it goes from line to line of the list, and the edge beside the list knocks when it
   is dragged into an end. A sound says Linear did not take a change, and another that an agent

@@ -310,6 +310,34 @@ pub(crate) enum Change {
     Lost,
 }
 
+/// What an `Issue` asked by its identifier (`ACM-398`) is of: the id of the fixtures' issue of that
+/// identifier, or of the parent the fixture names (ACM-400), or none (Linear has no such issue); nothing
+/// where `asked` is no identifier but an id.
+fn identified(asked: &str) -> Option<Option<String>> {
+    let (key, number) = asked.split_once('-')?;
+    let is_identifier = !key.is_empty()
+        && key
+            .chars()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+        && !number.is_empty()
+        && number.chars().all(|c| c.is_ascii_digit());
+    if !is_identifier {
+        return None;
+    }
+    if asked == "ACM-400" {
+        return Some(Some("issue-400".to_owned()));
+    }
+    let all: serde_json::Value = serde_json::from_str(ALL_ISSUES).unwrap();
+    Some(
+        all["data"]["issues"]["nodes"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|node| node["identifier"] == asked)
+            .and_then(|node| node["id"].as_str().map(str::to_owned)),
+    )
+}
+
 impl Canned {
     pub(crate) fn new(mode: Mode) -> Arc<Self> {
         Arc::new(Self {
@@ -1350,6 +1378,14 @@ impl Transport for Canned {
                     let asked: serde_json::Value = serde_json::from_str(body).unwrap();
                     let id = asked["variables"]["id"].as_str().unwrap_or_default();
                     self.issues_asked.lock().unwrap().push(id.to_owned());
+                    // An identifier (a link's) is the issue's of that identifier; Linear has none of one
+                    // that no issue has.
+                    let id = match identified(id) {
+                        Some(Some(found)) => found,
+                        Some(None) => return reply(200, r#"{"data":{"issue":null}}"#),
+                        None => id.to_owned(),
+                    };
+                    let id = id.as_str();
                     // (Held for the most of half a minute: a test that forgets to let go is not left
                     // waiting.)
                     for _ in 0..3000 {
@@ -11053,4 +11089,70 @@ fn the_pointer_keeps_its_hand_on_a_line_at_every_move_turn_of_the_wheel_and_pres
     page.move_to(middle_of(&page, "side-edge/handle"))
         .expect("a move");
     assert_eq!(page.cursor(), Some(Cursor::ResizeHorizontal));
+}
+
+// --- A link dropped on the page --------------------------------------------------------------------
+
+/// Whether the issue beside the list is the one `identifier` names, with its words `words`.
+fn beside_says(page: &Page, identifier: &str, words: &str) -> bool {
+    let side = page.words_in("side");
+    side.iter().any(|said| said.contains(identifier))
+        && side.iter().any(|said| said.contains(words))
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_link_of_an_issue_dropped_on_the_page_opens_it_and_any_other_is_said_not_to_be_one() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    // Of a line of the list: the cursor goes to it and it opens beside the list, Linear asked nothing.
+    page.drop_link(
+        "list",
+        "https://linear.app/acme/issue/ACM-398/checkout-test-fails-one-run-in-ten",
+    )
+    .expect("a link is dropped");
+    page.wait_for(WITHIN, |page| {
+        beside_says(page, "ACM-398", "Checkout test fails one run in ten")
+    })
+    .unwrap_or_else(|why| panic!("the issue: {why:?}: {}", said(&page)));
+    assert!(cursor(&page).contains("ACM-398"), "{}", cursor(&page));
+    assert!(!linear.issues_asked().contains(&"ACM-398".to_owned()));
+    // Of one no list holds: Linear is asked for it by its identifier, and it is read beside the list.
+    page.drop_link("list", "https://linear.app/acme/issue/ACM-400")
+        .expect("a link is dropped");
+    page.wait_for(WITHIN, |page| {
+        beside_says(page, "ACM-400", "Billing limits per plan")
+            && page.says("Everything about the limits of a plan.")
+    })
+    .unwrap_or_else(|why| panic!("the issue Linear gave: {why:?}: {}", said(&page)));
+    assert!(linear.issues_asked().contains(&"ACM-400".to_owned()));
+    // Of one Linear does not have, and a link that is not of an issue: said for a moment, and the
+    // issue beside the list stays.
+    page.drop_link("list", "https://linear.app/acme/issue/ACM-999/gone")
+        .expect("a link is dropped");
+    page.wait_for(WITHIN, |page| page.says("Linear has no such issue"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    page.drop_link("list", "https://example.com/acme/issue/ACM-398")
+        .expect("a link is dropped");
+    page.wait_for(WITHIN, |page| {
+        page.says("Only the link of a Linear issue opens here")
+    })
+    .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    assert!(beside_says(&page, "ACM-400", "Billing limits per plan"));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_link_dropped_while_work_on_is_open_puts_the_form_away_and_opens_its_issue() {
+    let (_rig, mut page) = open_rig(WIDE, true, &["claude"]);
+    open_form_with_status(&mut page, false);
+    page.drop_link(
+        "list",
+        "https://linear.app/acme/issue/ACM-398/checkout-test-fails-one-run-in-ten",
+    )
+    .expect("a link is dropped");
+    page.wait_for(WITHIN, |page| {
+        page.bounds("work-start").is_none()
+            && beside_says(page, "ACM-398", "Checkout test fails one run in ten")
+    })
+    .unwrap_or_else(|why| panic!("the form gives way: {why:?}: {}", said(&page)));
 }
