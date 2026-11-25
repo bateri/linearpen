@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-25
+
 ### Added
 
 - **Going back to a list is at once.** The tabs' lists (All issues, Inbox, Projects) are kept once
