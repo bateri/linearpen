@@ -121,7 +121,8 @@ points), the head has those four as tabs in the place of the button, the one sho
 them for the card (or the name of the list shown, where it is another); the card is the palette, so typing finds a list by
 its name, and each line says what it is (`View`, `Project`, `Team`, `Cycle 24, ends Nov 15`). Only
 the list you look at is asked for (with My issues), so the others cost nothing until you go to
-them. The four lists you left last are kept for as long as linearpen runs: going back to one shows it
+them. The lists of the tabs (All issues, the Inbox, Projects) are kept once you have seen them, and
+of the other lists the four you left last, for as long as linearpen runs: going back to one shows it
 at once, as it was, with a thin line over it while Linear is asked for it again; a list you have not
 seen yet has faint lines where its lines will be until it comes. Linear is asked for no more than 500 issues of a list, the open ones first. Where there are
 more open ones, the button says `500+` and a line at the end of the list says so.

@@ -145,10 +145,12 @@ optional (`{}` asks for the list as it is). Params:
   are unread ones), in each the latest first. `filters` do not
   narrow it (Linear's inbox takes none: `view` keeps them for the other lists), the words of `filter`
   do. Reading it changes nothing in Linear: an issue opened here is not marked read there. Only the list shown and My issues are asked for: going to another
-  list keeps the one left, as it came last, and asks Linear for the new one. The four lists last left
-  (each with the `filters` it was asked for) are kept for the run: a list gone to again is told at once
-  as it was kept, `listing` `"ready"` and `refreshing` true, until Linear's answer takes its place. One
-  not kept is told as `listing` `"loading"` until it comes. An `id` Linear does not know is not an error of the call: `listing` is `failed`
+  list keeps the one left, as it came last, and asks Linear for the new one. The lists of the tabs (All
+  issues not narrowed, the inbox, the projects) are kept for the run once seen, and of the others the
+  four last left, each with the `filters` it was asked for (the inbox and the projects take none, so
+  any filters find them). A list gone to again is told at once as it was kept, `listing` `"ready"` and
+  `refreshing` true, until Linear's answer takes its place. One not kept is told as `listing`
+  `"loading"` until it comes. An `id` Linear does not know is not an error of the call: `listing` is `failed`
   and `error` has Linear's words. The old member `scope` is not taken.
 - `filters`: what Linear is asked to narrow the list by, as the person set it (all of it, or the call
   does not set it; `[]` or `{}` is none). Each kind is a list of values, any of which lets an issue

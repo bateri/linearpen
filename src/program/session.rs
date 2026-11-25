@@ -103,6 +103,13 @@ pub fn is_apart(scope: &Scope, filters: &Filters) -> bool {
     *scope != Scope::Mine || !filters.is_empty()
 }
 
+/// Whether a list of `scope` asked for with the filters `held` is the one the filters `wanted` narrow:
+/// the same filters, or any where the list takes none (the inbox and the projects are not narrowed by
+/// the filters of issues).
+fn same_filters(scope: &Scope, held: &Filters, wanted: &Filters) -> bool {
+    matches!(scope, Scope::Inbox | Scope::Projects) || held == wanted
+}
+
 impl Lists {
     /// The list of `scope` narrowed by `filters`, where it is held.
     #[must_use]
@@ -111,7 +118,11 @@ impl Lists {
             return Some(&self.mine);
         }
         match &self.shown {
-            Some((held, listing)) if held == scope && self.filters == *filters => Some(listing),
+            Some((held, listing))
+                if held == scope && same_filters(scope, &self.filters, filters) =>
+            {
+                Some(listing)
+            }
             _ => None,
         }
     }
@@ -126,15 +137,31 @@ pub struct Kept {
     pub listing: Listing,
 }
 
-/// How many lists left are kept: the tabs' (All issues, Inbox, Projects) and one more.
+/// How many lists left are kept besides the tabs' (`is_tab`), which are kept once seen.
 const KEPT: usize = 4;
 
-/// Keeps `one` as the list last left, in the place of what was kept of the same list; the one left
-/// longest ago goes where there are more than [`KEPT`].
+/// Whether a list is one of the tabs of the head besides My issues: All issues not narrowed, the
+/// inbox, the projects.
+fn is_tab(scope: &Scope, filters: &Filters) -> bool {
+    matches!(scope, Scope::Inbox | Scope::Projects) || (*scope == Scope::All && filters.is_empty())
+}
+
+/// Keeps `one` as the list last left, in the place of what was kept of the same list. The tabs' lists
+/// stay; of the others, the one left longest ago goes where there are more than [`KEPT`] (a search
+/// or a change of the filters does not push a tab's list out).
 fn keep(kept: &mut Vec<Kept>, one: Kept) {
-    kept.retain(|held| held.scope != one.scope || held.filters != one.filters);
+    kept.retain(|held| {
+        held.scope != one.scope || !same_filters(&one.scope, &held.filters, &one.filters)
+    });
     kept.insert(0, one);
-    kept.truncate(KEPT);
+    let mut others = 0;
+    kept.retain(|held| {
+        if is_tab(&held.scope, &held.filters) {
+            return true;
+        }
+        others += 1;
+        others <= KEPT
+    });
 }
 
 /// Whether an issue as it is now belongs in a list of `scope` narrowed by `filters` that `held` it
@@ -310,7 +337,7 @@ impl State {
         lists.of(scope, filters).or_else(|| {
             self.kept
                 .iter()
-                .find(|kept| kept.scope == *scope && kept.filters == *filters)
+                .find(|kept| kept.scope == *scope && same_filters(scope, &kept.filters, filters))
                 .map(|kept| &kept.listing)
         })
     }
@@ -339,7 +366,8 @@ impl State {
                 // filters now) is kept as it came, for when the page goes back to it.
                 match lists.shown.take() {
                     Some((held, listing))
-                        if held == wanted && lists.filters == self.view.filters =>
+                        if held == wanted
+                            && same_filters(&held, &lists.filters, &self.view.filters) =>
                     {
                         lists.shown = Some((held, listing));
                     }
@@ -355,8 +383,9 @@ impl State {
                 }
                 // What came is newer than what was kept of the same list.
                 if let Some((held, _)) = &lists.shown {
-                    self.kept
-                        .retain(|kept| kept.scope != *held || kept.filters != lists.filters);
+                    self.kept.retain(|kept| {
+                        kept.scope != *held || !same_filters(held, &kept.filters, &lists.filters)
+                    });
                 }
                 if is_apart(&wanted, &self.view.filters) && lists.shown.is_none() {
                     self.refresh_wanted = true;
@@ -2613,6 +2642,37 @@ mod tests {
     }
 
     #[test]
+    fn the_tabs_lists_stay_kept_while_others_come_and_go_and_the_inbox_whatever_the_filters() {
+        let (session, _) = holding(vec![]);
+        let go = |scope: Scope, filters: Filters| {
+            session.set_view(None, Some(scope.clone()), Some(filters), None, None);
+            let mut state = session.state();
+            let mut lists = state.lists.clone().unwrap();
+            lists.shown = Some((scope, lists.mine.clone()));
+            lists.filters = state.view.filters.clone();
+            state.landed(Ok(lists));
+        };
+        go(Scope::Inbox, Filters::default());
+        go(Scope::Projects, Filters::default());
+        for team_id in ["t-1", "t-2", "t-3", "t-4", "t-5", "t-6"] {
+            go(team(team_id), labelled("bug"));
+        }
+        go(Scope::Mine, labelled("api"));
+        let state = session.state();
+        // All issues (of `holding`), the inbox and the projects are there, under other filters too.
+        for tab in [Scope::All, Scope::Inbox, Scope::Projects] {
+            let filters = if tab == Scope::All {
+                Filters::default()
+            } else {
+                labelled("api")
+            };
+            assert!(state.held(&tab, &filters).is_some(), "{tab:?}");
+        }
+        assert!(state.held(&team("t-6"), &labelled("bug")).is_some());
+        assert!(state.held(&team("t-2"), &labelled("bug")).is_none());
+    }
+
+    #[test]
     fn four_lists_left_are_kept_the_last_first() {
         let (session, _) = holding(vec![]);
         for scope in [
@@ -2630,9 +2690,16 @@ mod tests {
         }
         let state = session.state();
         let kept: Vec<&Scope> = state.kept.iter().map(|kept| &kept.scope).collect();
+        // (All issues, which `holding` showed first, is a tab's list: it stays.)
         assert_eq!(
             kept,
-            [&team("t-4"), &team("t-3"), &team("t-2"), &team("t-1")]
+            [
+                &team("t-4"),
+                &team("t-3"),
+                &team("t-2"),
+                &team("t-1"),
+                &Scope::All
+            ]
         );
     }
 

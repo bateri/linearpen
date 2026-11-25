@@ -11205,3 +11205,34 @@ fn a_list_gone_to_again_is_shown_at_once_as_it_was_while_linear_is_asked_for_it_
         .unwrap_or_else(|why| panic!("Linear answered: {why:?}: {}", said(&page)));
     assert!(page.says("ACM-417"), "{}", said(&page));
 }
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_inbox_and_the_projects_seen_once_are_there_at_once_when_their_tabs_are_pressed_again() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    page.press("3").expect("3");
+    page.wait_for(WITHIN, |page| page.says("Unread"))
+        .unwrap_or_else(|why| panic!("the inbox: {why:?}: {}", said(&page)));
+    page.press("4").expect("4");
+    page.wait_for(WITHIN, |page| page.says("Billing v2"))
+        .unwrap_or_else(|why| panic!("the projects: {why:?}: {}", said(&page)));
+    page.press("1").expect("1");
+    page.wait_for(WITHIN, |page| {
+        !page.says("Billing v2") && page.bounds("refreshing").is_none()
+    })
+    .unwrap_or_else(|why| panic!("My issues: {why:?}: {}", said(&page)));
+    // Linear does not answer: each is there at once, with no lines standing for it.
+    linear.set(Mode::Held);
+    page.press("3").expect("3");
+    page.advance(0.1).expect("a moment");
+    assert!(page.says("Unread"), "{}", said(&page));
+    assert!(page.bounds("list-coming").is_none(), "{}", said(&page));
+    page.press("4").expect("4");
+    page.advance(0.1).expect("a moment");
+    assert!(page.says("Billing v2"), "{}", said(&page));
+    assert!(page.bounds("list-coming").is_none(), "{}", said(&page));
+    linear.set(Mode::Fine);
+    page.wait_for(WITHIN, |page| page.bounds("refreshing").is_none())
+        .unwrap_or_else(|why| panic!("Linear answered: {why:?}: {}", said(&page)));
+    assert!(page.says("Billing v2"), "{}", said(&page));
+}
