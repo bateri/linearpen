@@ -65,9 +65,112 @@ function screens.connect()
 	return centered(card)
 end
 
--- The heads of three groups and their lines, faint, in `box`: where the lines of a list will stand.
+-- The heads of three groups and their lines, in `box`: where the lines of a list will stand, each a
+-- run of words, a box as high as a line's letters and as long as some of them, side by side as the
+-- words of a line are. While Linear is asked each word comes up toward the accent now and again, at
+-- times of its own and to a light of its own, and goes down slowly: nothing moves but their colour,
+-- and a word is as long from frame to frame and at every width (a narrower line holds fewer). The
+-- page draws it frame by frame, for the terminal's loop keeps everything in one phase. Under Reduce
+-- Motion the words stay faint; on the cells of a terminal the lines are bars.
 local GROUPS = { { 112, { 52, 38, 61, 44 } }, { 96, { 47, 58 } }, { 60, { 41, 66, 35 } } }
-local function placeholders(box)
+-- The most of a line a title has (of GROUPS): the longest title goes as far as `WORD.title`.
+local MOST = 0
+for _, group in GROUPS do
+	for _, share in group[2] do
+		MOST = math.max(MOST, share)
+	end
+end
+-- A word: as high as a line's letters and three to nine of them long (`letter`, points), one box;
+-- the room between two words; how far the longest title goes (points; the others a share of it); how
+-- faint a word is, and how lit at the most; how long a word's turn is (seconds, from the least to the
+-- most), how many of its turns it is lit in, and how long it takes to come up and to go down
+-- (seconds).
+local WORD = {
+	high = 14,
+	letter = 8,
+	gap = 8,
+	title = 640,
+	faint = 0.07,
+	peak = 0.58,
+	least = 1.8,
+	most = 3.4,
+	share = 0.6,
+	rise = 0.35,
+	fall = 1.0,
+}
+
+local function in_cells()
+	return b.draws ~= nil and b.draws().cells == true
+end
+
+-- A number from 0 to 1 that is always the same for the same three.
+local function hash(a, c, d)
+	local n = math.sin(a * 12.9898 + c * 78.233 + d * 37.719) * 43758.5453
+	return n - math.floor(n)
+end
+
+local function smooth(t)
+	return t * t * (3 - 2 * t)
+end
+
+-- The page's clock (seconds) where the words move, else nil. Asks for the next frame.
+local function clock()
+	if u.reduce_motion then
+		return nil
+	end
+	u:animate()
+	return S.now or 0
+end
+
+-- How lit the word of `seed` is (0 to 1) at `now` (seconds, the page's clock, so that one coming is
+-- not lit as the last was): its turns are its own length and begin at a time of their own, and in
+-- some of them it comes up and goes down, each time to a light of its own. A turn begins and ends
+-- out, so that one turn and the next meet where both are 0.
+local function pulse(seed, now)
+	local period = WORD.least + (WORD.most - WORD.least) * hash(seed, 3, 7)
+	local t = now / period + hash(seed, 5, 11)
+	local turn = math.floor(t)
+	if hash(seed, turn, 13) >= WORD.share then
+		return 0
+	end
+	local into = (t - turn) * period
+	local light = 0.55 + 0.45 * hash(seed, turn, 17)
+	if into < WORD.rise then
+		return light * smooth(into / WORD.rise)
+	elseif into < WORD.rise + WORD.fall then
+		return light * (1 - smooth((into - WORD.rise) / WORD.fall))
+	end
+	return 0
+end
+
+local function word(width, seed, now)
+	local lift = now ~= nil and pulse(seed, now) or 0
+	local color = b.alpha("foreground", WORD.faint)
+	if lift > 0 then
+		color = b.alpha(b.mix("foreground", "accent", math.min(1, 1.6 * lift)), WORD.faint + (WORD.peak - WORD.faint) * lift)
+	end
+	return b.div():w(width):h(WORD.high):rounded(2):bg(color):no_shrink()
+end
+
+-- The words of `width` on the `line`th line: each three to nine letters long (more often short), the
+-- same whatever the width, as many as the width holds (one at the least).
+local function words(width, line, now)
+	local row = b.div():row():gap(WORD.gap):no_shrink()
+	local used = 0
+	for index = 0, 40 do
+		local seed = line * 97 + index
+		local w = (3 + math.floor(hash(seed, 21, 23) ^ 1.4 * 7)) * WORD.letter
+		local need = (index > 0 and WORD.gap or 0) + w
+		if index > 0 and used + need > width then
+			break
+		end
+		row:child(word(index == 0 and math.max(16, math.min(w, width)) or w, seed, now))
+		used += need
+	end
+	return row
+end
+
+local function bars(box)
 	for _, group in GROUPS do
 		box:child(
 			b.div():h(SIZE.row + SIZE.group_gap):pt(SIZE.group_gap):px(18):row():items_center():child(
@@ -85,6 +188,33 @@ local function placeholders(box)
 	return box
 end
 
+local function placeholders(box)
+	if in_cells() then
+		return bars(box)
+	end
+	local now = clock()
+	-- (A title goes as far as its share of what the line has after its key, up to the longest.)
+	local room = math.min(WORD.title, math.max(0, (S.room or S.width) - 42 - 54 - 12 - 18))
+	local line = 0
+	for _, group in GROUPS do
+		box:child(
+			b.div():h(SIZE.row + SIZE.group_gap):pt(SIZE.group_gap):px(18):row():items_center():child(
+				words(group[1], line, now)
+			)
+		)
+		line += 1
+		for _, share in group[2] do
+			box:child(
+				b.div():h(SIZE.row):pl(42):pr(18):row():items_center():gap(12):child(
+					b.div():w(54):no_shrink():child(word(6 * WORD.letter, line * 97 + 50, now))
+				):child(words(room * share / MOST, line, now))
+			)
+			line += 1
+		end
+	end
+	return box
+end
+
 -- How the lines that stand for a list go when it comes: they fade as its own come in their place.
 local GOING = { opacity = 0, seconds = 0.24 }
 
@@ -94,7 +224,7 @@ function screens.loading()
 	box:child(
 		b.div():row():items_center():gap(10):pt(SIZE.head_top):pb(SIZE.head_bottom):px(SIZE.pad):h(SIZE.control + SIZE.head_top + SIZE.head_bottom):no_shrink():child(
 			b.text(lists.name()):text_size(15):weight(700)
-		):child(kit.spinner(13, "dim")):child(b.text("Loading"):text_size(SIZE.small):color("dim"))
+		):child(in_cells() and kit.spinner(13, "dim") or nil):child(b.text("Loading"):text_size(SIZE.small):color("dim"))
 	)
 	return placeholders(box)
 end

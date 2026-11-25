@@ -125,7 +125,7 @@ the list you look at is asked for (with My issues), so the others cost nothing u
 them. The lists of the tabs (All issues, the Inbox, Projects) are kept once you have seen them, and
 of the other lists the four you left last, for as long as linearpen runs: going back to one shows it
 at once, as it was, with a thin line over it while Linear is asked for it again; a list you have not
-seen yet has faint lines where its lines will be until it comes. Linear is asked for no more than 500 issues of a list, the open ones first. Where there are
+seen yet has faint words where its lines will be, each lighting up now and again, until it comes. Linear is asked for no more than 500 issues of a list, the open ones first. Where there are
 more open ones, the button says `500+` and a line at the end of the list says so.
 
 **Projects** is the list of the workspace's projects, as Linear's Projects page has them: grouped by their

@@ -1631,6 +1631,18 @@ pub(crate) fn open_patiently(
     ready: &str,
     patience: Option<Duration>,
 ) -> Result<Page, Error> {
+    open_as(session, size, fonts, ready, patience, false)
+}
+
+/// `open_patiently`, for a person who asked for less motion where `reduce_motion`.
+fn open_as(
+    session: &Arc<Session>,
+    size: (f32, f32),
+    fonts: Option<&pencere_drive::shot::Fonts>,
+    ready: &str,
+    patience: Option<Duration>,
+    reduce_motion: bool,
+) -> Result<Page, Error> {
     let program = InProcess::new(options(session, &Arc::new(Mutex::new(None))));
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -1649,7 +1661,7 @@ pub(crate) fn open_patiently(
     if let Some(patience) = patience {
         opening = opening.patience(patience);
     }
-    let mut page = opening.peer(program).open()?;
+    let mut page = opening.reduce_motion(reduce_motion).peer(program).open()?;
     page.wait_for(WITHIN, |page| page.says(ready))?;
     page.advance(0.3)?;
     Ok(page)
@@ -7691,6 +7703,153 @@ fn a_list_that_has_not_come_has_lines_standing_for_it_where_its_lines_will_be_an
         .unwrap_or_else(|why| panic!("the list comes: {why:?}: {}", said(&page)));
     assert!(page.bounds("list-coming").is_none(), "{}", said(&page));
     assert!(!group_says(&page, "Asking Linear for Billing"));
+}
+
+/// A word that stands for one of a list's: the place across, the width and the opacity.
+type Word = (f32, f32, f32);
+
+/// The words that stand for the lines of a list as the last frame drew them: the lines from the top,
+/// each its words from the left, the place across, the width and the opacity of each.
+fn standing_words(page: &Page) -> Vec<Vec<Word>> {
+    let Some(coming) = page.bounds("list-coming") else {
+        return Vec::new();
+    };
+    let mut lines: Vec<(f32, Vec<Word>)> = Vec::new();
+    for item in &page.list().items {
+        let pencere_view::Paint::Quad(quad) = item else {
+            continue;
+        };
+        let Some(fill) = quad.fill.as_ref() else {
+            continue;
+        };
+        let at = quad.rect;
+        if at.y < coming.y || at.y + at.h > coming.y + coming.h {
+            continue;
+        }
+        let word = (at.x, at.w, fill.alpha);
+        match lines.iter_mut().find(|(top, _)| (top - at.y).abs() < 1.0) {
+            Some((_, line)) => line.push(word),
+            None => lines.push((at.y, vec![word])),
+        }
+    }
+    lines.sort_by(|a, b| a.0.total_cmp(&b.0));
+    lines
+        .into_iter()
+        .map(|(_, mut line)| {
+            line.sort_by(|a, b| a.0.total_cmp(&b.0));
+            line
+        })
+        .collect()
+}
+
+/// Where the words of `lines` are and how wide, without their light.
+fn shape_of(lines: &[Vec<Word>]) -> Vec<Vec<(f32, f32)>> {
+    lines
+        .iter()
+        .map(|line| line.iter().map(|word| (word.0, word.1)).collect())
+        .collect()
+}
+
+/// The inbox asked for and held, as it is shown before it comes.
+fn inbox_coming(linear: &Canned, page: &mut Page) {
+    linear.set(Mode::Held);
+    page.press("3").expect("3");
+    page.wait_for(WITHIN, |page| page.bounds("list-coming").is_some())
+        .unwrap_or_else(|why| panic!("the inbox is on its way: {why:?}: {}", said(page)));
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_lines_that_stand_for_a_list_are_words_each_lit_now_and_again_of_itself_and_the_page_rests_when_it_comes()
+ {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    inbox_coming(&linear, &mut page);
+    page.advance(0.5).expect("a moment");
+    let first = standing_words(&page);
+    assert_eq!(first.len(), 12, "the heads and the lines: {first:?}");
+    // A line of an issue: its key, and the words of its title after it.
+    assert!(first[1].len() >= 3, "{:?}", first[1]);
+    let faint = first
+        .iter()
+        .flatten()
+        .map(|word| word.2)
+        .fold(1.0_f32, f32::min);
+    let count = first.iter().flatten().count();
+    // A second and a half, frame by frame: only their light changes, and slowly; never all at once.
+    let mut was = first.clone();
+    let mut lit = std::collections::HashSet::new();
+    let mut step = 0.0_f32;
+    for _ in 0..90 {
+        page.advance(1.0 / 60.0).expect("a frame");
+        let now = standing_words(&page);
+        assert_eq!(shape_of(&now), shape_of(&first), "only their light changes");
+        for (before, after) in was.iter().flatten().zip(now.iter().flatten()) {
+            step = step.max((before.2 - after.2).abs());
+        }
+        let mut lit_now = 0;
+        for (line, words) in now.iter().enumerate() {
+            for (index, word) in words.iter().enumerate() {
+                if word.2 > faint + 0.1 {
+                    lit.insert((line, index));
+                    lit_now += 1;
+                }
+            }
+        }
+        assert!(
+            lit_now * 3 <= count * 2,
+            "not all at once: {lit_now} of {count}"
+        );
+        was = now;
+    }
+    assert!(
+        step < 0.05,
+        "no word jumps from a frame to the next: {step}"
+    );
+    assert!(lit.len() >= 6, "words come up: {lit:?}");
+    // A narrower pane: the same words, fewer of them on a long line.
+    page.resize(640.0, WIDE.1).expect("the pane narrows");
+    page.advance(0.1).expect("a moment");
+    let narrower = standing_words(&page);
+    assert_eq!(narrower.len(), first.len());
+    for (wide, narrow) in first.iter().zip(&narrower) {
+        let widths = |line: &[Word]| line.iter().map(|word| word.1).collect::<Vec<_>>();
+        assert!(narrow.len() <= wide.len());
+        assert_eq!(widths(narrow), widths(&wide[..narrow.len()]));
+    }
+    assert!(
+        first
+            .iter()
+            .zip(&narrower)
+            .any(|(wide, narrow)| narrow.len() < wide.len()),
+        "a long line holds fewer"
+    );
+    // The list comes: the words go, and the page asks for no more frames.
+    linear.set(Mode::Fine);
+    page.wait_for(WITHIN, |page| page.bounds("list-coming").is_none())
+        .unwrap_or_else(|why| panic!("the inbox comes: {why:?}: {}", said(&page)));
+    page.idle().expect("the page at rest");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn under_reduce_motion_the_words_that_stand_for_a_list_are_still_and_faint() {
+    let linear = Canned::new(Mode::Fine);
+    let session = session_over(&linear, Some("lin_api_test"), None);
+    let mut page = open_as(&session, WIDE, None, "ACM-412", None, true).expect("the page opens");
+    inbox_coming(&linear, &mut page);
+    page.advance(0.5).expect("a moment");
+    let before = standing_words(&page);
+    assert_eq!(before.len(), 12, "the heads and the lines: {before:?}");
+    page.advance(0.3).expect("a moment");
+    assert_eq!(standing_words(&page), before);
+    let brightest = before
+        .iter()
+        .flatten()
+        .map(|word| word.2)
+        .fold(0.0_f32, f32::max);
+    assert!(brightest < 0.1, "none lit: {brightest}");
+    page.idle().expect("nothing moves");
+    linear.set(Mode::Fine);
 }
 
 #[test]

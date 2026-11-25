@@ -6,8 +6,9 @@
 
 - **Going back to a list is at once.** The tabs' lists (All issues, Inbox, Projects) are kept once
   seen, and the four other lists you left last, while linearpen runs: pressing a tab you have seen
-  shows its list as it was, with the thin line over it while Linear is asked again. A list you have not seen yet has faint lines where its lines will be, not words in the
-  middle of the pane, and its lines fade in as they come.
+  shows its list as it was, with the thin line over it while Linear is asked again. A list you have not seen yet has faint words where its lines will be,
+  not a message in the middle of the pane: each of them lights up and fades now and again, on its own,
+  until the list's lines fade in in their place (still, under Reduce Motion).
 - **Drop an issue's link on the pane.** The link of a Linear issue, dragged from a browser or a chat
   onto linearpen, opens the issue beside the list, whether a list holds it or not.
 - **A tick under the finger, a sound for what you did not see.** On a Mac's trackpad the pointer
