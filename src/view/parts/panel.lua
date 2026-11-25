@@ -880,10 +880,11 @@ end
 -- cursor goes to it and the issue opens as a press on the line opens it; else Linear is asked for it, and
 -- it is read beside the list until the cursor is moved by the person, as a neighbour is. Where the person
 -- went to another line while it was asked, it is not put over that; one Linear does not give is said for
--- a moment. The reply.
-function panel.open_link(identifier)
+-- a moment. `opening` is called just before it opens, and not where it does not. The reply.
+function panel.open_link(identifier, opening)
 	local item = list.find_issue(identifier)
 	if item ~= nil then
+		opening()
 		list.reveal_issue(item.row.id)
 		panel.show(item)
 		return true
@@ -902,6 +903,7 @@ function panel.open_link(identifier)
 			keep(result.id, result, at)
 			return true
 		end
+		opening()
 		local line = list.item(result.id)
 		if line ~= nil then
 			keep(result.id, result, at)

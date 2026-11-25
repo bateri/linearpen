@@ -1158,8 +1158,8 @@ local function issue_of_link(url)
 end
 
 -- A link was dropped on the page: the issue of a link of Linear's opens beside the list, as a press on
--- its line opens it (a form of Work on or a new issue is put away, its words kept; while a field of the
--- issue is written, nothing opens). Any other link is said not to be one.
+-- its line opens it (a form of Work on or a new issue is put away as it opens, its words kept; while a
+-- field of the issue is written, nothing opens). Any other link is said not to be one.
 local function dropped(url)
 	if S.screen ~= "list" or modal() then
 		return nil
@@ -1172,12 +1172,13 @@ local function dropped(url)
 	if panel.editing() then
 		return true
 	end
-	work.close()
-	new.close()
-	if project.is_open() then
-		project.close()
-	end
-	return panel.open_link(identifier)
+	return panel.open_link(identifier, function()
+		work.close()
+		new.close()
+		if project.is_open() then
+			project.close()
+		end
+	end)
 end
 
 -- The kinds of event of the pointer whose reply says its shape.

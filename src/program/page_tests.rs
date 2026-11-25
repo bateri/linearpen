@@ -11145,6 +11145,12 @@ fn a_link_of_an_issue_dropped_on_the_page_opens_it_and_any_other_is_said_not_to_
 fn a_link_dropped_while_work_on_is_open_puts_the_form_away_and_opens_its_issue() {
     let (_rig, mut page) = open_rig(WIDE, true, &["claude"]);
     open_form_with_status(&mut page, false);
+    // Of an issue Linear does not have: the form stays.
+    page.drop_link("list", "https://linear.app/acme/issue/ACM-999/gone")
+        .expect("a link is dropped");
+    page.wait_for(WITHIN, |page| page.says("Linear has no such issue"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    assert!(page.bounds("work-start").is_some(), "{}", said(&page));
     page.drop_link(
         "list",
         "https://linear.app/acme/issue/ACM-398/checkout-test-fails-one-run-in-ten",
