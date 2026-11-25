@@ -65,16 +65,10 @@ function screens.connect()
 	return centered(card)
 end
 
--- The list while it is first asked for: lines that stand where the issues will.
-function screens.loading()
-	local box = b.div():col():grow(1):min_h(0):clip()
-	box:child(
-		b.div():row():items_center():gap(10):pt(SIZE.head_top):pb(SIZE.head_bottom):px(SIZE.pad):h(SIZE.control + SIZE.head_top + SIZE.head_bottom):no_shrink():child(
-			b.text(lists.name()):text_size(15):weight(700)
-		):child(kit.spinner(13, "dim")):child(b.text("Loading"):text_size(SIZE.small):color("dim"))
-	)
-	local groups = { { 112, { 52, 38, 61, 44 } }, { 96, { 47, 58 } }, { 60, { 41, 66, 35 } } }
-	for _, group in groups do
+-- The heads of three groups and their lines, faint, in `box`: where the lines of a list will stand.
+local GROUPS = { { 112, { 52, 38, 61, 44 } }, { 96, { 47, 58 } }, { 60, { 41, 66, 35 } } }
+local function placeholders(box)
+	for _, group in GROUPS do
 		box:child(
 			b.div():h(SIZE.row + SIZE.group_gap):pt(SIZE.group_gap):px(18):row():items_center():child(
 				b.div():w(group[1]):h(10):rounded(5):bg(b.alpha("foreground", 0.16))
@@ -91,6 +85,20 @@ function screens.loading()
 	return box
 end
 
+-- How the lines that stand for a list go when it comes: they fade as its own come in their place.
+local GOING = { opacity = 0, seconds = 0.24 }
+
+-- The list while it is first asked for: lines that stand where the issues will.
+function screens.loading()
+	local box = b.div():id("list-loading"):col():grow(1):min_h(0):clip():motion({ exit = GOING })
+	box:child(
+		b.div():row():items_center():gap(10):pt(SIZE.head_top):pb(SIZE.head_bottom):px(SIZE.pad):h(SIZE.control + SIZE.head_top + SIZE.head_bottom):no_shrink():child(
+			b.text(lists.name()):text_size(15):weight(700)
+		):child(kit.spinner(13, "dim")):child(b.text("Loading"):text_size(SIZE.small):color("dim"))
+	)
+	return placeholders(box)
+end
+
 -- Linear could not be asked, or did not answer as it should: why, and the way to try again.
 function screens.failed(err)
 	local card = b.div():col():items_center():gap(10)
@@ -105,12 +113,21 @@ function screens.failed(err)
 	return centered(card)
 end
 
--- A list that is shown and has not come (the person went to it and Linear is being asked).
+-- A list that is shown and has not come (the person went to it, it was not kept, and Linear is being
+-- asked): the lines that stand where its lines will, which come in slowly, so that a list that comes at
+-- once is not preceded by a flash of them, and fade as its lines come in their place. Nothing is to be
+-- read in that moment: the words are for a screen reader and an agent.
 function screens.coming()
-	local card = b.div():col():items_center():gap(10)
-	card:child(kit.spinner(18, "quiet"))
-	card:child(b.text("Asking Linear for " .. lists.name()):color("dim"):truncate():max_w(420))
-	return centered(card)
+	local box = b.div()
+		:id("list-coming")
+		:col()
+		:grow(1)
+		:min_h(0)
+		:clip()
+		:role("progress")
+		:label("Asking Linear for " .. lists.name())
+		:motion({ enter = { opacity = 0, seconds = 0.48 }, exit = GOING })
+	return placeholders(box)
 end
 
 -- Nothing in My issues: said once, with the way to the others.

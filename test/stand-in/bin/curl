@@ -12,6 +12,8 @@
 #   STANDIN_MODE=down      curl could not resolve the host: exit 6, no output
 #   STANDIN_MY=empty       the person has no issues assigned
 #   STANDIN_LIST=big       a team has more issues than the pen takes (500): every page of it has a next
+#   STANDIN_DELAY=0.8      each answer takes that many seconds, as a real Linear's does: what the page
+#                          shows while Linear is asked can be seen (`make demo`)
 #   (A search, and the choices of the filters: search-issues.json, filter-options.json.)
 #   (The inbox: inbox.json. Marking the notifications of an issue read answers that it was done; the
 #   file is not written, so the next asking tells them unread again.)
@@ -99,6 +101,10 @@ if [ -n "${STANDIN_LOG-}" ]; then
 	printf '%s' "$record" >"$mine"
 	cat "$mine" >>"$STANDIN_LOG"
 	rm -f "$mine"
+fi
+
+if [ -n "${STANDIN_DELAY-}" ]; then
+	sleep "$STANDIN_DELAY"
 fi
 
 case "${STANDIN_MODE-}" in

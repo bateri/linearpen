@@ -7628,15 +7628,27 @@ fn going_to_another_list_with_an_issue_open_does_not_ask_linear_for_the_issue_ag
 
 #[test]
 #[ignore = "opens the kit's interpreter: make test-page"]
-fn a_list_that_has_not_come_says_so_where_its_lines_will_be_and_the_head_stays() {
+fn a_list_that_has_not_come_has_lines_standing_for_it_where_its_lines_will_be_and_the_head_stays() {
     let (linear, _session, mut page) = open_lists(WIDE);
     open_card_of_lists(&mut page);
     let head = (page.bounds("lists"), page.bounds("filter-box"));
+    let lines = page.bounds("list").expect("the lines");
     linear.set(Mode::Held);
     page.type_text("billing").expect("the words");
     page.press("enter").expect("enter");
-    page.wait_for(WITHIN, |page| page.says("Asking Linear for Billing"))
+    // Lines stand where its lines will, with nothing to read; a screen reader is told what they are.
+    page.wait_for(WITHIN, |page| page.bounds("list-coming").is_some())
         .unwrap_or_else(|why| panic!("the list is on its way: {why:?}: {}", said(&page)));
+    let coming = page
+        .bounds("list-coming")
+        .expect("the lines that stand for it");
+    assert_eq!((coming.x, coming.y), (lines.x, lines.y));
+    assert!(
+        group_says(&page, "Asking Linear for Billing"),
+        "{}",
+        said(&page)
+    );
+    assert!(!page.says("Asking Linear"), "{}", said(&page));
     // The lines of the list left are not there, the button already says which list it is and has no count.
     assert!(!page.says("ACM-412"), "{}", said(&page));
     let button = page.words_in("lists");
@@ -7651,7 +7663,8 @@ fn a_list_that_has_not_come_says_so_where_its_lines_will_be_and_the_head_stays()
     linear.set(Mode::Fine);
     page.wait_for(WITHIN, |page| page.says("ACM-418"))
         .unwrap_or_else(|why| panic!("the list comes: {why:?}: {}", said(&page)));
-    assert!(!page.says("Asking Linear for"), "{}", said(&page));
+    assert!(page.bounds("list-coming").is_none(), "{}", said(&page));
+    assert!(!group_says(&page, "Asking Linear for Billing"));
 }
 
 #[test]
@@ -11161,4 +11174,34 @@ fn a_link_dropped_while_work_on_is_open_puts_the_form_away_and_opens_its_issue()
             && beside_says(page, "ACM-398", "Checkout test fails one run in ten")
     })
     .unwrap_or_else(|why| panic!("the form gives way: {why:?}: {}", said(&page)));
+}
+
+// --- Lists kept ------------------------------------------------------------------------------------
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_list_gone_to_again_is_shown_at_once_as_it_was_while_linear_is_asked_for_it_anew() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    page.press("2").expect("2");
+    page.wait_for(WITHIN, |page| page.says("ACM-417"))
+        .unwrap_or_else(|why| panic!("All issues: {why:?}: {}", said(&page)));
+    page.press("1").expect("1");
+    page.wait_for(WITHIN, |page| {
+        !page.says("ACM-417") && page.bounds("refreshing").is_none()
+    })
+    .unwrap_or_else(|why| panic!("My issues: {why:?}: {}", said(&page)));
+    // Linear does not answer yet: All issues is there at once, as it was, with the line over it that
+    // says Linear is asked, and no lines standing for it.
+    linear.set(Mode::Held);
+    page.press("2").expect("2");
+    page.advance(0.1).expect("a moment");
+    assert!(page.says("ACM-417"), "{}", said(&page));
+    assert!(page.bounds("list-coming").is_none(), "{}", said(&page));
+    page.wait_for(WITHIN, |page| page.bounds("refreshing").is_some())
+        .unwrap_or_else(|why| panic!("the line: {why:?}: {}", said(&page)));
+    // Its answer takes its place, and the line goes.
+    linear.set(Mode::Fine);
+    page.wait_for(WITHIN, |page| page.bounds("refreshing").is_none())
+        .unwrap_or_else(|why| panic!("Linear answered: {why:?}: {}", said(&page)));
+    assert!(page.says("ACM-417"), "{}", said(&page));
 }

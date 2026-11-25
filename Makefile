@@ -165,12 +165,14 @@ dev: pencere
 # a workspace full of issues, an inbox, a pull request on ACM-412, with no key of the person's and
 # nothing sent anywhere. The stand-in bateri and agents are first on the PATH, so Work on starts
 # nothing; what is kept (the width of the issue, the form's choices) is in a folder of its own.
+# `make demo STANDIN_DELAY=0.8` has each answer take that long, as a real Linear's does.
+STANDIN_DELAY ?=
 demo: pencere
 	@state=$$(mktemp -d) && echo "linearpen demo: the stand-in Linear; kept in $$state" && \
 		PATH="$(CURDIR)/test/stand-in/bin:$$PATH" LINEAR_API_KEY=lin_api_demo \
 		LINEARPEN_CONFIG_DIR="$$state/config" XDG_STATE_HOME="$$state/state" \
 		STANDIN_LOG="$$state/linear.log" STANDIN_BATERI_LOG="$$state/bateri.log" \
-		"$(PENCERE)" dev
+		STANDIN_DELAY="$(STANDIN_DELAY)" "$(PENCERE)" dev
 
 # dist makes the programs for one target (TARGET, a Rust target triple) into dist/release: Apple
 # silicon Macs and both Linux architectures, the Linux ones linked statically with musl (bateri, the

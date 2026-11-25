@@ -117,6 +117,38 @@ impl Lists {
     }
 }
 
+/// A list besides My issues that the person went to and left, as it came last, with the filters it
+/// was asked for: told at once when the page goes back to it, while Linear is asked for it anew.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Kept {
+    pub scope: Scope,
+    pub filters: Filters,
+    pub listing: Listing,
+}
+
+/// How many lists left are kept: the tabs' (All issues, Inbox, Projects) and one more.
+const KEPT: usize = 4;
+
+/// Keeps `one` as the list last left, in the place of what was kept of the same list; the one left
+/// longest ago goes where there are more than [`KEPT`].
+fn keep(kept: &mut Vec<Kept>, one: Kept) {
+    kept.retain(|held| held.scope != one.scope || held.filters != one.filters);
+    kept.insert(0, one);
+    kept.truncate(KEPT);
+}
+
+/// Whether an issue as it is now belongs in a list of `scope` narrowed by `filters` that `held` it
+/// or not, `mine` where it is the person's: the person's own list holds what is theirs, All issues
+/// holds every one where it is not narrowed, and any other keeps what it held (it cannot say whether
+/// Linear's own rule for that list takes a new one).
+fn belongs(scope: &Scope, filters: &Filters, held: bool, mine: bool) -> bool {
+    match scope {
+        Scope::Mine => mine && held,
+        Scope::All => held || filters.is_empty(),
+        _ => held,
+    }
+}
+
 /// A pane that is watched: the agent in it, the issues it was given, and the file of them it reads
 /// (not known of an agent that was found rather than started: `State::adopt`).
 #[derive(Debug)]
@@ -134,6 +166,8 @@ pub struct State {
     /// Why the key there is cannot be used (a key that is not one, a file that cannot be read).
     pub problem: Option<String>,
     pub lists: Option<Lists>,
+    /// The lists the person left, the last first (`Kept`), for the run or until another key is used.
+    pub kept: Vec<Kept>,
     /// The lists a person can go to, by name, as Linear last said them; and why they could not be
     /// asked for the last time, where they could not.
     pub names: Option<Vec<Entry>>,
@@ -268,6 +302,19 @@ impl State {
         found.into_iter().map(|(pane, _, _)| pane).collect()
     }
 
+    /// The list of `scope` narrowed by `filters`: the one Linear told last, else the one kept from
+    /// when the person left it. None before any list came, and for a list neither holds.
+    #[must_use]
+    pub fn held(&self, scope: &Scope, filters: &Filters) -> Option<&Listing> {
+        let lists = self.lists.as_ref()?;
+        lists.of(scope, filters).or_else(|| {
+            self.kept
+                .iter()
+                .find(|kept| kept.scope == *scope && kept.filters == *filters)
+                .map(|kept| &kept.listing)
+        })
+    }
+
     /// Tells that an issue of the lists was changed: where the lists are on their way, they were
     /// asked for before it, so what comes is let go and they are asked for once more.
     fn note_change(&mut self) {
@@ -288,10 +335,29 @@ impl State {
             Ok(_) if self.stale => false,
             Ok(mut lists) => {
                 let wanted = self.view.scope.clone();
-                // (A list asked for with other filters than the page has now is not the one it wants.)
-                lists.shown = lists
-                    .shown
-                    .filter(|(held, _)| *held == wanted && lists.filters == self.view.filters);
+                // A list the page has left since it was asked for (or that it looks at with other
+                // filters now) is kept as it came, for when the page goes back to it.
+                match lists.shown.take() {
+                    Some((held, listing))
+                        if held == wanted && lists.filters == self.view.filters =>
+                    {
+                        lists.shown = Some((held, listing));
+                    }
+                    Some((scope, listing)) => keep(
+                        &mut self.kept,
+                        Kept {
+                            scope,
+                            filters: lists.filters.clone(),
+                            listing,
+                        },
+                    ),
+                    None => {}
+                }
+                // What came is newer than what was kept of the same list.
+                if let Some((held, _)) = &lists.shown {
+                    self.kept
+                        .retain(|kept| kept.scope != *held || kept.filters != lists.filters);
+                }
                 if is_apart(&wanted, &self.view.filters) && lists.shown.is_none() {
                     self.refresh_wanted = true;
                 }
@@ -343,35 +409,34 @@ impl State {
     }
 
     /// Writes an issue as Linear says it is now into what is held: the person's list has it where it
-    /// is theirs, and not where it is not; All issues has it; any other list the page looks at keeps
-    /// an issue it holds as it is now, done or not (it cannot say whether Linear's own rule for that
-    /// list takes a new one). The issue kept with its description is as it is now. Gives whether the
-    /// list the page is looking at holds it.
+    /// is theirs, and not where it is not; All issues has it; any other list the page looks at, or
+    /// that was kept, keeps an issue it holds as it is now, done or not (`belongs`). The issue kept
+    /// with its description is as it is now. Gives whether the list the page is looking at holds it.
     fn put(&mut self, issue: &Issue) -> bool {
         let mine = issue.assignee.as_ref().is_some_and(|who| who.is_me);
-        let mut listed = false;
+        let row = Issue {
+            description: None,
+            comments: None,
+            ..issue.clone()
+        };
         if let Some(lists) = &mut self.lists {
-            let row = Issue {
-                description: None,
-                comments: None,
-                ..issue.clone()
-            };
             place(&mut lists.mine, &row, mine);
-            let narrowed = !lists.filters.is_empty();
             if let Some((scope, listing)) = &mut lists.shown {
                 let held = listing.issues.iter().any(|held| held.id == row.id);
-                // The person's own list holds what is theirs.
-                let wanted = match scope {
-                    Scope::Mine => mine && held,
-                    Scope::All => held || !narrowed,
-                    _ => held,
-                };
-                place(listing, &row, wanted);
+                place(listing, &row, belongs(scope, &lists.filters, held, mine));
             }
-            listed = lists
-                .of(&self.view.scope, &self.view.filters)
-                .is_some_and(|listing| listing.issues.iter().any(|held| held.id == row.id));
         }
+        for kept in &mut self.kept {
+            let held = kept.listing.issues.iter().any(|held| held.id == row.id);
+            place(
+                &mut kept.listing,
+                &row,
+                belongs(&kept.scope, &kept.filters, held, mine),
+            );
+        }
+        let listed = self
+            .held(&self.view.scope, &self.view.filters)
+            .is_some_and(|listing| listing.issues.iter().any(|held| held.id == row.id));
         // What is kept is by the id it was asked for by, which may be the identifier.
         for kept in self.details.values_mut().filter(|kept| kept.id == issue.id) {
             let held = kept.clone();
@@ -731,6 +796,7 @@ impl Session {
                 source,
                 problem,
                 lists: None,
+                kept: Vec::new(),
                 names: None,
                 names_error: None,
                 refreshing: false,
@@ -943,6 +1009,8 @@ impl Session {
             state.source = Some(source);
             state.problem = None;
             state.error = None;
+            // (Another key may be of another workspace: what was kept is not its.)
+            state.kept.clear();
         }
         self.start();
     }
@@ -1067,11 +1135,23 @@ impl Session {
         linear::inbox::mark_read(self.transport(), &key, id, &read_at)?;
         // The inbox held says so at once: its row goes to the read ones, as Linear has it now.
         let mut state = self.shared.lock();
-        if let Some(lists) = &mut state.lists
-            && let Some((Scope::Inbox, listing)) = &mut lists.shown
-            && let Some(note) = listing.notes.get_mut(id)
-        {
-            note.unread = false;
+        let state_ref = &mut *state;
+        let shown = state_ref
+            .lists
+            .iter_mut()
+            .filter_map(|lists| match &mut lists.shown {
+                Some((Scope::Inbox, listing)) => Some(listing),
+                _ => None,
+            });
+        let kept = state_ref
+            .kept
+            .iter_mut()
+            .filter(|kept| kept.scope == Scope::Inbox)
+            .map(|kept| &mut kept.listing);
+        for listing in shown.chain(kept) {
+            if let Some(note) = listing.notes.get_mut(id) {
+                note.unread = false;
+            }
         }
         state.note_change();
         self.shared.changed(&mut state);
@@ -1333,14 +1413,14 @@ impl Session {
         self.shared.lock().view_seen = [0; 4];
     }
 
-    /// Changes what the page is looking at, and wakes whoever shows it. The page numbers its calls
-    /// (`seq`): a member that a call with a higher number has set is left as it is, for calls run at
-    /// the same time and may come out of their order. A call with no number is the latest.
     /// Keeps the person's day, `2026-11-24`, as the page tells it.
     pub fn set_today(&self, today: String) {
         self.shared.lock().today = Some(today);
     }
 
+    /// Changes what the page is looking at, and wakes whoever shows it. The page numbers its calls
+    /// (`seq`): a member that a call with a higher number has set is left as it is, for calls run at
+    /// the same time and may come out of their order. A call with no number is the latest.
     pub fn set_view(
         &self,
         seq: Option<u64>,
@@ -1369,10 +1449,21 @@ impl Session {
         let scope = scope.filter(|scope| scope_ok && state.view.scope != *scope);
         let filters = filters.filter(|filters| filters_ok && state.view.filters != *filters);
         if scope.is_some() || filters.is_some() {
-            // A list the page left (or that other filters narrowed) is let go of; the one it goes to
-            // is asked for, with My issues (a list is shown as Linear says it now).
-            if let Some(lists) = &mut state.lists {
-                lists.shown = None;
+            // A list the page left (or that other filters narrowed) is kept as it is; the one it goes
+            // to is asked for, with My issues (a list is shown as Linear says it now), and told as it
+            // was kept until that comes.
+            let state = &mut *state;
+            if let Some(lists) = &mut state.lists
+                && let Some((scope, listing)) = lists.shown.take()
+            {
+                keep(
+                    &mut state.kept,
+                    Kept {
+                        scope,
+                        filters: lists.filters.clone(),
+                        listing,
+                    },
+                );
             }
             if let Some(scope) = scope {
                 state.view.scope = scope;
@@ -2387,7 +2478,7 @@ mod tests {
     }
 
     #[test]
-    fn a_page_that_goes_to_another_list_has_it_asked_for_and_lets_go_of_the_one_it_left() {
+    fn a_page_that_goes_to_another_list_has_it_asked_for_and_keeps_the_one_it_left() {
         let (session, _) = holding(vec![]);
         session.shared.lock().refresh_wanted = false;
         session.set_view(None, Some(team("t-acm")), None, None, None);
@@ -2398,9 +2489,13 @@ mod tests {
             let lists = state.lists.as_ref().unwrap();
             assert!(
                 lists.shown.is_none(),
-                "All issues, which it left, is let go of"
+                "the list it left is not the one shown"
             );
-            assert!(lists.of(&team("t-acm"), &Filters::default()).is_none());
+            assert!(
+                state.held(&Scope::All, &Filters::default()).is_some(),
+                "All issues, which it left, is kept"
+            );
+            assert!(state.held(&team("t-acm"), &Filters::default()).is_none());
             assert_eq!(
                 ids_of(lists.of(&Scope::Mine, &Filters::default()).unwrap()),
                 ["a", "b"]
@@ -2451,7 +2546,7 @@ mod tests {
     }
 
     #[test]
-    fn a_list_that_comes_after_the_page_went_elsewhere_is_let_go_of_and_the_new_one_asked_for() {
+    fn a_list_that_comes_after_the_page_went_elsewhere_is_kept_and_the_new_one_asked_for() {
         let (session, _) = holding(vec![]);
         let mut lists = session.state().lists.clone().unwrap();
         lists.shown = Some((team("t-acm"), lists.mine.clone()));
@@ -2464,6 +2559,10 @@ mod tests {
             let held = state.lists.as_ref().unwrap();
             assert!(held.shown.is_none());
             assert_eq!(ids_of(&held.mine), ["a", "b"], "My issues is as it came");
+            assert!(
+                state.held(&team("t-acm"), &Filters::default()).is_some(),
+                "what came is kept for when the page goes back to it"
+            );
             // The list it looks at is the one that came.
             state.view.scope = team("t-acm");
             state.refresh_wanted = false;
@@ -2471,6 +2570,70 @@ mod tests {
             assert!(!state.refresh_wanted_now());
             assert!(state.lists.as_ref().unwrap().shown.is_some());
         }
+    }
+
+    #[test]
+    fn a_list_gone_to_again_is_told_at_once_as_it_was_kept_while_linear_is_asked_anew() {
+        let (session, _) = holding(vec![]);
+        session.shared.lock().refresh_wanted = false;
+        session.set_view(None, Some(team("t-acm")), None, None, None);
+        assert!(
+            session
+                .state()
+                .held(&team("t-acm"), &Filters::default())
+                .is_none(),
+            "a list never shown is on its way"
+        );
+        session.shared.lock().refresh_wanted = false;
+        session.set_view(None, Some(Scope::All), None, None, None);
+        let state = session.state();
+        assert!(state.refresh_wanted_now(), "it is asked for anew");
+        let kept = state
+            .held(&Scope::All, &Filters::default())
+            .expect("and held as it was kept meanwhile");
+        assert_eq!(ids_of(kept), ["a", "b"]);
+    }
+
+    #[test]
+    fn an_issue_changed_is_written_into_the_lists_kept_and_another_key_lets_them_go() {
+        let (session, _) = holding(vec![]);
+        session.set_view(None, Some(team("t-acm")), None, None, None);
+        let changed = issue_of(&wire("b", "Fix it now", "started", true));
+        {
+            let mut state = session.state();
+            state.put(&changed);
+            let kept = state.held(&Scope::All, &Filters::default()).unwrap();
+            assert_eq!(kept.issues[1].title, "Fix it now");
+        }
+        session.use_key(
+            Key::new("lin_api_another").expect("a key"),
+            Source::Environment,
+        );
+        assert!(session.state().kept.is_empty());
+    }
+
+    #[test]
+    fn four_lists_left_are_kept_the_last_first() {
+        let (session, _) = holding(vec![]);
+        for scope in [
+            team("t-1"),
+            team("t-2"),
+            team("t-3"),
+            team("t-4"),
+            team("t-5"),
+        ] {
+            session.set_view(None, Some(scope.clone()), None, None, None);
+            let mut state = session.state();
+            let mut lists = state.lists.clone().unwrap();
+            lists.shown = Some((scope, lists.mine.clone()));
+            state.landed(Ok(lists));
+        }
+        let state = session.state();
+        let kept: Vec<&Scope> = state.kept.iter().map(|kept| &kept.scope).collect();
+        assert_eq!(
+            kept,
+            [&team("t-4"), &team("t-3"), &team("t-2"), &team("t-1")]
+        );
     }
 
     fn labelled(name: &str) -> Filters {

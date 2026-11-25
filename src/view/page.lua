@@ -460,7 +460,8 @@ local function body()
 			narrowed = S.scope ~= "inbox" and S.scope ~= "projects" and filters.any(),
 		})
 	end
-	return list.view(S.room, S.panel_open)
+	-- (Where it comes after the lines that stood for it, or after what said it had none, it fades in.)
+	return list.view(S.room, S.panel_open):motion({ enter = { opacity = 0, seconds = 0.24 } })
 end
 
 -- The line that says the last asking failed while the lists of before are still shown.
@@ -485,7 +486,7 @@ local LIGHT = 0.3
 
 -- The line along the top of the page (over the list and its head and the issue beside it, or the issue
 -- or the form that has the pane) while Linear is asked for the lists again (Refresh, the five minutes,
--- an issue made), and then for the issue open: the same in every width, where the button of Refresh is
+-- an issue made, a list gone to again and shown as it was kept), and then for the issue open: the same in every width, where the button of Refresh is
 -- or is not. It is out of the flow, over the top of them, so nothing moves when it comes or goes. A list
 -- that is coming says so in its own place and has none. Its light crosses it, moved by the terminal (a
 -- loop: the page is not drawn again for it), or by the page frame by frame where the terminal's kit has

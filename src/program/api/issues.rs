@@ -414,10 +414,12 @@ pub struct Snapshot {
     pub inbox_unread: Option<bool>,
 }
 
-/// Whether the inbox has anything unread: its lines where it is the list held, else the last asking.
+/// Whether the inbox has anything unread: its lines where it is the list shown (as Linear told it, or
+/// as it was kept while Linear is asked again), else the last asking.
 fn inbox_unread(state: &State) -> Option<bool> {
-    let shown = state.lists.as_ref().and_then(|lists| lists.shown.as_ref());
-    if let Some((Scope::Inbox, listing)) = shown {
+    if state.view.scope == Scope::Inbox
+        && let Some(listing) = state.held(&Scope::Inbox, &state.view.filters)
+    {
         return Some(listing.notes.values().any(|note| note.unread));
     }
     state.inbox_unread
@@ -534,10 +536,7 @@ pub fn snapshot(state: &State) -> Snapshot {
     };
     let mut groups = Vec::new();
     let mut matched = 0;
-    let held = state
-        .lists
-        .as_ref()
-        .and_then(|lists| lists.of(scope, &state.view.filters));
+    let held = state.held(scope, &state.view.filters);
     if let Some(listing) = held.filter(|_| *scope == Scope::Projects) {
         (groups, matched) = project_groups(
             listing,

@@ -145,8 +145,10 @@ optional (`{}` asks for the list as it is). Params:
   are unread ones), in each the latest first. `filters` do not
   narrow it (Linear's inbox takes none: `view` keeps them for the other lists), the words of `filter`
   do. Reading it changes nothing in Linear: an issue opened here is not marked read there. Only the list shown and My issues are asked for: going to another
-  list lets go of the one left and asks Linear for the new one, and the topic tells it as `listing`
-  `"loading"` until it comes. An `id` Linear does not know is not an error of the call: `listing` is `failed`
+  list keeps the one left, as it came last, and asks Linear for the new one. The four lists last left
+  (each with the `filters` it was asked for) are kept for the run: a list gone to again is told at once
+  as it was kept, `listing` `"ready"` and `refreshing` true, until Linear's answer takes its place. One
+  not kept is told as `listing` `"loading"` until it comes. An `id` Linear does not know is not an error of the call: `listing` is `failed`
   and `error` has Linear's words. The old member `scope` is not taken.
 - `filters`: what Linear is asked to narrow the list by, as the person set it (all of it, or the call
   does not set it; `[]` or `{}` is none). Each kind is a list of values, any of which lets an issue
@@ -160,7 +162,8 @@ optional (`{}` asks for the list as it is). Params:
 
   They are sent to Linear (`state.name in`, `priority in`, `assignee.isMe`, `assignee.id in`,
   `assignee null`, `labels.some.name in`, `project.id in`, `project null`, "and"ed): a change of them
-  lets go of the list shown and asks for it again, for My issues too, which is held whole and counted.
+  asks for the list shown again (keeping the one with the filters before, as going to another list
+  does), for My issues too, which is held whole and counted.
   They are not kept when the pen closes.
 - `filter`: the words typed, at most 200 characters. An issue is let through where they are in its
   title, its identifier or the name of a label, whatever the case. While it is not empty no group is
@@ -915,9 +918,10 @@ the lists came, asking failed). The same value `view` answers with.
   `cycle`, `view`, `project`, `label` or `search`) and `listId` its id (null for the person's lists, the
   workspace's and the inbox; the words, for a `search`).
 - `filters`: what the lists are narrowed by in Linear, as `view` set it.
-- `listing`: whether the list shown has come: `ready`; `loading` (it is being asked for: `groups` is
-  empty, and `counts.shown` is 0); or `failed` (Linear could not tell it: `error` says why, and
-  `loaded` is still true because My issues came).
+- `listing`: whether the list shown has come: `ready` (a list kept from before, gone to again, is
+  ready while Linear is asked for it anew: `refreshing` says so); `loading` (it is being asked for:
+  `groups` is empty, and `counts.shown` is 0); or `failed` (Linear could not tell it: `error` says why,
+  and `loaded` is still true because My issues came).
 - `counts`: how many issues My issues holds (`mine`, whole) and the list shown holds (`shown`, as
   `filters` narrow it; not by the words of `filter`), closed ones too, and how many of the list shown
   are open (`shownOpen`, what the list button says); `mineCut` and `shownCut` say there are more than
