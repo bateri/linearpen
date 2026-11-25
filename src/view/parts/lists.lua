@@ -1,6 +1,6 @@
 -- The card of lists, which the button of the head and `g` open: the lists a person can go to, one a
--- line with what it is and, where it has one, its key. It is the kit's palette (a field that finds,
--- the arrows, Enter, Esc). My issues, All issues, the inbox and the projects come first (`1` to `4`, the
+-- line with what it is and, where it has one, its key, which goes to it from the card too where it is
+-- typed first. It is the kit's palette (a field that finds, the arrows, Enter, Esc). My issues, All issues, the inbox and the projects come first (`1` to `4`, the
 -- tabs of a wide head), then what Linear starred (`5` to `9` for the first five), the issues the person
 -- made and those they are subscribed to (no key), the teams, the saved views and the projects, as the program
 -- tells them (`S.catalog`). What each is is said at the end of its line, in words, because the card
@@ -12,7 +12,7 @@ local u, S, act = kit.u, kit.S, kit.act
 
 local lists = {}
 
-local L = { open = false, state = nil, serial = 0, built = nil, version = nil, items = nil, names = {} }
+local L = { open = false, state = nil, query = "", serial = 0, built = nil, version = nil, items = nil, names = {} }
 lists.state = L
 
 -- The lists every workspace has: the person's issues, the workspace's, the inbox and the projects first; the
@@ -181,6 +181,7 @@ end
 function lists.show()
 	L.serial += 1
 	L.state = { query = "", cursor = lists.current(), field = { value = "" } }
+	L.query = ""
 	L.open = true
 end
 
@@ -215,7 +216,22 @@ function lists.action(action)
 	if action.kind == "dismiss" then
 		L.open = false
 	elseif action.kind == "query" then
+		local text = action.text or ""
+		local first = (L.query or "") == ""
+		L.query = text
 		L.state.cursor = nil
+		-- A key the card writes by a list, typed first into the empty field, goes to that list as it does
+		-- with the card away (`g` then `3` is the inbox). Typed after other words it is found as one; a
+		-- digit no list has stays in the field.
+		if first and string.match(text, "^[1-9]$") ~= nil then
+			for _, item in items() do
+				if item.keys == text and item.list ~= nil then
+					L.open = false
+					act.view({ list = item.list })
+					return true
+				end
+			end
+		end
 	elseif action.kind == "pick" then
 		-- (The line that says the names have not come goes nowhere: the card stays.)
 		if action.item.list == nil then

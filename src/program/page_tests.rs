@@ -7329,6 +7329,32 @@ fn typing_in_the_card_of_lists_finds_a_list_and_enter_goes_to_it_with_its_name_a
 
 #[test]
 #[ignore = "opens the kit's interpreter: make test-page"]
+fn a_key_the_card_of_lists_writes_by_a_list_goes_to_it_typed_first_and_is_found_typed_later() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    open_card_of_lists(&mut page);
+    // `g` then `3`: the inbox, as `3` is with the card away, and the card goes.
+    page.press("3").expect("3");
+    list_button_says(&mut page, "Inbox");
+    page.wait_for(WITHIN, |page| !page.says("Assigned to you"))
+        .unwrap_or_else(|why| panic!("the card goes: {why:?}: {}", said(&page)));
+    // A favorite's key too.
+    open_card_of_lists(&mut page);
+    page.press("5").expect("5");
+    list_button_says(&mut page, "Bugs to triage");
+    // After other words a digit is one of the words: the card stays and All issues is not asked for.
+    open_card_of_lists(&mut page);
+    page.type_text("b").expect("b");
+    page.press("2").expect("2");
+    page.advance(0.3).expect("a moment");
+    list_button_says(&mut page, "Bugs to triage");
+    page.press("escape").expect("escape");
+    page.advance(0.3).expect("a moment");
+    list_button_says(&mut page, "Bugs to triage");
+    assert_eq!(linear.times("AllIssues"), 0, "All issues was not asked for");
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
 fn the_keys_five_to_nine_go_to_the_favorites_and_one_comes_back_to_my_issues() {
     let (linear, _session, mut page) = open_lists(WIDE);
     // The names come after the first lists: the card is where they are known to have come.

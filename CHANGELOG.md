@@ -59,6 +59,8 @@
 
 ### Fixed
 
+- The keys the card of lists writes by its lists (`1` to `9`) go to them in the card too, when typed
+  first: `g` then `3` is the Inbox. They were typed into its field and found nothing.
 - The pointer is the hand over a line and a button at every move, press and turn of the wheel. It was
   the hand only as it came onto one, and the arrow from its next move.
 - A screen reader, and an agent that reads the pane, are told which value's card is open (the labels

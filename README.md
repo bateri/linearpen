@@ -116,7 +116,8 @@ list of teams), a saved view, a project. Each holds its open issues and the 100 
 ones that changed last, grouped by state with the backlog, Done and Canceled folded, and is asked of
 Linear again every five minutes; the Status filter finds older ones. The list
 button says which it is and how many open issues it has, and opens the card of lists (`g`): My issues is `1`, All
-issues `2`, the Inbox `3`, Projects `4`, your first five favorites `5` to `9`. On a pane wide enough (1147
+issues `2`, the Inbox `3`, Projects `4`, your first five favorites `5` to `9`, keys that also work in the
+card when typed first (`g` then `3` is the Inbox). On a pane wide enough (1147
 points), the head has those four as tabs in the place of the button, the one shown lit, and More after
 them for the card (or the name of the list shown, where it is another); the card is the palette, so typing finds a list by
 its name, and each line says what it is (`View`, `Project`, `Team`, `Cycle 24, ends Nov 15`). Only
