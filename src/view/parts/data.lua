@@ -1,5 +1,6 @@
 -- What the program tells and what the page asks of it (docs/calls.md): the key, the list, the view.
 
+local feel = require("./feel")
 local kit = require("../lib/kit")
 local list = require("./list")
 local values = require("./values")
@@ -15,6 +16,8 @@ local settle_moving
 local function apply(snapshot)
 	-- Whether the line over the page says Linear is asked for the lists (`page.lua`) as these come.
 	local lit = S.refreshing and S.issues ~= nil and S.issues.listing == "ready"
+	-- An agent that was at work and has stopped is heard: its pane is not this one (`feel.lua`).
+	kit.gather(feel.agents(S.issues ~= nil and S.issues.working or nil, snapshot.working, S.now or 0))
 	S.issues = snapshot
 	S.scope = snapshot.scope
 	S.list_id = snapshot.listId

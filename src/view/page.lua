@@ -12,6 +12,7 @@ local commands = require("./parts/commands")
 local context = require("./parts/context")
 local data = require("./parts/data")
 local edit = require("./parts/edit")
+local feel = require("./parts/feel")
 local filters = require("./parts/filters")
 local head = require("./parts/head")
 local help = require("./parts/help")
@@ -995,13 +996,14 @@ local function on_action(action)
 	elseif from == "commands" and kind == "command" then
 		return command(action.id)
 	elseif from == EDGE and kind == "resize" then
-		-- The edge goes with the pointer; where it is let go (or a key moved it) the width is kept.
+		-- The edge goes with the pointer; where it is let go (or a key moved it) the width is kept. Dragged
+		-- into one of its ends, it knocks (`feel.lua`).
 		local width = math.floor(action.size + 0.5)
 		panel.keep(width)
 		if action.final then
 			act.panel_width(width)
 		end
-		return true
+		return feel.edge(action.size, SIZE.side_least, panel.most(S.width), action.final) or true
 	end
 	return true
 end
@@ -1130,8 +1132,7 @@ local function key(event)
 end
 
 -- The pointer is over something the page answers itself (a line, a button): the hand.
-local function shape(event)
-	local over = b.layout.hit({ x = event.x, y = event.y })
+local function shape(event, over)
 	local wanted = nil
 	if pictures.over_text(event) then
 		-- The words of a PDF that is large are selected.
@@ -1311,10 +1312,23 @@ local function handle(event)
 		reply = b.merge(reply, on_action(action))
 	end
 	if kind == "move" then
+		local over = b.layout.hit({ x = event.x, y = event.y })
 		reply = b.merge(reply, pictures.dragged(event))
-		reply = b.merge(reply, shape(event))
+		reply = b.merge(reply, shape(event, over))
+		-- The finger is told when the pointer comes onto another line of the list (`feel.lua`): not while
+		-- a button is held (a drag), nor where something is over the list.
+		if S.screen ~= "list" or modal() then
+			feel.off()
+		elseif S.armed == nil then
+			local tick = feel.moved(over)
+			if tick ~= nil then
+				-- A reply to the pointer says its shape: one that says none is the arrow.
+				reply = b.merge(reply, b.merge(tick, { cursor = S.cursor or "arrow" }))
+			end
+		end
 	elseif kind == "leave" then
 		S.cursor = nil
+		feel.off()
 	elseif kind == "files" then
 		-- Files were pasted, dropped or chosen in the Open panel: they are put where they go.
 		reply = b.merge(reply, attach.files(event, { paste = paste_key, drop = drop_key }))

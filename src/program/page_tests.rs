@@ -10827,3 +10827,188 @@ fn a_line_pressed_while_a_new_issue_is_written_puts_the_form_away_and_its_draft_
         Some("Rate limits for the admin API")
     );
 }
+
+// --- What the finger and the ear are given (feel.lua) ------------------------------------------------
+
+/// The middle of the element named `name`, the host's points.
+fn middle_of(page: &Page, name: &str) -> pencere_view::Point {
+    let at = page
+        .bounds(name)
+        .unwrap_or_else(|| panic!("{name}: {}", said(page)));
+    pencere_view::Point {
+        x: at.x + at.w / 2.0,
+        y: at.y + at.h / 2.0,
+    }
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_pointer_ticks_once_for_each_line_it_comes_onto_and_never_for_the_wheel_or_the_keys() {
+    let (_linear, _session, mut page) = open_lists(WIDE);
+    let before = page.haptics().len();
+    // Onto a line: one tick, and the pointer is the hand.
+    page.move_to(middle_of(&page, "row:i:issue-412"))
+        .expect("a move");
+    assert_eq!(page.haptics().len(), before + 1);
+    assert_eq!(page.cursor(), Some(pencere_view::Cursor::Pointer));
+    // Along the line and onto its box of selection: it is the same line.
+    let line = page.bounds("row:i:issue-412").expect("the line");
+    page.move_to(pencere_view::Point {
+        x: line.x + line.w - 60.0,
+        y: line.y + line.h / 2.0,
+    })
+    .expect("a move");
+    page.advance(0.1).expect("a moment");
+    page.move_to(middle_of(&page, "check:i:issue-412"))
+        .expect("a move");
+    assert_eq!(page.haptics().len(), before + 1, "{}", said(&page));
+    // Onto another line: one more, and the hand stays.
+    page.move_to(middle_of(&page, "row:i:issue-398"))
+        .expect("a move");
+    assert_eq!(page.haptics().len(), before + 2);
+    assert_eq!(page.cursor(), Some(pencere_view::Cursor::Pointer));
+    // Off the lines and back onto one: coming onto a line ticks.
+    page.move_to(middle_of(&page, "filter-box"))
+        .expect("a move");
+    assert_eq!(page.haptics().len(), before + 2);
+    let still = middle_of(&page, "row:i:issue-398");
+    page.move_to(still).expect("a move");
+    assert_eq!(page.haptics().len(), before + 3);
+    // The wheel under a pointer that stays, and the keys that move the cursor: no finger moved.
+    page.wheel_at(still, 0.0, 120.0).expect("the wheel");
+    page.advance(0.3).expect("a moment");
+    for _ in 0..3 {
+        page.press("j").expect("j");
+    }
+    page.press("k").expect("k");
+    page.advance(0.3).expect("a moment");
+    assert_eq!(page.haptics().len(), before + 3);
+    assert!(page.sounds().is_empty(), "{:?}", page.sounds().len());
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_edge_knocks_once_as_a_drag_takes_it_into_an_end_and_never_for_its_keys() {
+    let size = (1900.0, 800.0);
+    let (_linear, _session, mut page) = open_lists(size);
+    open_the_issue_under_the_cursor(&mut page);
+    let before = page.haptics().len();
+    // Dragged a little, between its ends and over the lines with the button held: nothing.
+    let handle = middle_of(&page, "side-edge/handle");
+    page.drag_between(
+        handle,
+        pencere_view::Point {
+            x: handle.x - 60.0,
+            y: handle.y,
+        },
+    )
+    .expect("the edge is dragged");
+    page.advance(0.3).expect("a moment");
+    assert_eq!(page.haptics().len(), before);
+    // As far as it goes, and on past it: one knock.
+    let handle = middle_of(&page, "side-edge/handle");
+    page.drag_between(
+        handle,
+        pencere_view::Point {
+            x: 100.0,
+            y: handle.y,
+        },
+    )
+    .expect("the edge is dragged");
+    page.advance(0.3).expect("a moment");
+    assert_eq!(page.haptics().len(), before + 1);
+    // Its keys step it away from the end and back: no finger, nothing.
+    page.press("mod+shift+right").expect("the key");
+    page.press("mod+shift+left").expect("the key");
+    page.advance(0.3).expect("a moment");
+    assert_eq!(page.haptics().len(), before + 1);
+    // Into the other end: one more.
+    let handle = middle_of(&page, "side-edge/handle");
+    page.drag_between(
+        handle,
+        pencere_view::Point {
+            x: size.0 - 20.0,
+            y: handle.y,
+        },
+    )
+    .expect("the edge is dragged");
+    page.advance(0.3).expect("a moment");
+    assert_eq!(page.haptics().len(), before + 2);
+    assert!(page.sounds().is_empty(), "{:?}", page.sounds().len());
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_change_linear_refuses_is_heard_once_and_one_it_takes_is_not() {
+    let (linear, _session, mut page) = open_lists(WIDE);
+    linear.set_change(Change::Refused);
+    open_the_controls(&mut page);
+    page.click("panel-value:state").expect("status");
+    page.pick_titled("Done").expect("Done");
+    changed(&linear, &mut page, 1);
+    page.wait_for(WITHIN, |page| page.says("Linear did not change it"))
+        .unwrap_or_else(|why| panic!("{why:?}: {}", said(&page)));
+    page.advance(0.3).expect("a moment");
+    assert_eq!(page.sounds().len(), 1);
+    // Taken: nothing more is heard.
+    linear.set_change(Change::Fine);
+    page.click("panel-value:state").expect("status");
+    page.pick_titled("Done").expect("Done");
+    changed(&linear, &mut page, 2);
+    page.advance(0.5).expect("a moment");
+    assert_eq!(page.sounds().len(), 1);
+    assert!(page.haptics().is_empty(), "{:?}", page.haptics().len());
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn an_agent_that_stops_is_heard_once_and_again_only_a_while_later() {
+    let (_linear, rig, mut page) =
+        open_machine_polling(WIDE, true, &["claude"], Duration::from_millis(20));
+    rig.hands.set_ls(&ls_of_p41(0.0));
+    open_form_with_status(&mut page, false);
+    page.press("mod+enter").expect("mod+enter");
+    form_done(&mut page);
+    let stopped = |page: &Page| page.bounds("agent-idle:issue-412").is_some();
+    page.wait_for(WITHIN, |page| page.says("Go to Claude"))
+        .unwrap_or_else(|why| panic!("the mark: {why:?}: {}", said(&page)));
+    assert!(page.sounds().is_empty(), "{:?}", page.sounds().len());
+    // It stops: it is heard.
+    rig.hands.set_ls(&ls_of_p41(60.0));
+    page.wait_for(WITHIN, stopped)
+        .unwrap_or_else(|why| panic!("stopped: {why:?}: {}", said(&page)));
+    page.advance(0.3).expect("a moment");
+    assert_eq!(page.sounds().len(), 1);
+    // It writes and stops again at once (its prompt drawn again): not again.
+    rig.hands.set_ls(&ls_of_p41(1.0));
+    page.wait_for(WITHIN, |page| !stopped(page))
+        .unwrap_or_else(|why| panic!("at work: {why:?}: {}", said(&page)));
+    rig.hands.set_ls(&ls_of_p41(60.0));
+    page.wait_for(WITHIN, stopped)
+        .unwrap_or_else(|why| panic!("stopped again: {why:?}: {}", said(&page)));
+    page.advance(0.3).expect("a moment");
+    assert_eq!(page.sounds().len(), 1);
+    // A while later it works and stops: heard again.
+    page.advance(31.0).expect("a while");
+    rig.hands.set_ls(&ls_of_p41(1.0));
+    page.wait_for(WITHIN, |page| !stopped(page))
+        .unwrap_or_else(|why| panic!("at work: {why:?}: {}", said(&page)));
+    rig.hands.set_ls(&ls_of_p41(60.0));
+    page.wait_for(WITHIN, stopped)
+        .unwrap_or_else(|why| panic!("stopped: {why:?}: {}", said(&page)));
+    page.advance(0.3).expect("a moment");
+    assert_eq!(page.sounds().len(), 2);
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn an_agent_found_stopped_when_the_pen_begins_is_not_heard() {
+    let linear = Canned::new(Mode::Fine);
+    let rig = rig(&linear, true, &["claude"]);
+    rig.hands.set_ls(&ls_of_p41(60.0));
+    let mut page = open(&rig.session, WIDE, None, "ACM-412").expect("the page opens");
+    page.wait_for(WITHIN, |page| page.bounds("agent-idle:issue-412").is_some())
+        .unwrap_or_else(|why| panic!("the mark: {why:?}: {}", said(&page)));
+    page.advance(0.5).expect("a moment");
+    assert!(page.sounds().is_empty(), "{:?}", page.sounds().len());
+}

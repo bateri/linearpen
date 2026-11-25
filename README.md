@@ -478,6 +478,14 @@ or `Space` then presses.
 | `⌘K`, `?`             | find a command, the card of keys                                     |
 | `Esc`                 | close what is on top: the form, the issue, the selection, the search |
 
+On a Mac's trackpad, in a bateri that plays them, the pointer gives a light tick as it goes from one
+line of the list to another (not the wheel, not the keys), and the edge beside the list a soft knock
+when you drag it into either of its ends. Two things sound, both of what you may not have seen: Linear
+did not take a change you made (the line went back to what it was), and an agent stopped (it is done,
+or it waits for you); one agent does not sound again within half a minute. Nothing else sounds.
+bateri's own switches for sounds and vibration silence them, and a terminal that has none of them
+plays nothing.
+
 ## What it writes
 
 linearpen tells Linear a new issue, a change to the issues you have, a comment you wrote and the

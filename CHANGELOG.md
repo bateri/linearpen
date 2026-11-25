@@ -4,6 +4,10 @@
 
 ### Added
 
+- **A tick under the finger, a sound for what you did not see.** On a Mac's trackpad the pointer
+  ticks lightly as it goes from line to line of the list, and the edge beside the list knocks when it
+  is dragged into an end. A sound says Linear did not take a change, and another that an agent
+  stopped (done, or waiting for you). Played by a bateri that has them; nothing else sounds.
 - **Size the issue.** Drag the edge between the list and the issue (or press `Cmd Shift Left` and
   `Cmd Shift Right`) to make the issue wider or narrower. linearpen opens it as wide the next time.
 - **One click opens an issue.** A line of the list opens its issue (or project) beside the list with

@@ -8,6 +8,7 @@
 -- that stays open while the person turns one label after another on and off): each turn is a change
 -- of its own, sent in the order they were made, the next when the one before is answered.
 
+local feel = require("./feel")
 local icons = require("./icons")
 local kit = require("../lib/kit")
 local list = require("./list")
@@ -614,6 +615,8 @@ function send(ids, field, value, state)
 				C.error = { ids = request.ids, words = err.message or err.code, strip = strip_words(request, err.message or err.code) }
 				C.going = nil
 				drop_turns()
+				-- The line has gone back to what it was, maybe while the person looked elsewhere: it is heard.
+				kit.gather(feel.refused())
 				return true
 			end
 			-- What the open issue says is asked for again, for it may be of what the lists do not
