@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-11-26
+
 ### Fixed
 
 - **PDFs show in Kitty.** In a terminal that speaks Kitty graphics, the pages of a PDF an issue
