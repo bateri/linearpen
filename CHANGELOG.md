@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **PDFs show in Kitty.** In a terminal that speaks Kitty graphics, the pages of a PDF an issue
+  carries were an empty box, with "this build has no PDF reader" on the terminal. They are drawn now.
+
 ## [0.8.0] - 2026-11-25
 
 ### Added

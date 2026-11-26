@@ -26,8 +26,9 @@ serde_json = "1"
 hayro-interpret = { version = "0.9", default-features = false, features = ["embed-fonts", "embed-cmaps"] }
 # The client's own screen where the terminal hosts no view: the page drawn as pictures in the terminal it
 # is started in, where that speaks the Kitty graphics protocol (the `terminal` feature), with the
-# interpreter compiled by the build.
-pencere-tui = { git = "https://github.com/bateri/pencere", rev = "33f70780e35919dc5a7418a26a3a4c39ff12c9c0", optional = true, default-features = false, features = ["precompile"] }
+# interpreter compiled by the build and the PDF reader (`pdf`), as textpen takes it: without it the
+# pages of a PDF an issue carries are an empty box there (`make test-features` holds it).
+pencere-tui = { git = "https://github.com/bateri/pencere", rev = "33f70780e35919dc5a7418a26a3a4c39ff12c9c0", optional = true, default-features = false, features = ["precompile", "pdf"] }
 
 [features]
 default = ["terminal"]

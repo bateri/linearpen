@@ -79,15 +79,17 @@ test-tools:
 
 # test-features: the file is built in two types, with the screen of its own (the default) and without it
 # (`--no-default-features`, the smaller). The second is built, linted and tested too, and what the file
-# is made of is held: no code generator (`cranelift-codegen`) in the tree of either type, and no
-# `pencere-tui` in the one without the screen. A file that is shipped is built in a run of cargo of its
-# own, as `cargo build` does here: what `cargo test` builds with (its dev-dependencies) has the code
-# generator in it again.
+# is made of is held: no code generator (`cranelift-codegen`) in the tree of either type, the PDF reader
+# (the sandbox's `pdf`) in the screen's, and no `pencere-tui` in the one without the screen. A file that
+# is shipped is built in a run of cargo of its own, as `cargo build` does here: what `cargo test` builds
+# with (its dev-dependencies) has the code generator and the PDF reader in it again, so a test does not
+# see either.
 test-features:
 	cargo clippy --locked --no-default-features --all-targets -- -D warnings
 	cargo test --locked --no-default-features --bin linearpen
-	@tree="$$(cargo tree --locked -p linearpen -e normal)" || exit 1; \
-	if printf '%s\n' "$$tree" | grep -q 'cranelift-codegen'; then echo "test-features: the code generator (cranelift-codegen) is in the tree of linearpen"; exit 1; fi
+	@tree="$$(cargo tree --locked -p linearpen -e normal -f '{p} {f}')" || exit 1; \
+	if printf '%s\n' "$$tree" | grep -q 'cranelift-codegen'; then echo "test-features: the code generator (cranelift-codegen) is in the tree of linearpen"; exit 1; fi; \
+	if ! printf '%s\n' "$$tree" | grep -Eq 'pencere-sandbox v.*[ ,]pdf(,| |$$)'; then echo "test-features: the screen's sandbox has no PDF reader (pencere-tui without its pdf feature): a PDF is an empty box in Kitty"; exit 1; fi
 	@tree="$$(cargo tree --locked -p linearpen -e normal --no-default-features)" || exit 1; \
 	if printf '%s\n' "$$tree" | grep -q 'cranelift-codegen\|pencere-tui v'; then echo "test-features: the build without the screen has the code generator or pencere-tui in its tree"; exit 1; fi
 
